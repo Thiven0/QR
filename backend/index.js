@@ -26,7 +26,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Rutas
-const adminRoutes = require("./routes/Admin");
+const adminRoutes = require("./routes/Guard");
 const adminDashRoutes = require("./routes/AdminDash")
 //const userRoutes = require("./routes/User");
 
