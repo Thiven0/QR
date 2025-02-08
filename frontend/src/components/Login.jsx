@@ -3,7 +3,7 @@ import LoginForm from "./LoginForm";
 
 const Login = () => {
   return (
-    <div className="relative w-full h-screen flex items-center justify-center bg-gradient-to-br from-[#A9D0A2] to-[#006F45] overflow-hidden">
+    <div className="relative w-full h-screen flex items-center justify-center bg-gradient-to-br from-[#ffffff] to-[rgb(135,166,154)] overflow-hidden">
 
       {/* Líneas diagonales decorativas */}
       <div className="absolute top-10 left-1/4 w-2/3 h-px bg-[#A9D0A2] transform rotate-45 z-0"></div>

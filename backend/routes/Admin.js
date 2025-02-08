@@ -5,7 +5,7 @@ const AdminController = require("../controllers/guardController")
 
 router.get("/prueba",AdminController.prueba);
 // router.post("/register",AdminController.register);
-// router.post("/login",AdminController.login);
+router.post("/login",AdminController.login);
 // router.post("/qr",AdminController.qr);
 
 
