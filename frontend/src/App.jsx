@@ -9,7 +9,7 @@ function App() {
       <LoginPage /> 
       {/* <QRScanner /> */}
       {/*  <AccesoPage /> */}
-      {/* ister/> */}
+      {/* <Register /> */}
     </div>
   );
 }
