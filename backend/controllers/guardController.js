@@ -1,7 +1,7 @@
-// const User = require("../models/admin");
-// const User2 =require("../models/user")
-// const bcrypt = require("bcrypt");
-// const jwt = require("../services/jwt")
+ const User = require("../models/admin");
+ const User2 =require("../models/user")
+ const bcrypt = require("bcrypt");
+ const jwt = require("../services/jwt")
 
 
 //selador
@@ -99,7 +99,7 @@ const login = (req, res) => {
       if (!user) {
         return res
           .status(404)
-          .send({ status: "error", message: "el usuario no existe " });
+          .send({ status: "error", message: "el usuario no existe 1" });
       }
 
       //comprbar pw
