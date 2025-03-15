@@ -1,11 +1,11 @@
-import LoginPage from "./pages/LoginPages";
-import QRScanner from "./pages/QRScannerPage";
-import AccesoPage from "./pages/AccesoPage";
+import Login from "./pages/Login";
+import RegisterForm from "./components/RegisterForm";
+
 
 function App() {
   return (
     <div>
-     <LoginPage /> 
+      <RegisterForm/>
       {/* <QRScanner /> 
       {/*  <AccesoPage /> */}
     </div>
