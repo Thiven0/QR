@@ -1,11 +1,12 @@
 import Login from "./pages/Login";
 import RegisterForm from "./components/RegisterForm";
+import RegisterGuard  from "./pages/RegisterGuard";
 
 
 function App() {
   return (
     <div>
-      <RegisterForm/>
+      <RegisterGuard/>
       {/* <QRScanner /> 
       {/*  <AccesoPage /> */}
     </div>
