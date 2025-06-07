@@ -13,7 +13,16 @@ const RegisterForm = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!cedula || !rol || !nombre || !apellido || !rh || !facultad || !telefono || !correo) {
+    if (
+      !cedula ||
+      !rol ||
+      !nombre ||
+      !apellido ||
+      !rh ||
+      !facultad ||
+      !telefono ||
+      !correo
+    ) {
       alert("Por favor, completa todos los campos");
       return;
     }
@@ -21,25 +30,86 @@ const RegisterForm = () => {
 
   return (
     <div className="w-full max-w-3xl p-10 bg-white rounded-2xl shadow-2xl border-4 border-[#00594e]">
-      <h2 className="text-3xl font-bold text-center text-[#00594e] mb-6">Registro</h2>
-      
+      <h2 className="text-3xl font-bold text-center text-[#00594e] mb-6">
+        Registro
+      </h2>
+
       <form className="grid grid-cols-2 gap-6" onSubmit={handleSubmit}>
         {/* Primera columna */}
-        <input type="text" value={cedula} onChange={(e) => setCedula(e.target.value)} placeholder="Cédula" className="input-field" />
-        <input type="text" value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol" className="input-field" />
-        <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" className="input-field" />
-        <input type="text" value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder="Apellido" className="input-field" />
-        
+        <input
+          type="text"
+          value={cedula}
+          onChange={(e) => setCedula(e.target.value)}
+          placeholder="Cédula"
+          className="input-field"
+        />
+        <input
+          type="text"
+          value={rol}
+          onChange={(e) => setRol(e.target.value)}
+          placeholder="Rol"
+          className="input-field"
+        />
+        <input
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre"
+          className="input-field"
+        />
+        <input
+          type="text"
+          value={apellido}
+          onChange={(e) => setApellido(e.target.value)}
+          placeholder="Apellido"
+          className="input-field"
+        />
+
         {/* Segunda columna */}
-        <input type="text" value={rh} onChange={(e) => setRh(e.target.value)} placeholder="RH" className="input-field" />
-        <input type="text" value={facultad} onChange={(e) => setFacultad(e.target.value)} placeholder="Facultad" className="input-field" />
-        <input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" className="input-field" />
-        <input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="Correo Electrónico" className="input-field" />
+        <input
+          type="text"
+          value={rh}
+          onChange={(e) => setRh(e.target.value)}
+          placeholder="RH"
+          className="input-field"
+        />
+        <input
+          type="text"
+          value={facultad}
+          onChange={(e) => setFacultad(e.target.value)}
+          placeholder="Facultad"
+          className="input-field"
+        />
+        <input
+          type="tel"
+          value={telefono}
+          onChange={(e) => setTelefono(e.target.value)}
+          placeholder="Teléfono"
+          className="input-field"
+        />
+        <input
+          type="email"
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          placeholder="Correo Electrónico"
+          className="input-field"
+        />
 
         {/* Botones en el centro */}
         <div className="col-span-2 flex justify-center gap-4 mt-6">
-          <button type="submit" className="btn-primary">Registrarse</button>
-          <a href="/login" className="btn-secondary">Cancelar</a>
+          <a
+            className="inline-block rounded-sm bg-indigo-600 px-8 py-3 text-sm font-medium text-white transition hover:scale-110 hover:shadow-xl focus:ring-3 focus:outline-hidden"
+            href="#"
+            type="submit"
+          >
+            Prueba
+          </a>
+          <button type="submit" className="btn-primary">
+            Registrarse
+          </button>
+          <a href="/login" className="btn-secondary">
+            Cancelar
+          </a>
         </div>
       </form>
 

@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 
-const Input = ({ type, value, onChange, placeholder }) => (
+const Input = ({ type, value, onChange, placeholder, name}) => (
   <div>
     <label className="block text-[#00594e]">{placeholder}</label>
     <input
@@ -9,15 +9,17 @@ const Input = ({ type, value, onChange, placeholder }) => (
       placeholder={placeholder}
       value={value}
       onChange={onChange}
+      name={name}
     />
   </div>
 );
 
 Input.propTypes = {
   type: PropTypes.string.isRequired,
-  value: PropTypes.string.isRequired,
+  value: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   placeholder: PropTypes.string.isRequired,
+  name: PropTypes.string.isRequired,
 };
 
 export default Input;
