@@ -1,11 +1,13 @@
 import React from "react";
-import Input from "../components/Input";
-import { useForm } from "../hook/useForm";
-import { Global } from "../helpers/Global";
+import Input from "../../components/Input";
+import { useForm } from "../../hook/useForm";
+import { Global } from "../../helpers/Global";
+import { useState } from "react";
 
 const RegisterGuard = () => {
   const { form, changed } = useForm({});
-  //onst [saved, setSaved] = useState({});
+  const [saved, setSaved] = useState("not_sended");
+  const [mensaje, setMessage] = useState("");
 
   const saveUser = async (e) => {
     // no Atualizar la recarga de pantalla
@@ -22,14 +24,14 @@ const RegisterGuard = () => {
     });
     const data = await request.json();
     console.log(data);
-
-    // if (data.status === "success") {
-    //   setSaved("saved");
-    //   console.log("Usuario guardado correctamente", data.user);
-    // } else {
-    //   setSaved("error");
-    //   console.log("Error al guardar el usuario", data.message);
-    // }
+    setMessage(data.message);
+    if (data.status === "success") {
+      setSaved("saved");
+      console.log("Usuario guardado correctamente", data.user);
+    } else {
+      setSaved("error");
+      console.log("Error al guardar el usuario", data.message);
+    }
 
 
   };
@@ -40,13 +42,15 @@ const RegisterGuard = () => {
         <h2 className="text-lg font-bold text-center text-[#00594e]">
           Registro de Celador
         </h2>
+        {saved == "saved" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">Usuario registrado correctamente</strong>:''}
+        {saved == "error" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">{mensaje}</strong>:''}
         <form className="space-y-4" onSubmit={saveUser}>
           <div className="container">
             <Input type="text" placeholder="Nombre" onChange={changed} name="name"/>
           </div>
           <div>
             <Input
-              type="email"
+              type="email" 
               placeholder="Correo Electrónico"
               onChange={changed}
               name="email"
