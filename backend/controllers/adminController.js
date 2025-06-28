@@ -1,7 +1,4 @@
 //const User = require("../models/adminDash");
-
-
-
 //administradores del dashboard
 
 const prueba = (req, res) => {

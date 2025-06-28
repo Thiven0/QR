@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "./components/styles/authStyles.css";
-
 
 :root{
     --color-1: #00594e;
