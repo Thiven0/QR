@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root{
-    --color-1: #ff5733;
+    --color-1: #00594e;
+    --color-2: #b5a160;
 }
 body {
     color:var(--color-1)
+    
 }

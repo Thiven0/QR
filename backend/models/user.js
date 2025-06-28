@@ -40,6 +40,14 @@ const usuarioSchema = new mongoose.Schema({
   created_at: {
     type: Date,
     default: Date.now
+  },
+  imagen: {
+    type: String,
+    required: false,
+  },
+  imagenQR: {
+    type: String,
+    required: false,
   }
 });
 
