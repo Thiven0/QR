@@ -13,9 +13,4 @@ const AuthLayout = ({ children }) => {
     );
   };
   
-<<<<<<< HEAD
   export default AuthLayout;
-=======
-  export default AuthLayout;
-  
->>>>>>> register_usuarios

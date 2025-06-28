@@ -1,4 +1,4 @@
-import Register from "./pages/Register";
+import Register from "./pages/users/RegisterUser";
 
 function App() {
   return (

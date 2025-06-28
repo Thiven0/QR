@@ -1,6 +1,6 @@
 import { useState } from "react";
-import RegisterForm from "../components/RegisterForm";
-import AuthLayoutR from "../components/layout/AuthLayoutR";
+import RegisterForm from "../../components/RegisterFormUser";
+import AuthLayoutR from "../../components/layout/AuthLayoutR";
 
 // Validaciones de formato opcionales (puedes quitarlas si quieres dejar todo al backend)
 const validate = (formData) => {
