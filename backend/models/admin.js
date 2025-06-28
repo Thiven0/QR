@@ -1,7 +1,7 @@
 const {Schema,model} = require("mongoose")
 
 
-const AdminSchema = Schema({
+const GuardSchema = Schema({
     name: {
         type: String,
         required: true
@@ -20,5 +20,5 @@ const AdminSchema = Schema({
     }
 });
 
-module.exports = model("Admin",AdminSchema,"admins")
+module.exports = model("Guard",GuardSchema,"Guards"); // Guard es el nombre de la colección en la base de datos
 
