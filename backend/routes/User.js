@@ -1,10 +1,13 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const UserController = require("../controllers/UserController")
+const multer = require('multer');
+const upload = multer();
 
+const { registerUser, getAllUsers } = require('../controllers/userController');
 
-// router.get("/prueba",UserController.prueba);
+// ESTA LÍNEA ES CLAVE:
+router.post('/register', upload.none(), registerUser);
 
+router.get('/', getAllUsers);
 
-
-module.exports = router
+module.exports = router;

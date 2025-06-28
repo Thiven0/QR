@@ -1,21 +1,61 @@
+import { useState } from "react";
 import RegisterForm from "../components/RegisterForm";
+import AuthLayoutR from "../components/layout/AuthLayoutR";
+
+// Validaciones de formato opcionales (puedes quitarlas si quieres dejar todo al backend)
+const validate = (formData) => {
+  const newErrors = {};
+
+  // Ejemplo: solo formato, no campos obligatorios
+  if (formData.cedula && !/^\d+$/.test(formData.cedula)) newErrors.cedula = "Solo números.";
+  if (formData.nombre && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(formData.nombre)) newErrors.nombre = "Solo letras.";
+  if (formData.apellido && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(formData.apellido)) newErrors.apellido = "Solo letras.";
+  if (formData.telefono && !/^\d+$/.test(formData.telefono)) newErrors.telefono = "Solo números.";
+  if (formData.correo && !/\S+@\S+\.\S+/.test(formData.correo)) newErrors.correo = "Correo no válido.";
+  if (formData.rh && !/^(A|B|AB|O)[+-]$/.test(formData.rh)) newErrors.rh = "Ej: A+, O-";
+
+  return newErrors;
+};
 
 const Register = () => {
-  return (
-    <div className="relative w-full h-screen flex items-center justify-center bg-gradient-to-br from-[#d6f4d0] to-[#006F45] overflow-hidden">
-      {/* Líneas diagonales decorativas */}
-      <div className="absolute top-10 left-1/4 w-2/3 h-px bg-[#A9D0A2] transform rotate-45 z-0"></div>
-      <div className="absolute bottom-10 left-1/4 w-2/3 h-px bg-[#A9D0A2] transform rotate-45 z-0"></div>
-      <div className="absolute top-1/4 left-1/6 w-2/3 h-px bg-[#A9D0A2] transform rotate-135 z-0"></div>
-      <div className="absolute top-3/4 left-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-135 z-0"></div>
-      <div className="absolute top-1/6 left-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-45 z-0"></div>
-      <div className="absolute bottom-1/6 right-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-45 z-0"></div>
+  const [errors, setErrors] = useState({});
+  const [success, setSuccess] = useState("");
 
-      {/* Contenedor centrado */}
-      <div className="relative flex w-3/4 h-auto bg-white shadow-2xl rounded-lg overflow-hidden z-10 p-10 flex items-center justify-center">
-        <RegisterForm />
-      </div>
-    </div>
+  const handleSubmit = async (formData) => {
+    // Solo validaciones de formato, no de campos obligatorios
+    const validationErrors = validate(formData);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      setSuccess("");
+      return;
+    }
+    try {
+      const response = await fetch("http://localhost:3000/api/User/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...formData, RH: formData.rh }),
+      });
+      const data = await response.json();
+      if (response.ok && data.status === "success") {
+        setSuccess("Usuario registrado con éxito.");
+        setErrors({});
+      } else {
+        // Si hay errores por campo, pásalos directamente
+        setErrors(data.errors || { general: data.message || "Error al registrar usuario." });
+        setSuccess("");
+      }
+    } catch {
+      setErrors({ general: "Error de conexión con el servidor." });
+      setSuccess("");
+    }
+  };
+
+  return (
+    <AuthLayoutR>
+      <RegisterForm onSubmit={handleSubmit} errors={errors} />
+      {success && <p className="text-green-600 text-center mt-4">{success}</p>}
+      {errors.general && <p className="text-red-600 text-center mt-4">{errors.general}</p>}
+    </AuthLayoutR>
   );
 };
 

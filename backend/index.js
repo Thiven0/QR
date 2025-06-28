@@ -22,20 +22,21 @@ app.use(cors({origin: ['http://localhost:5173', 'http://localhost:1234'],
 }));*/
 
 // Middleware para parsear el cuerpo de las peticiones HTTP
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" })); // Aumenta el límite a 10 megas
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Rutas
-const adminRoutes = require("./routes/Admin");
-const adminDashRoutes = require("./routes/AdminDash")
+//const adminRoutes = require("./routes/Admin");
+//const adminDashRoutes = require("./routes/AdminDash")
+const userRoutes = require("./routes/User"); 
 //const userRoutes = require("./routes/User");
 
 
 // Usar rutas
-app.use("/api/guard", adminRoutes);
-app.use("/api/dash", adminDashRoutes);
+//app.use("/api/guard", adminRoutes);
+//app.use("/api/dash", adminDashRoutes);
+app.use("/api/User", userRoutes);
 //app.use("/api/user",userRoutes);
-
 
 
 // Ruta de prueba

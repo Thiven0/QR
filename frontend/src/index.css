@@ -2,9 +2,4 @@
 @import "./components/styles/authStyles.css";
 
 
-:root{
-    --color-1: #00594e;
-}
-body {
-    color:var(--color-1)
-}
+
