@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import ProfileCard from "../components/ProfileCard";
+import ProfileCard from "../../components/ProfileCard";
 
 const StudentList = () => {
   const [students, setStudents] = useState([]);

@@ -1,4 +1,4 @@
-import ProfileCard from "../components/ProfileCard";
+import ProfileCard from "../../components/ProfileCard";
 
 // Simulación de usuario (reemplaza esto por tu fetch real)
 const usuarioEjemplo = {
