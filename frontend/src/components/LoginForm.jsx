@@ -12,18 +12,18 @@ const LoginForm = () => {
     console.log(form); 
 
 
-    // console.log(userToLogin);
+    console.log(userToLogin);
 
 
-    // const request = await fetch("http://localhost:3000/api/guard/login", {
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //   },
-    //   body: JSON.stringify(userToLogin),
-    // });
-    // const data = await request.json();
-    // console.log(data);
+    const request = await fetch("http://localhost:3000/api/guard/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(userToLogin),
+    });
+    const data = await request.json();
+    console.log(data);
 
   
     
