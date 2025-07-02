@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Input from "./Input";
+import { Global } from "../helpers/Global"; 
 import { useForm } from "../hook/useForm";
 
 const LoginForm = () => {
@@ -7,15 +8,13 @@ const LoginForm = () => {
 
   const loginUser = async (e) => {
     e.preventDefault();
+
+    // No actualizar la recarga de pantalla
     let userToLogin = form;
-    console.log(loginUser);
-    console.log(form); 
-
-
     console.log(userToLogin);
 
 
-    const request = await fetch("http://localhost:3000/api/guard/login", {
+    const request = await fetch(Global.url + "guard/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -37,13 +36,13 @@ const LoginForm = () => {
       <form className="space-y-4" onSubmit={loginUser}>
         <Input
           type="email"
-          
+          name="email"
           onChange={changed}
           placeholder="Correo Electrónico"
         />
         <Input
           type="password"
-          
+          name="password"
           onChange={changed}
           placeholder="Contraseña"
         />

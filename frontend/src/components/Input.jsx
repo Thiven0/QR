@@ -6,7 +6,7 @@ const Input = ({ type, value, onChange, placeholder, name}) => (
     <input
       type={type}
       className="w-full p-3 mt-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0054E] after:content-['*']"
-      placeholder={placeholder}
+      placeholder={type}
       value={value}
       onChange={onChange}
       name={name}
@@ -19,7 +19,7 @@ Input.propTypes = {
   value: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   placeholder: PropTypes.string.isRequired,
-  name: PropTypes.string.isRequired,
+  name: PropTypes.string,
 };
 
 export default Input;
