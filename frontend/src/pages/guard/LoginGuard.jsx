@@ -1,4 +1,4 @@
-import LoginForm from "../../components/LoginForm";
+import LoginForm from "../../components/LoginFormGuard";
 import AuthLayout from "../../components/layout/AuthLayout";
 //rt Style from "../components/styles/authStyless.css";
 
