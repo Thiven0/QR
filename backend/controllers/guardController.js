@@ -82,10 +82,16 @@ const login = (req, res) => {
   //parametros
   let params = req.body;
 
-  if (!params.email || !params.password) {
+  if (!params.email) {
     return res.status(400).send({
       status: "error",
-      message: "Faltan datos por enviar",
+      message: "Faltan ingresar el email",
+    });
+  }
+  if (!params.password) {
+    return res.status(400).send({
+      status: "error",
+      message: "Faltan ingresar la contraseña",
     });
   }
 
@@ -99,7 +105,7 @@ const login = (req, res) => {
       if (!user) {
         return res
           .status(404)
-          .send({ status: "error", message: "el usuario no existe 1" });
+          .send({ status: "error", message: "el usuario no existe" });
       }
 
       //comprbar pw
