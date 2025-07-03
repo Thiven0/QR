@@ -5,6 +5,8 @@ import { useForm } from "../hook/useForm";
 
 const LoginForm = () => {
   const { form, changed } = useForm();
+  const [saved, setSaved] = useState("not_sended");
+  const [mensaje, setMensaje] = useState("");
 
   const loginUser = async (e) => {
     e.preventDefault();
@@ -24,6 +26,17 @@ const LoginForm = () => {
     const data = await request.json();
     console.log(data);
 
+    if (data.status === "success") {
+      setSaved("login");
+      console.log("Usuario logueado correctamente", data.user);
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+    }else
+    {
+      setSaved("error");
+      setMensaje(data.message);
+      console.log("Error al iniciar sesión", data.message);
+    }
   
     
   };
@@ -33,6 +46,8 @@ const LoginForm = () => {
       <h2 className="text-2xl font-bold text-center text-[#00594e]">
         Iniciar sesión
       </h2>
+      {saved == "saved" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">Usuario registrado correctamente</strong>:''}
+      {saved == "error" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">{mensaje}</strong>:''}
       <form className="space-y-4" onSubmit={loginUser}>
         <Input
           type="email"
