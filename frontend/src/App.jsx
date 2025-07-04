@@ -1,10 +1,9 @@
-import Register from "./pages/users/RegisterUser";
-import LoginGuard from "./pages/guard/LoginGuard";
+import { Routing } from "./router/Routing";
 
 function App() {
   return (
     <div>
-     <LoginGuard/> 
+     <Routing/>
     </div>
   );
 }
