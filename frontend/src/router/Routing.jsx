@@ -9,9 +9,10 @@ export const Routing = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<PublicLayout />} />
-        <Route path="/register" element={<RegisterGuard />} />
-        <Route path="/login" element={<LoginGuard />} />
+        <Route path="/" element={<PublicLayout />} >
+            <Route path="/register" element={<RegisterGuard />} />
+            <Route path="/login" element={<LoginGuard />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

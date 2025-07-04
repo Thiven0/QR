@@ -1,13 +1,15 @@
 import React from 'react'
 import { Outlet } from 'react-router-dom'
+import Nav from '../public/Nav'
 
 const PublicLayout = () => {
     return (
         <>
-            {/*<Layout/> header*/}
-            <h1>Public Layout</h1>
-            <Outlet />
-
+            <Nav />
+            
+            <section>
+                <Outlet />
+            </section>
         </>
     )
 }
