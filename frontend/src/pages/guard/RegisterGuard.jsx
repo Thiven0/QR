@@ -38,13 +38,13 @@ const RegisterGuard = () => {
 
   return (
     <>
-      <div className="w-full md:container md:mx-auto p-8 space-y-6 bg-white rounded-2xl shadow-2xl border-4 border-[#00594e]">
+      <div className="justify-center items-center m-8 p-8 max-w-md mx-auto space-y-6 bg-white rounded-2xl shadow-2xl border-4 border-[#00594e]">
         <h2 className="text-lg font-bold text-center text-[#00594e]">
           Registro de Celador
         </h2>
         {saved == "saved" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">Usuario registrado correctamente</strong>:''}
         {saved == "error" ? <strong className="bg-[#B5A160] text-white rounded-4xl px-2">{mensaje}</strong>:''}
-        <form className="space-y-4" onSubmit={saveUser}>
+        <form className="space-y-4 w-full" onSubmit={saveUser}>
           <div className="container">
             <Input type="text" placeholder="Nombre" onChange={changed} name="name"/>
           </div>
