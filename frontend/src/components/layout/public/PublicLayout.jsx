@@ -1,7 +1,6 @@
 import React from 'react'
 import { Outlet } from 'react-router-dom'
-import Nav from './NavGuard'
-import SideBar from './SideBarGuard'
+import Nav from '../guard/NavGuard'
 import BackGround from '../BackGround'
 
 const PublicLayout = () => {
@@ -9,7 +8,6 @@ const PublicLayout = () => {
         <>
             <Nav />
             <BackGround />
-            <SideBar />
             <section>
                 <Outlet />
             </section>

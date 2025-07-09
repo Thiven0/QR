@@ -2,7 +2,7 @@ import React from 'react'
 
 const MainLogin = () => {
   return (
-    <div>
+    <div className=' items-center justify-center'>
       <h1>Main Login Admin/Guard/User</h1>
     </div>
   )
