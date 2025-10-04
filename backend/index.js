@@ -33,7 +33,7 @@ const userRoutes = require("./routes/User");
 
 
 // Usar rutas
-app.use("/api/guard", adminRoutes);
+app.use("/api/Admin", adminRoutes);
 //app.use("/api/dash", adminDashRoutes);
 app.use("/api/User", userRoutes);
 //app.use("/api/user",userRoutes);

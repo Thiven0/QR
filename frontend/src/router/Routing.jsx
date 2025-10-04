@@ -10,6 +10,7 @@ import NotFound from "../pages/NotFound";
 import AuthProvider from "../context/AuthProvider";
 import PublicLayout from "../components/layout/public/PublicLayout";
 import Content from "../components/layout/guard/Content";
+import LoginGeneral from "../pages/LoginGeneral";
 
 export const Routing = () => {
   return (
@@ -27,8 +28,8 @@ export const Routing = () => {
             <Route path="qr" element={<QRGuard />} />
           </Route>
 
-          <Route path="/user" element={<GuardLayout />}>
-            <Route path="register" element={<RegisterUser />} />
+          <Route path="/admin">
+            <Route path="login" element={<LoginGeneral />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

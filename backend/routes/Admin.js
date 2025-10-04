@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const AdminController = require("../controllers/guardController")
+const AdminController = require("../controllers/generalController")
 
 // Rutas de la Celador
 
