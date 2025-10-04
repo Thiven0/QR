@@ -1,8 +1,9 @@
-import React from "react";
+﻿import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import GuardLayout from "../components/layout/guard/GuardLayout";
 import RegisterGuard from "../pages/guard/RegisterGuard";
 import LoginGuard from "../pages/guard/LoginGuard";
+import SectionsGuide from "../pages/guard/SectionsGuide";
 import QRGuard from "../components/QRScanner";
 import RegisterUser from "../pages/users/RegisterUser";
 import MainLogin from "../pages/MainLogin";
@@ -25,6 +26,7 @@ export const Routing = () => {
             <Route path="register" element={<RegisterGuard />} />
             <Route path="login" element={<LoginGuard />} />
             <Route path="qr" element={<QRGuard />} />
+            <Route path="secciones" element={<SectionsGuide />} />
           </Route>
 
           <Route path="/user" element={<GuardLayout />}>
