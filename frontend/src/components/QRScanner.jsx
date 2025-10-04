@@ -1,10 +1,10 @@
 import React from "react";
 import QrScanner from "react-qr-scanner";
 
-const Login = () => {
+const QRGuard = () => {
   const handleScan = (data) => {
     if (data) {
-      console.log("Código QR escaneado:", data);
+      console.log("Codigo QR escaneado:", data);
     }
   };
 
@@ -13,58 +13,57 @@ const Login = () => {
   };
 
   return (
-    <div className="relative w-full h-screen flex items-center justify-center bg-gradient-to-br from-[#A9D0A2] to-[#006F45] overflow-hidden">
-      {/* Contenedor principal */}
-      <div className="relative flex w-3/4 h-3/4 bg-white shadow-2xl rounded-lg overflow-hidden z-10">
-        {/* Sección izquierda - Escáner QR */}
-        <div className="w-1/2 h-full flex justify-center items-center p-10 bg-white">
-          <div className="bg-[#FFFFFF] p-8 rounded-xl shadow-2xl w-full text-center border-4 border-dashed border-[#B5A160]">
-            <h2 className="text-3xl font-bold text-[#B5A160] mb-6">Escanear Código QR</h2>
-            <QrScanner
-              delay={300}
-              onError={handleError}
-              onScan={handleScan}
-              style={{
-                width: "100%",
-                borderRadius: "12px",
-                border: "4px dashed #B5A160",
-                boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.2)",
-              }}
-            />
+    <section className="min-h-screen bg-[#f8fafc] px-4 py-8 sm:py-12">
+      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.45fr_0.9fr]">
+        <article className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#00594e]">Control de accesos</p>
+            <h1 className="text-3xl font-bold text-[#0f172a]">Escanear codigo QR</h1>
+            <p className="text-sm text-[#475569]">
+              Usa la camara para registrar entradas y salidas en tiempo real. Los resultados se sincronizan automaticamente con el dashboard principal.
+            </p>
           </div>
-        </div>
 
-        {/* Sección derecha - Logo y título */}
-        <div className="relative w-1/2 h-full flex justify-center items-center overflow-hidden">
-          {/* Elipse dorada (borde) */}
-          <div className="absolute inset-0 bg-[#B5A160] clip-path-oval scale-[1.02]" />
-          {/* Elipse verde oscuro encima */}
-          <div className="absolute inset-0 bg-[#00594E] clip-path-oval z-20 flex justify-center items-center">
-            <div className="text-center text-white z-20">
-              <h1 className="text-5xl font-bold">Unitrópico</h1>
-              <p className="text-xl">Universidad Internacional del Trópico Americano</p>
+          <div className="mt-8 rounded-2xl border-2 border-dashed border-[#00594e]/40 bg-[#f1f5f9] p-6">
+            <div className="aspect-square w-full overflow-hidden rounded-xl bg-slate-900/5">
+              <QrScanner
+                delay={300}
+                onError={handleError}
+                onScan={handleScan}
+                style={{ width: "100%", height: "100%" }}
+              />
             </div>
           </div>
-        </div>
+        </article>
+
+        <aside className="flex flex-col gap-6 rounded-2xl border border-[#00594e]/20 bg-white p-8 shadow-sm">
+          <div>
+            <h2 className="text-xl font-semibold text-[#0f172a]">Buenas practicas</h2>
+            <p className="mt-2 text-sm text-[#475569]">
+              Mantiene el dispositivo estable y verifica que el codigo se encuentre dentro del marco para un registro inmediato.
+            </p>
+          </div>
+          <ul className="space-y-3 text-sm text-[#475569]">
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full bg-[#00594e]" />
+              Confirma visualmente la identidad antes de autorizar el acceso.
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full bg-[#B5A160]" />
+              Registra observaciones en la bitacora cuando detectes una alerta.
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full bg-slate-400" />
+              Ajusta la iluminacion del entorno para mejorar la lectura del codigo.
+            </li>
+          </ul>
+          <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-4 text-sm text-[#00594e]">
+            Puedes alternar entre camara frontal y trasera usando los controles del navegador.
+          </div>
+        </aside>
       </div>
-
-      {/* Líneas diagonales decorativas */}
-      <div className="absolute top-10 left-1/4 w-2/3 h-px bg-[#A9D0A2] transform rotate-45 z-0"></div>
-      <div className="absolute bottom-10 left-1/4 w-2/3 h-px bg-[#A9D0A2] transform rotate-45 z-0"></div>
-      <div className="absolute top-1/4 left-1/6 w-2/3 h-px bg-[#A9D0A2] transform rotate-135 z-0"></div>
-      <div className="absolute top-3/4 left-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-135 z-0"></div>
-      <div className="absolute top-1/6 left-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-45 z-0"></div>
-      <div className="absolute bottom-1/6 right-1/3 w-2/3 h-px bg-[#B5A160] transform rotate-45 z-0"></div>
-
-      <style jsx>{`
-        .clip-path-oval {
-          clip-path: ellipse(80% 90% at 85% 50%);
-          border-top-left-radius: 100px;
-          border-bottom-left-radius: 100px;
-        }
-      `}</style>
-    </div>
+    </section>
   );
 };
 
-export default Login;
+export default QRGuard;
