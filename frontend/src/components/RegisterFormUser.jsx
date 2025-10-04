@@ -12,20 +12,20 @@ const carreras = [
   "Ingenieria Agroindustrial",
   "Ingenieria de Sistemas",
   "Ingenieria en Energias",
-  "Ingeneria Civil",
+  "Ingenieria Civil",
   "Medicina Veterinaria y Zootecnia",
 ];
 
 const campos = [
-  { id: "cedula", label: "Cédula", type: "text", placeholder: "Cédula" },
-  { id: "nombre", label: "Nombre", type: "text", placeholder: "Nombre" },
-  { id: "apellido", label: "Apellido", type: "text", placeholder: "Apellido" },
-  { id: "rh", label: "RH", type: "text", placeholder: "RH" },
-  { id: "telefono", label: "Teléfono", type: "text", placeholder: "Teléfono" },
-  { id: "correo", label: "Correo", type: "email", placeholder: "Correo" },
+  { id: "cedula", label: "Cedula", type: "text" },
+  { id: "nombre", label: "Nombre", type: "text" },
+  { id: "apellido", label: "Apellido", type: "text" },
+  { id: "rh", label: "RH", type: "text" },
+  { id: "telefono", label: "Telefono", type: "text" },
+  { id: "correo", label: "Correo", type: "email" },
 ];
 
-const RegisterForm = ({ onSubmit, errors = {} }) => {
+const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
   const [formData, setFormData] = useState({
     cedula: "",
     rol: "",
@@ -37,26 +37,34 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
     correo: "",
     estado: "Inactivo",
     imagen: "",
+    imagenQR: "",
   });
 
   const [submitted, setSubmitted] = useState(false);
 
   const handleChange = (e) => {
     const { id, value, type, files } = e.target;
+
     if (type === "file") {
-      const file = files[0];
+      onFieldChange(id);
+      const file = files?.[0];
+
       if (file) {
         const reader = new FileReader();
         reader.onloadend = () => {
           setFormData((prev) => ({
             ...prev,
-            [id]: reader.result, // Esto asegura que cada input actualiza su propio campo
+            [id]: reader.result,
           }));
         };
         reader.readAsDataURL(file);
       }
     } else {
-      setFormData({ ...formData, [id]: value });
+      onFieldChange(id);
+      setFormData((prev) => ({
+        ...prev,
+        [id]: value,
+      }));
     }
   };
 
@@ -66,49 +74,16 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
     onSubmit(formData);
   };
 
-  return (
-    <form
-      className="max-w-2xl mx-auto bg-white border border-pantone1 rounded-lg p-8 shadow-lg"
-      onSubmit={handleSubmit}
-    >
-      <h2 className="text-2xl font-bold text-center mb-6 text-pantone1">
-        Registro de Usuario
-      </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        {/* Campo Cédula primero */}
-        <div>
-          <label
-            htmlFor="cedula"
-            className={`block font-medium mb-1 text-pantone1 ${
-              submitted && errors.cedula
-                ? "after:content-['*'] after:ml-1 after:text-red-500"
-                : ""
-            }`}
-          >
-            Cédula
-          </label>
-          <input
-            id="cedula"
-            type="text"
-            placeholder="Cédula"
-            value={formData.cedula}
-            onChange={handleChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pantone2 transition ${
-              submitted && errors.cedula ? "border-red-500" : "border-pantone1"
-            }`}
-          />
-          {errors.cedula && (
-            <p className="text-red-500 text-xs mt-1">{errors.cedula}</p>
-          )}
-        </div>
+  const inputBorder = (field) =>
+    submitted && errors[field] ? "border-[#b45309]" : "border-slate-200";
 
-        {/* Select para Rol */}
-        <div>
+  return (
+    <form className="space-y-8" onSubmit={handleSubmit}>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="sm:col-span-1">
           <label
             htmlFor="rol"
-            className={`block font-medium mb-1 text-pantone1 ${
-              errors.rol ? "after:content-['*'] after:ml-1 after:text-red-500" : ""
-            }`}
+            className="text-sm font-medium text-[#00594e]"
           >
             Rol
           </label>
@@ -116,9 +91,7 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
             id="rol"
             value={formData.rol}
             onChange={handleChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pantone2 transition ${
-              errors.rol ? "border-red-500" : "border-pantone1"
-            }`}
+            className={`mt-2 w-full rounded-lg border ${inputBorder("rol")} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
           >
             <option value="">Seleccione un rol</option>
             <option value="Estudiante">Estudiante</option>
@@ -126,48 +99,14 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
             <option value="Egresado">Egresado</option>
           </select>
           {errors.rol && (
-            <p className="text-red-500 text-xs mt-1">{errors.rol}</p>
+            <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.rol}</p>
           )}
         </div>
 
-        {/* Luego el resto de campos */}
-        {campos
-          .filter((campo) => campo.id !== "cedula") // Ya pusimos cédula arriba
-          .map((campo) => (
-            <div key={campo.id}>
-              <label
-                htmlFor={campo.id}
-                className={`block font-medium mb-1 text-pantone1 ${
-                  submitted && errors[campo.id]
-                    ? "after:content-['*'] after:ml-1 after:text-red-500"
-                    : ""
-                }`}
-              >
-                {campo.label}
-              </label>
-              <input
-                id={campo.id}
-                type={campo.type}
-                placeholder={campo.placeholder}
-                value={formData[campo.id]}
-                onChange={handleChange}
-                className={`w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pantone2 transition ${
-                  submitted && errors[campo.id] ? "border-red-500" : "border-pantone1"
-                }`}
-              />
-              {errors[campo.id] && (
-                <p className="text-red-500 text-xs mt-1">{errors[campo.id]}</p>
-              )}
-            </div>
-          ))}
-        <div>
+        <div className="sm:col-span-1">
           <label
             htmlFor="facultad"
-            className={`block font-medium mb-1 text-pantone1 ${
-              submitted && errors.facultad
-                ? "after:content-['*'] after:ml-1 after:text-red-500"
-                : ""
-            }`}
+            className="text-sm font-medium text-[#00594e]"
           >
             Facultad
           </label>
@@ -175,9 +114,7 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
             id="facultad"
             value={formData.facultad}
             onChange={handleChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pantone2 transition ${
-              submitted && errors.facultad ? "border-red-500" : "border-pantone1"
-            }`}
+            className={`mt-2 w-full rounded-lg border ${inputBorder("facultad")} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
           >
             <option value="">Seleccione una facultad</option>
             {carreras.map((carrera) => (
@@ -186,91 +123,79 @@ const RegisterForm = ({ onSubmit, errors = {} }) => {
               </option>
             ))}
           </select>
-          {submitted && errors.facultad && (
-            <p className="text-red-500 text-xs mt-1">{errors.facultad}</p>
+          {errors.facultad && (
+            <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.facultad}</p>
           )}
         </div>
-        <div className="md:col-span-1">
-          <label
-            htmlFor="imagen"
-            className={`block font-medium mb-1 text-pantone1 ${
-              submitted && errors.imagen
-                ? "after:content-['*'] after:ml-1 after:text-red-500"
-                : ""
-            }`}
-          >
+
+        {campos.map((campo) => (
+          <div key={campo.id} className="sm:col-span-1">
+            <label className="text-sm font-medium text-[#00594e]" htmlFor={campo.id}>
+              {campo.label}
+            </label>
+            <input
+              id={campo.id}
+              type={campo.type}
+              value={formData[campo.id]}
+              onChange={handleChange}
+              placeholder={campo.label}
+              className={`mt-2 w-full rounded-lg border ${inputBorder(campo.id)} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm placeholder:text-slate-400 focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
+            />
+            {errors[campo.id] && (
+              <p className="mt-2 text-xs font-medium text-[#b45309]">{errors[campo.id]}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-[#00594e]" htmlFor="imagen">
             Foto de perfil
           </label>
-          <input
-            id="imagen"
-            type="file"
-            accept="image/*"
-            onChange={handleChange}
-            className="hidden"
-          />
           <label
             htmlFor="imagen"
-            className="inline-block bg-violet-600 text-white px-4 py-2 rounded-full font-semibold cursor-pointer hover:bg-violet-700 transition"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-3 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
           >
             Seleccionar archivo
           </label>
+          <input id="imagen" type="file" accept="image/*" onChange={handleChange} className="hidden" />
           {formData.imagen && (
-            <img
-              src={formData.imagen}
-              alt="preview"
-              className="mt-2 h-20 object-contain rounded"
-            />
+            <img src={formData.imagen} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
           )}
-          {submitted && errors.imagen && (
-            <p className="text-red-500 text-xs mt-1">{errors.imagen}</p>
+          {errors.imagen && (
+            <p className="text-xs font-medium text-[#b45309]">{errors.imagen}</p>
           )}
         </div>
-        <div className="md:col-span-1">
-          <label
-            htmlFor="imagenQR"
-            className={`block font-medium mb-1 text-pantone1 ${
-              submitted && errors.imagenQR
-                ? "after:content-['*'] after:ml-1 after:text-red-500"
-                : ""
-            }`}
-          >
-            Foto del QR
+
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-[#00594e]" htmlFor="imagenQR">
+            Imagen del QR
           </label>
-          <input
-            id="imagenQR"
-            type="file"
-            accept="image/*"
-            onChange={handleChange}
-            className="hidden"
-          />
           <label
             htmlFor="imagenQR"
-            className="inline-block bg-violet-600 text-white px-4 py-2 rounded-full font-semibold cursor-pointer hover:bg-violet-700 transition"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#B5A160]/40 bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/20"
           >
             Seleccionar archivo
           </label>
+          <input id="imagenQR" type="file" accept="image/*" onChange={handleChange} className="hidden" />
           {formData.imagenQR && (
-            <img
-              src={formData.imagenQR}
-              alt="preview"
-              className="mt-2 h-20 object-contain rounded"
-            />
+            <img src={formData.imagenQR} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
           )}
-          {submitted && errors.imagenQR && (
-            <p className="text-red-500 text-xs mt-1">{errors.imagenQR}</p>
+          {errors.imagenQR && (
+            <p className="text-xs font-medium text-[#b45309]">{errors.imagenQR}</p>
           )}
         </div>
       </div>
+
       <button
         type="submit"
-        className="w-full mt-8 py-2 bg-pantone2 text-pantone1 font-bold rounded hover:bg-pantone1 hover:text-pantone2 transition"
+        className="w-full rounded-lg bg-[#00594e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
       >
-        Registrarse
+        Registrar usuario
       </button>
     </form>
   );
 };
 
 export default RegisterForm;
-
-
