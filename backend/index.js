@@ -28,14 +28,15 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Rutas
 const adminRoutes = require("./routes/Admin");
 //const adminDashRoutes = require("./routes/AdminDash")
-const userRoutes = require("./routes/User"); 
+const registerRoutes = require("./routes/registerRoutes"); 
 //const userRoutes = require("./routes/User");
 
 
 // Usar rutas
 app.use("/api/Admin", adminRoutes);
 //app.use("/api/dash", adminDashRoutes);
-app.use("/api/User", userRoutes);
+
+app.use("/api/Register", registerRoutes);
 //app.use("/api/user",userRoutes);
 
 

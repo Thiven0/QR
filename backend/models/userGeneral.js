@@ -22,7 +22,7 @@ const UsuarioSchema = Schema({
         required: true
     },
 
-    estado: { type: String, default: "activo" },
+    estado: { type: String, default: "inactivo" },
     created_at: { type: Date, default: Date.now }
 });
 
