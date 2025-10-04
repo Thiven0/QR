@@ -16,7 +16,7 @@ const NavGuard = () => {
                             </svg>
                         </button>
 
-                        <NavLink to="/login" className="flex items-center space-x-3 rtl:space-x-reverse">
+                        <NavLink to="/guard" className="flex items-center space-x-3 rtl:space-x-reverse">
                             <img src={escudoBlanco} className="h-8" alt="Unitropico Logo" />
                             <span className="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">Unitropico</span>
                         </NavLink>
