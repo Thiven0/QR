@@ -59,7 +59,7 @@ const LoginForm = () => {
           type="password"
           name="password"
           onChange={changed}
-          placeholder="Contrasena"
+          placeholder="Contraseña"
           autoComplete="current-password"
         />
         <button
