@@ -1,17 +1,16 @@
-﻿import React from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import GuardLayout from "../components/layout/guard/GuardLayout";
-import RegisterGuard from "../pages/guard/RegisterGuard";
-import LoginGuard from "../pages/guard/LoginGuard";
-import SectionsGuide from "../pages/guard/SectionsGuide";
-import QRGuard from "../components/QRScanner";
-import RegisterUser from "../pages/users/RegisterUser";
-import MainLogin from "../pages/MainLogin";
-import NotFound from "../pages/NotFound";
-import AuthProvider from "../context/AuthProvider";
-import PublicLayout from "../components/layout/public/PublicLayout";
-import Content from "../components/layout/guard/Content";
-import LoginGeneral from "../pages/LoginGeneral";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import AuthProvider from '../modules/auth/context/AuthProvider';
+import ProtectedRoute from '../modules/auth/components/ProtectedRoute';
+import GuardLogin from '../modules/auth/pages/GuardLogin';
+import DashboardLayout from '../modules/dashboard/layouts/DashboardLayout';
+import DashboardOverview from '../modules/dashboard/pages/DashboardOverview';
+import QRScannerPage from '../modules/dashboard/components/QRScanner';
+import RegisterUser from '../modules/dashboard/pages/RegisterUser';
+import RegisterGuard from '../modules/dashboard/pages/RegisterGuard';
+import UserDirectory from '../modules/dashboard/pages/UserDirectory';
+import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
+import PublicLayout from '../modules/public/layouts/PublicLayout';
+import NotFound from '../pages/NotFound';
 
 export const Routing = () => {
   return (
@@ -19,19 +18,51 @@ export const Routing = () => {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<PublicLayout />}>
-            <Route index element={<MainLogin />} />
+            <Route index element={<GuardLogin />} />
           </Route>
 
-          <Route path="/guard" element={<GuardLayout />}>
-            <Route index element={<Content />} />
-            <Route path="register" element={<RegisterGuard />} />
-            <Route path="login" element={<LoginGuard />} />
-            <Route path="qr" element={<QRGuard />} />
-            <Route path="secciones" element={<SectionsGuide />} />
-          </Route>
-
-          <Route path="/admin">
-            <Route path="login" element={<LoginGeneral />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<DashboardOverview />} />
+            <Route
+              path="qr"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <QRScannerPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="users/register"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <RegisterUser />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="users/directory"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <UserDirectory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="staff/register"
+              element={
+                <ProtectedRoute allowed={['Administrador']}>
+                  <RegisterGuard />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="sections" element={<SectionsGuide />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
