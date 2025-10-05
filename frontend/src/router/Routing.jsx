@@ -11,6 +11,7 @@ import UserDirectory from '../modules/dashboard/pages/UserDirectory';
 import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
 import NotFound from '../pages/NotFound';
+import UsersTable from '../modules/dashboard/pages/UsersTable';
 
 export const Routing = () => {
   return (
@@ -50,7 +51,7 @@ export const Routing = () => {
               path="users/directory"
               element={
                 <ProtectedRoute allowed={['Administrador', 'Celador']}>
-                  <UserDirectory />
+                  <UsersTable />
                 </ProtectedRoute>
               }
             />
