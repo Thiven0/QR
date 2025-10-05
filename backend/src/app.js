@@ -3,6 +3,7 @@ const cors = require("cors");
 
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
+const entryExitRoutes = require("./routes/entry-exit.routes");
 
 const app = express();
 
@@ -12,6 +13,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/exitEntry", entryExitRoutes);
 
 app.get("/ruta-prueba", (req, res) => {
   res.status(200).json({
