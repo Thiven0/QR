@@ -24,6 +24,32 @@ const normalizeEstado = (estado) => {
     : undefined;
 };
 
+const sanitizeNumeric = (value = '') => value.replace(/\D/g, '');
+const sanitizePhone = (value = '') => value.replace(/[^\d+]/g, '');
+
+const parseScannedText = (rawText) => {
+  if (!rawText) return null;
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return null;
+  }
+
+  const [nombre = '', cedulaRaw = '', programa = '', tipoSangre = '', telefonoRaw = ''] = lines;
+
+  return {
+    nombre,
+    cedula: sanitizeNumeric(cedulaRaw),
+    programa,
+    tipo_sangre: tipoSangre,
+    telefono: sanitizePhone(telefonoRaw),
+  };
+};
+
 const buildUserPayload = (payload) => {
   const nombre = payload.nombre || payload.name || "";
   const apellido = payload.apellido || payload.lastName || "";
@@ -50,7 +76,7 @@ const ensureCreationPermission = (requester, permisoDestino) => {
   if (!requester) {
     return {
       allowed: false,
-      message: "Necesitas iniciar sesión para registrar usuarios",
+      message: "Necesitas iniciar sesiÃ³n para registrar usuarios",
       status: 401,
     };
   }
@@ -75,7 +101,7 @@ const createUser = async (req, res) => {
     if (!userPayload.nombre || !userPayload.email) {
       return res.status(400).json({
         status: "error",
-        message: "Nombre y correo electrónico son obligatorios",
+        message: "Nombre y correo electrÃ³nico son obligatorios",
       });
     }
 
@@ -178,7 +204,7 @@ const toggleAccessByCedula = async (req, res) => {
     if (!requester) {
       return res.status(401).json({
         status: "error",
-        message: "Debes iniciar sesión para actualizar el estado",
+        message: "Debes iniciar sesiÃ³n para actualizar el estado",
       });
     }
 
@@ -194,7 +220,7 @@ const toggleAccessByCedula = async (req, res) => {
     if (!cedula) {
       return res.status(400).json({
         status: "error",
-        message: "La cédula es obligatoria",
+        message: "La cÃ©dula es obligatoria",
       });
     }
 
@@ -226,8 +252,90 @@ const toggleAccessByCedula = async (req, res) => {
   }
 };
 
+const parseScannedData = (req, res) => {
+  try {
+    const rawText = (req.body?.rawText || '').trim();
+
+    if (!rawText) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'El texto escaneado es obligatorio',
+      });
+    }
+
+    const parsed = parseScannedText(rawText);
+
+    if (!parsed || !parsed.nombre || !parsed.cedula) {
+      return res.status(422).json({
+        status: 'error',
+        message: 'No fue posible interpretar el contenido escaneado',
+      });
+    }
+
+    const parsedData = {
+      rawText,
+      ...parsed,
+    };
+
+    return res.status(200).json({
+      status: 'success',
+      data: parsedData,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al interpretar el texto escaneado',
+      error: error.message,
+    });
+  }
+};
+
+const validateScannedUser = async (req, res) => {
+  try {
+    const payload = req.body?.data || req.body || {};
+    const cedula = sanitizeNumeric(payload.cedula || '');
+
+    if (!cedula) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'La cedula del usuario es obligatoria',
+      });
+    }
+
+    const user = await User.findOne({ cedula });
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    const { password, ...userData } = user.toObject();
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Usuario encontrado',
+      userId: user._id,
+      user: userData,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al validar el usuario escaneado',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createUser,
   listUsers,
   toggleAccessByCedula,
+  parseScannedData,
+  validateScannedUser,
 };
+
+
+
+

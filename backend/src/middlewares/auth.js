@@ -1,45 +1,61 @@
-const moment = require("moment");
-const { SECRET } = require("../services/jwt.service");
-const jwt = require("jwt-simple");
+﻿const { verifyToken } = require('../services/token.service');
+
+const extractToken = (rawHeader = '') =>
+  rawHeader
+    .trim()
+    .replace(/['"]+/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
 
 const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
     return res.status(403).json({
-      status: "error",
-      message: "No se encontró cabecera de autenticación",
+      status: 'error',
+      message: 'No se encontro cabecera de autenticacion',
     });
   }
 
-  const token = authHeader.replace(/['"]+/g, "");
+  const token = extractToken(authHeader);
+
+  if (!token) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Token invalido',
+    });
+  }
 
   try {
-    const payload = jwt.decode(token, SECRET);
-
-    if (payload.exp <= moment().unix()) {
-      return res.status(401).json({
-        status: "error",
-        message: "El token ha expirado",
-      });
-    }
+    const payload = verifyToken(token);
 
     if (
+      Array.isArray(requiredPermissions) &&
       requiredPermissions.length > 0 &&
       !requiredPermissions.includes(payload.permisoSistema)
     ) {
       return res.status(403).json({
-        status: "error",
-        message: "No tienes permisos para acceder a este recurso",
+        status: 'error',
+        message: 'No tienes permisos para acceder a este recurso',
       });
     }
 
     req.user = payload;
-    next();
+    return next();
   } catch (error) {
+    if (error.code === 'TOKEN_EXPIRED') {
+      return res.status(401).json({
+        token,
+        status: 'error',
+        message: 'El token ha expirado',
+      });
+    }
+
     return res.status(401).json({
-      status: "error",
-      message: "Token inválido",
+      token,
+      payload,
+      status: 'error',
+      message: 'Token invalido',
     });
   }
 };

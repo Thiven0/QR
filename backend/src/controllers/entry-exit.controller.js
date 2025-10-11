@@ -1,11 +1,17 @@
 const Registro = require("../models/entry-exit.model.js");
+const { User } = require("../models/user.model");
+
+const formatTime = (date) => {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
 
 // Crear un nuevo registro
 exports.createRegistro = async (req, res) => {
   try {
     const nuevoRegistro = new Registro(req.body);
     await nuevoRegistro.save();
-    res.status(201).json({ message: "Registro creado con éxito", registro: nuevoRegistro });
+    res.status(201).json({ message: "Registro creado con exito", registro: nuevoRegistro });
   } catch (error) {
     res.status(400).json({ message: "Error al crear registro", error: error.message });
   }
@@ -60,8 +66,94 @@ exports.deleteRegistro = async (req, res) => {
   try {
     const registroEliminado = await Registro.findByIdAndDelete(req.params.id);
     if (!registroEliminado) return res.status(404).json({ message: "Registro no encontrado" });
-    res.status(200).json({ message: "Registro eliminado con éxito" });
+    res.status(200).json({ message: "Registro eliminado con exito" });
   } catch (error) {
     res.status(500).json({ message: "Error al eliminar registro", error: error.message });
+  }
+};
+
+
+
+// Crear un registro a partir de un escaneo validado
+exports.createRegistroFromScan = async (req, res) => {
+  try {
+    const adminId = req.user?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Sesion requerida para registrar ingresos',
+      });
+    }
+
+    const userId = req.body?.userId;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'El identificador del usuario es obligatorio',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    const now = new Date();
+
+    const registro = new Registro({
+      usuario: user._id,
+      administrador: adminId,
+      fechaEntrada: now,
+      horaEntrada: formatTime(now),
+    });
+
+    await registro.save();
+
+    await registro.populate([
+      { path: 'usuario', select: 'nombre apellido email cedula permisoSistema' },
+      { path: 'administrador', select: 'nombre apellido email permisoSistema' },
+    ]);
+
+    return res.status(201).json({
+      status: 'success',
+      message: 'Registro creado correctamente',
+      data: registro,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al crear el registro de ingreso',
+      error: error.message,
+    });
+  }
+};
+
+exports.resetScanData = async (req, res) => {
+  try {
+    const adminId = req.user?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Sesion requerida para limpiar el escaneo',
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Datos del escaneo limpiados correctamente',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al limpiar los datos del escaneo',
+      error: error.message,
+    });
   }
 };
