@@ -6,6 +6,110 @@ const formatTime = (date) => {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
+const formatDuration = (start, end) => {
+  if (!(start instanceof Date) || !(end instanceof Date)) {
+    return undefined;
+  }
+
+  const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) {
+    return '00:00:00';
+  }
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+
+  return `${hours}:${minutes}:${seconds}`;
+};
+
+const sanitizeUser = (userDoc) => {
+  if (!userDoc) return null;
+  const userObject = userDoc.toObject();
+  delete userObject.password;
+  return userObject;
+};
+
+const populateRegistroForResponse = async (registro) => {
+  if (!registro) return registro;
+
+  await registro.populate([
+    { path: 'usuario', select: 'nombre apellido email cedula permisoSistema estado rolAcademico telefono' },
+    { path: 'administrador', select: 'nombre apellido email permisoSistema' },
+  ]);
+
+  return registro;
+};
+
+const findRegistroAbiertoParaUsuario = async (userId) => {
+  return Registro.findOne({
+    usuario: userId,
+    $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
+  }).sort({ fechaEntrada: -1 });
+};
+
+const procesarTransicionDeUsuario = async ({ user, adminId }) => {
+  const now = new Date();
+  const isActive = user.estado === 'activo';
+
+  if (isActive) {
+    const registro = await findRegistroAbiertoParaUsuario(user._id);
+
+    if (!registro) {
+      return {
+        statusCode: 404,
+        payload: {
+          status: 'error',
+          message: 'No se encontro un registro de entrada activo para el usuario',
+        },
+      };
+    }
+
+    registro.fechaSalida = now;
+    registro.horaSalida = formatTime(now);
+    registro.duracionSesion = formatDuration(registro.fechaEntrada, now);
+
+    user.estado = 'inactivo';
+
+    await Promise.all([registro.save(), user.save()]);
+    await populateRegistroForResponse(registro);
+
+    return {
+      statusCode: 200,
+      payload: {
+        status: 'success',
+        message: 'Registro de salida actualizado correctamente',
+        data: registro,
+        user: sanitizeUser(user),
+      },
+    };
+  }
+
+  user.estado = 'activo';
+  await user.save();
+
+  const registro = new Registro({
+    usuario: user._id,
+    administrador: adminId,
+    fechaEntrada: now,
+    horaEntrada: formatTime(now),
+  });
+
+  await registro.save();
+  await populateRegistroForResponse(registro);
+
+  return {
+    statusCode: 201,
+    payload: {
+      status: 'success',
+      message: 'Registro de ingreso creado correctamente',
+      data: registro,
+      user: sanitizeUser(user),
+    },
+  };
+};
+
 // Crear un nuevo registro
 exports.createRegistro = async (req, res) => {
   try {
@@ -74,8 +178,7 @@ exports.deleteRegistro = async (req, res) => {
 
 
 
-// Crear un registro a partir de un escaneo validado
-exports.createRegistroFromScan = async (req, res) => {
+const handleScanAndUpdateUser = async (req, res) => {
   try {
     const adminId = req.user?.id;
 
@@ -104,35 +207,21 @@ exports.createRegistroFromScan = async (req, res) => {
       });
     }
 
-    const now = new Date();
+    const result = await procesarTransicionDeUsuario({ user, adminId });
 
-    const registro = new Registro({
-      usuario: user._id,
-      administrador: adminId,
-      fechaEntrada: now,
-      horaEntrada: formatTime(now),
-    });
-
-    await registro.save();
-
-    await registro.populate([
-      { path: 'usuario', select: 'nombre apellido email cedula permisoSistema' },
-      { path: 'administrador', select: 'nombre apellido email permisoSistema' },
-    ]);
-
-    return res.status(201).json({
-      status: 'success',
-      message: 'Registro creado correctamente',
-      data: registro,
-    });
+    return res.status(result.statusCode).json(result.payload);
   } catch (error) {
     return res.status(500).json({
       status: 'error',
-      message: 'Error al crear el registro de ingreso',
+      message: 'Error al procesar el registro del escaneo',
       error: error.message,
     });
   }
 };
+
+// Crear o actualizar un registro a partir de un escaneo validado
+exports.createRegistroFromScan = handleScanAndUpdateUser;
+exports.updateUserEstadoFromScan = handleScanAndUpdateUser;
 
 exports.resetScanData = async (req, res) => {
   try {

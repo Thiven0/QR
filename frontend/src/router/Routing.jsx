@@ -8,6 +8,7 @@ import QRScannerPage from '../modules/dashboard/components/QRScanner';
 import RegisterUser from '../modules/dashboard/pages/RegisterUser';
 import RegisterGuard from '../modules/dashboard/pages/RegisterGuard';
 import UserDirectory from '../modules/dashboard/pages/UserDirectory';
+import RegistroDirectory from '../modules/dashboard/pages/RegistroDirectory';
 import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
 import NotFound from '../pages/NotFound';
@@ -51,6 +52,14 @@ export const Routing = () => {
               element={
                 <ProtectedRoute allowed={['Administrador', 'Celador']}>
                   <UserDirectory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="records/history"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <RegistroDirectory />
                 </ProtectedRoute>
               }
             />

@@ -12,7 +12,7 @@ const RegistroSchema = new Schema({
   horaSalida: { type: String },                   
 
   // Duración total de la sesión en formato HH:mm
-  duracionSesion: { type: String, default: "00:00" }  
+  duracionSesion: { type: String }  
 
 }, { timestamps: true });
 

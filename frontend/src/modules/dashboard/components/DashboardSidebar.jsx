@@ -43,6 +43,16 @@ const navItems = [
     ),
   },
   {
+    to: '/dashboard/records/history',
+    label: 'Historial registros',
+    permissions: ['Administrador', 'Celador'],
+    icon: (
+      <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v18h16.5V6.75L15 3H3.75Zm6 5.25h7.5m-7.5 4.5h7.5m-7.5 4.5h7.5M6.75 8.25h.008v.008H6.75V8.25Zm0 4.5h.008v.008H6.75v-.008Zm0 4.5h.008v.008H6.75v-.008Z" />
+      </svg>
+    ),
+  },
+  {
     to: '/dashboard/staff/register',
     label: 'Registrar celador',
     permissions: ['Administrador'],
