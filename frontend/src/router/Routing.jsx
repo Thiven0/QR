@@ -10,6 +10,7 @@ import RegisterGuard from '../modules/dashboard/pages/RegisterGuard';
 import UserDirectory from '../modules/dashboard/pages/UserDirectory';
 import RegistroDirectory from '../modules/dashboard/pages/RegistroDirectory';
 import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
+import ProfileUser from '../modules/dashboard/pages/ProfileUser';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
 import NotFound from '../pages/NotFound';
 
@@ -63,6 +64,7 @@ export const Routing = () => {
                 </ProtectedRoute>
               }
             />
+            <Route path="profile" element={<ProfileUser />} />
             <Route
               path="staff/register"
               element={
