@@ -35,13 +35,24 @@ const formatDurationValue = (value) => {
   return normalized;
 };
 
+const getRegistroTimestamp = (registro, candidates = []) => {
+  if (!registro) return undefined;
+
+  for (const key of candidates) {
+    const value = registro[key];
+    if (value) return value;
+  }
+
+  return undefined;
+};
+
 const RegistroDirectory = () => {
   const { token } = useAuth();
   const [registros, setRegistros] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+  console.log(selected)
   useEffect(() => {
     const fetchRegistros = async () => {
       if (!token) return;
@@ -65,8 +76,11 @@ const RegistroDirectory = () => {
 
   const sortedRegistros = useMemo(() => {
     return [...registros].sort((a, b) => {
-      const dateA = new Date(a?.created_at || a?.fechaEntrada || 0).getTime();
-      const dateB = new Date(b?.created_at || b?.fechaEntrada || 0).getTime();
+      const createdA = getRegistroTimestamp(a, ['createdAt', 'created_at', 'fechaEntrada']);
+      const createdB = getRegistroTimestamp(b, ['createdAt', 'created_at', 'fechaEntrada']);
+
+      const dateA = new Date(createdA || 0).getTime();
+      const dateB = new Date(createdB || 0).getTime();
       return dateB - dateA;
     });
   }, [registros]);
@@ -77,16 +91,16 @@ const RegistroDirectory = () => {
 
     if (isOpen) {
       return (
-        <span className={`${baseClasses} bg-[#fef3c7] text-[#92400e]`}>
-          <span className="h-2 w-2 rounded-full bg-[#f97316]" />
+        <span className={`${baseClasses}  bg-[#dcfce7] text-[#166534]`}>
+          <span className="h-2 w-2 rounded-full  bg-[#16a34a]" />
           En progreso
         </span>
       );
     }
 
     return (
-      <span className={`${baseClasses} bg-[#dcfce7] text-[#166534]`}>
-        <span className="h-2 w-2 rounded-full bg-[#16a34a]" />
+      <span className={`${baseClasses} bg-[#fef3c7] text-[#92400e]`}>
+        <span className="h-2 w-2 rounded-full bg-[#f97315]" />
         Finalizado
       </span>
     );
@@ -191,9 +205,7 @@ const RegistroDirectory = () => {
                 <div className="mt-3 space-y-2 text-sm text-[#475569]">
                   <p><span className="font-semibold text-[#0f172a]">Nombre:</span> {selected.usuario?.nombre} {selected.usuario?.apellido}</p>
                   <p><span className="font-semibold text-[#0f172a]">Correo:</span> {selected.usuario?.email || 'Sin correo'}</p>
-                  <p><span className="font-semibold text-[#0f172a]">Cedula:</span> {selected.usuario?.cedula || 'N/A'}</p>
-                  <p><span className="font-semibold text-[#0f172a]">Permiso:</span> {selected.usuario?.permisoSistema || 'N/A'}</p>
-                  <p><span className="font-semibold text-[#0f172a]">Estado actual:</span> {(selected.usuario?.estado || '').toUpperCase() || 'DESCONOCIDO'}</p>
+                  
                 </div>
               </section>
 
@@ -202,7 +214,6 @@ const RegistroDirectory = () => {
                 <div className="mt-3 space-y-2 text-sm text-[#475569]">
                   <p><span className="font-semibold text-[#0f172a]">Nombre:</span> {selected.administrador?.nombre || 'Sin asignar'}</p>
                   <p><span className="font-semibold text-[#0f172a]">Correo:</span> {selected.administrador?.email || 'Sin correo'}</p>
-                  <p><span className="font-semibold text-[#0f172a]">Cargo:</span> {selected.administrador?.cargo || 'N/A'}</p>
                 </div>
               </section>
             </div>
@@ -228,7 +239,7 @@ const RegistroDirectory = () => {
               <div className="mt-3 rounded-lg border border-[#e2e8f0] bg-[#ecfeff] p-4 text-sm text-[#0f172a]">
                 <p><span className="font-semibold">Duracion de la sesion:</span> {formatDurationValue(selected.duracionSesion)}</p>
                 <p className="mt-1 text-xs text-[#0f172a]/70">
-                  Creado el {formatDateTime(selected.created_at)} - Actualizado el {formatDateTime(selected.updated_at)}
+                  Creado el {formatDateTime(getRegistroTimestamp(selected, ['createdAt', 'created_at']))} - Actualizado el {formatDateTime(getRegistroTimestamp(selected, ['updatedAt', 'updated_at']))}
                 </p>
               </div>
             </section>
