@@ -1,28 +1,66 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import QrScanner from 'react-qr-scanner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
 
-const renderEntries = (data) => {
-  if (!data || typeof data !== 'object') return null;
+const PARSED_FIELDS_ORDER = [
+  { key: 'nombre' },
+  { key: 'cedula' },
+  { key: 'programa' },
+  { key: 'tipo_sangre' },
+  { key: 'telefono' },
+];
 
-  return Object.entries(data).map(([key, value]) => {
-    const isObject = value && typeof value === 'object';
-    const displayValue = isObject ? JSON.stringify(value, null, 2) : String(value ?? '');
+const renderParsedData = (parsed) => {
+  if (!parsed || typeof parsed !== 'object') return null;
 
-    return (
-      <div key={key} className="space-y-1">
-        <dt className="text-sm font-semibold text-[#0f172a]">{key}</dt>
-        <dd className="text-sm text-[#475569] whitespace-pre-wrap break-words">
-          {isObject ? (
-            <pre className="whitespace-pre-wrap break-words text-xs">{displayValue}</pre>
-          ) : (
-            displayValue
-          )}
-        </dd>
+  return (
+    <div className="mt-2 space-y-3 rounded-lg border border-slate-200 bg-[#f8fafc] p-4">
+      {PARSED_FIELDS_ORDER.map(({ key }) => (
+        <div key={key} className="space-y-1">
+          <p className="text-xs font-semibold text-[#0f766e]">{key}</p>
+          <p className="rounded-md bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm">
+            {parsed[key] ? String(parsed[key]) : 'Sin registrar'}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const renderUserDetails = (user) => {
+  if (!user || typeof user !== 'object') return null;
+
+  const entries = Object.entries(user).filter(([key]) => key !== 'imagen' && key !== 'imagenQR');
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-[#0f172a]/10 bg-[#f1f5f9] p-4">
+      {user.imagen && (
+        <div className="flex items-center gap-4">
+          <img
+            src={user.imagen}
+            alt={user.nombre ? `Foto de ${user.nombre}` : 'Foto del usuario'}
+            className="h-20 w-20 rounded-full object-cover shadow-sm border border-slate-200"
+          />
+          <div>
+            <p className="text-sm font-semibold text-[#0f172a]">
+              {user.nombre} {user.apellido}
+            </p>
+            {user.email && <p className="text-xs text-[#475569]">{user.email}</p>}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {entries.map(([key, value]) => (
+          <div key={key} className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">{key}</p>
+            <p className="text-sm text-[#0f172a] break-words">{String(value)}</p>
+          </div>
+        ))}
       </div>
-    );
-  });
+    </div>
+  );
 };
 
 const QRScannerPage = () => {
@@ -240,34 +278,20 @@ const QRScannerPage = () => {
           <div>
             <h2 className="text-xl font-semibold text-[#0f172a]">Resultado del escaneo</h2>
             {scanData ? (
-              <dl className="mt-4 space-y-4">
-                <div className="space-y-1">
-                  <dt className="text-sm font-semibold text-[#0f172a]">Texto detectado</dt>
-                  <dd className="text-sm text-[#475569] whitespace-pre-wrap break-words">{scanData.rawText}</dd>
+              <div className="mt-4 space-y-6">
+                <div>
+                  <p className="text-sm font-semibold text-[#0f172a]">Datos escaneados</p>
+                  {renderParsedData(scanData.parsed)}
                 </div>
-                <div className="space-y-1">
-                  <dt className="text-sm font-semibold text-[#0f172a]">Escaneado en</dt>
-                  <dd className="text-sm text-[#475569]">{new Date(scanData.scannedAt).toLocaleString()}</dd>
-                </div>
-                {scanData.parsed && (
-                  <div className="space-y-2">
-                    <dt className="text-sm font-semibold text-[#0f172a]">Datos interpretados</dt>
-                    <dd className="space-y-3">{renderEntries(scanData.parsed)}</dd>
-                  </div>
-                )}
+
                 {scanData.user && (
-                  <div className="space-y-2">
-                    <dt className="text-sm font-semibold text-[#0f172a]">Usuario validado</dt>
-                    <dd className="space-y-3">{renderEntries(scanData.user)}</dd>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0f172a]">Usuario validado</p>
+                    {renderUserDetails(scanData.user)}
                   </div>
                 )}
-                {scanData.registro && (
-                  <div className="space-y-2">
-                    <dt className="text-sm font-semibold text-[#0f172a]">Registro creado</dt>
-                    <dd className="space-y-3">{renderEntries(scanData.registro)}</dd>
-                  </div>
-                )}
-              </dl>
+
+              </div>
             ) : (
               <p className="mt-2 text-sm text-[#475569]">
                 Esperando un escaneo. Mantenga el codigo dentro del marco para ver la lectura aqui.
