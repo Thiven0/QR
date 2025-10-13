@@ -1,4 +1,4 @@
-const bcrypt = require("bcrypt");
+﻿const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { User, PERMISOS_SISTEMA } = require("../models/user.model");
 
@@ -72,11 +72,20 @@ const buildUserPayload = (payload) => {
   };
 };
 
+const cleanUndefined = (object) => {
+  return Object.entries(object).reduce((acc, [key, value]) => {
+    if (value !== undefined) {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+};
+
 const ensureCreationPermission = (requester, permisoDestino) => {
   if (!requester) {
     return {
       allowed: false,
-      message: "Necesitas iniciar sesiÃ³n para registrar usuarios",
+      message: "Necesitas iniciar sesiÃƒÂ³n para registrar usuarios",
       status: 401,
     };
   }
@@ -101,7 +110,7 @@ const createUser = async (req, res) => {
     if (!userPayload.nombre || !userPayload.email) {
       return res.status(400).json({
         status: "error",
-        message: "Nombre y correo electrÃ³nico son obligatorios",
+        message: "Nombre y correo electrÃƒÂ³nico son obligatorios",
       });
     }
 
@@ -204,7 +213,7 @@ const toggleAccessByCedula = async (req, res) => {
     if (!requester) {
       return res.status(401).json({
         status: "error",
-        message: "Debes iniciar sesiÃ³n para actualizar el estado",
+        message: "Debes iniciar sesiÃƒÂ³n para actualizar el estado",
       });
     }
 
@@ -220,7 +229,7 @@ const toggleAccessByCedula = async (req, res) => {
     if (!cedula) {
       return res.status(400).json({
         status: "error",
-        message: "La cÃ©dula es obligatoria",
+        message: "La cÃƒÂ©dula es obligatoria",
       });
     }
 
@@ -328,13 +337,153 @@ const validateScannedUser = async (req, res) => {
   }
 };
 
+const ensureAdmin = (requester) => {
+  if (!requester || requester.permisoSistema !== "Administrador") {
+    return {
+      allowed: false,
+      status: 403,
+      message: "No tienes permisos para realizar esta accion",
+    };
+  }
+
+  return { allowed: true };
+};
+
+const updateUser = async (req, res) => {
+  try {
+    const permission = ensureAdmin(req.user);
+    if (!permission.allowed) {
+      return res.status(permission.status).json({
+        status: "error",
+        message: permission.message,
+      });
+    }
+
+    const userId = req.params?.id;
+    if (!userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "El identificador del usuario es obligatorio",
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    const payload = cleanUndefined({
+      ...buildUserPayload(req.body || {}),
+      cedula: req.body?.cedula,
+    });
+
+    if (payload.email && payload.email !== user.email) {
+      const emailInUse = await User.findOne({
+        email: payload.email,
+        _id: { $ne: userId },
+      });
+
+      if (emailInUse) {
+        return res.status(409).json({
+          status: "error",
+          message: "Otro usuario ya utiliza este correo",
+        });
+      }
+    }
+
+    if (payload.cedula && payload.cedula !== user.cedula) {
+      const cedulaInUse = await User.findOne({
+        cedula: payload.cedula,
+        _id: { $ne: userId },
+      });
+
+      if (cedulaInUse) {
+        return res.status(409).json({
+          status: "error",
+          message: "Otro usuario ya utiliza esta cedula",
+        });
+      }
+    }
+
+    if (payload.password) {
+      payload.password = await bcrypt.hash(payload.password, 10);
+    } else {
+      delete payload.password;
+    }
+
+    Object.assign(user, payload);
+    await user.save();
+
+    const { password, ...userWithoutPassword } = user.toObject();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Usuario actualizado correctamente",
+      user: userWithoutPassword,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: "Error al actualizar usuario",
+      error: error.message,
+    });
+  }
+};
+
+const deleteUser = async (req, res) => {
+  try {
+    const permission = ensureAdmin(req.user);
+    if (!permission.allowed) {
+      return res.status(permission.status).json({
+        status: "error",
+        message: permission.message,
+      });
+    }
+
+    const userId = req.params?.id;
+    if (!userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "El identificador del usuario es obligatorio",
+      });
+    }
+
+    const removed = await User.findByIdAndDelete(userId);
+
+    if (!removed) {
+      return res.status(404).json({
+        status: "error",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Usuario eliminado correctamente",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: "Error al eliminar usuario",
+      error: error.message,
+    });
+  }
+};
 module.exports = {
   createUser,
   listUsers,
   toggleAccessByCedula,
   parseScannedData,
   validateScannedUser,
+  updateUser,
+  deleteUser,
 };
+
+
 
 
 

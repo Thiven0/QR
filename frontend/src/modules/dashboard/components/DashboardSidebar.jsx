@@ -5,7 +5,7 @@ const navItems = [
   {
     to: '/dashboard',
     label: 'Inicio',
-    permissions: [],
+    permissions: ['Administrador', 'Celador'],
     icon: (
       <svg className="h-5 w-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M4.5 10.5V21h15V10.5" />
@@ -54,7 +54,7 @@ const navItems = [
   },
   {
     to: '/dashboard/staff/register',
-    label: 'Registrar celador',
+    label: 'Registrar usuario',
     permissions: ['Administrador'],
     icon: (
       <svg className="h-5 w-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 18 18">

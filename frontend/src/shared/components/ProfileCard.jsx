@@ -24,7 +24,7 @@ const ProfileCard = ({ user, variant = 'default' }) => {
 
   const qrSectionClasses = [
     'flex flex-col items-center justify-center rounded-lg border border-dashed border-green-600/50 bg-green-50/40 px-6 py-5',
-    isExpanded ? 'mt-6 md:mt-0 md:w-64' : 'mt-6 w-full',
+    isExpanded ? 'mt-6 w-full md:mt-0 md:max-w-xs md:flex-1' : 'mt-6 w-full',
   ].join(' ');
 
   const avatarAlt = user.nombre ? `Foto de ${user.nombre}` : 'Foto de perfil';
@@ -63,11 +63,13 @@ const ProfileCard = ({ user, variant = 'default' }) => {
         {user.imagenQR && (
           <div className={qrSectionClasses}>
             <h3 className="text-sm font-semibold text-green-700 uppercase tracking-wide">Mi codigo QR</h3>
-            <img
-              src={user.imagenQR}
-              alt="Codigo QR del usuario"
-              className="mt-4 w-36 h-36 object-contain"
-            />
+            <div className="mt-4 flex h-40 w-full items-center justify-center">
+              <img
+                src={user.imagenQR}
+                alt="Codigo QR del usuario"
+                className="h-full max-h-40 w-auto max-w-[10rem] object-contain"
+              />
+            </div>
             <p className="mt-3 text-xs text-green-900/70 text-center">
               Presenta este codigo para validar tu identidad en los puntos de control.
             </p>

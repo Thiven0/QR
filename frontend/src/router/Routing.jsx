@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AuthProvider from '../modules/auth/context/AuthProvider';
 import ProtectedRoute from '../modules/auth/components/ProtectedRoute';
 import GuardLogin from '../modules/auth/pages/GuardLogin';
@@ -13,6 +13,15 @@ import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
 import ProfileUser from '../modules/dashboard/pages/ProfileUser';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
 import NotFound from '../pages/NotFound';
+import useAuth from '../modules/auth/hooks/useAuth';
+
+const DashboardHome = () => {
+  const { hasPermission } = useAuth();
+  if (hasPermission(['Administrador', 'Celador'])) {
+    return <DashboardOverview />;
+  }
+  return <Navigate to="/dashboard/profile" replace />;
+};
 
 export const Routing = () => {
   return (
@@ -31,7 +40,7 @@ export const Routing = () => {
               </ProtectedRoute>
             }
           >
-            <Route index element={<DashboardOverview />} />
+            <Route index element={<DashboardHome />} />
             <Route
               path="qr"
               element={
@@ -73,7 +82,14 @@ export const Routing = () => {
                 </ProtectedRoute>
               }
             />
-            <Route path="sections" element={<SectionsGuide />} />
+            <Route
+              path="sections"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <SectionsGuide />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           <Route path="*" element={<NotFound />} />

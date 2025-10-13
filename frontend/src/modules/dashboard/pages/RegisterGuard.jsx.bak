@@ -204,53 +204,28 @@ const RegisterGuard = () => {
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[
-                    {
-                      name: 'cedula',
-                      label: 'Cedula',
-                      type: 'text',
-                      required: true,
-                      inputMode: 'numeric',
-                      pattern: '[0-9]*',
-                    },
+                    { name: 'cedula', label: 'Cedula', type: 'number', required: true },
                     { name: 'nombre', label: 'Nombre', type: 'text', required: true },
                     { name: 'apellido', label: 'Apellido', type: 'text' },
                     { name: 'email', label: 'Correo', type: 'email', required: true },
                     { name: 'password', label: 'Password (opcional)', type: 'password', required: false },
-                    {
-                      name: 'telefono',
-                      label: 'Telefono',
-                      type: 'text',
-                      inputMode: 'numeric',
-                      pattern: '[0-9]*',
-                    },
+                    { name: 'telefono', label: 'Telefono', type: 'text' },
                     { name: 'RH', label: 'RH', type: 'text' },
-                  ].map((field) => {
-                    const handleFieldChange = (event) => {
-                      if (['cedula', 'telefono'].includes(field.name)) {
-                        const sanitized = event.target.value.replace(/\D/g, '');
-                        event.target.value = sanitized;
-                      }
-                      handleChange(event);
-                    };
-
-                    return (
-                      <div key={field.name}>
-                        <Input
-                          type={field.type}
-                          placeholder={field.label}
-                          onChange={handleFieldChange}
-                          value={form[field.name]}
-                          name={field.name}
-                          required={field.required}
-                          inputMode={field.inputMode}
-                          pattern={field.pattern}
-                        />
-                        {errors[field.name] && (
-                          <p className="mt-2 text-xs font-medium text-[#b45309]">{errors[field.name]}</p>
-                        )}
-                      </div>
-                    );
-                  })}
+                  ].map((field) => (
+                    <div key={field.name}>
+                      <Input
+                        type={field.type}
+                        placeholder={field.label}
+                        onChange={handleChange}
+                        value={form[field.name]}
+                        name={field.name}
+                        required={field.required}
+                      />
+                      {errors[field.name] && (
+                        <p className="mt-2 text-xs font-medium text-[#b45309]">{errors[field.name]}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
