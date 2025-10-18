@@ -25,8 +25,17 @@ const campos = [
   { id: "correo", label: "Correo", type: "email" },
 ];
 
-const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
-  const [formData, setFormData] = useState({
+const RegisterForm = ({
+  onSubmit,
+  errors = {},
+  onFieldChange = () => {},
+  initialValues = {},
+  disabledFields = [],
+  enablePassword = false,
+  submitLabel = "Registrar usuario",
+  isSubmitting = false,
+}) => {
+  const defaultState = {
     cedula: "",
     rol: "",
     nombre: "",
@@ -38,9 +47,17 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
     estado: "Inactivo",
     imagen: "",
     imagenQR: "",
+    password: "",
+  };
+
+  const [formData, setFormData] = useState({
+    ...defaultState,
+    ...initialValues,
   });
 
   const [submitted, setSubmitted] = useState(false);
+
+  const isDisabled = (field) => disabledFields.includes(field);
 
   const handleChange = (e) => {
     const { id, value, type, files } = e.target;
@@ -61,9 +78,15 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
       }
     } else {
       onFieldChange(id);
+      let nextValue = value;
+
+      if (id === "cedula" || id === "telefono") {
+        nextValue = nextValue.replace(/\D/g, "");
+      }
+
       setFormData((prev) => ({
         ...prev,
-        [id]: value,
+        [id]: nextValue,
       }));
     }
   };
@@ -76,6 +99,13 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
 
   const inputBorder = (field) =>
     submitted && errors[field] ? "border-[#b45309]" : "border-slate-200";
+
+  const camposToRender = enablePassword
+    ? [
+        ...campos,
+        { id: "password", label: "Contrasena", type: "password" },
+      ]
+    : campos;
 
   return (
     <form className="space-y-8" onSubmit={handleSubmit}>
@@ -91,12 +121,14 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
             id="rol"
             value={formData.rol}
             onChange={handleChange}
+            disabled={isDisabled("rol")}
             className={`mt-2 w-full rounded-lg border ${inputBorder("rol")} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
           >
             <option value="">Seleccione un rol</option>
             <option value="Estudiante">Estudiante</option>
             <option value="Profesor">Profesor</option>
             <option value="Egresado">Egresado</option>
+            <option value="Visitante">Visitante</option>
           </select>
           {errors.rol && (
             <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.rol}</p>
@@ -114,6 +146,7 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
             id="facultad"
             value={formData.facultad}
             onChange={handleChange}
+            disabled={isDisabled("facultad")}
             className={`mt-2 w-full rounded-lg border ${inputBorder("facultad")} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
           >
             <option value="">Seleccione una facultad</option>
@@ -128,7 +161,7 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
           )}
         </div>
 
-        {campos.map((campo) => (
+        {camposToRender.map((campo) => (
           <div key={campo.id} className="sm:col-span-1">
             <label className="text-sm font-medium text-[#00594e]" htmlFor={campo.id}>
               {campo.label}
@@ -139,6 +172,7 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
               value={formData[campo.id]}
               onChange={handleChange}
               placeholder={campo.label}
+              disabled={isDisabled(campo.id)}
               className={`mt-2 w-full rounded-lg border ${inputBorder(campo.id)} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm placeholder:text-slate-400 focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
             />
             {errors[campo.id] && (
@@ -190,9 +224,10 @@ const RegisterForm = ({ onSubmit, errors = {}, onFieldChange = () => {} }) => {
 
       <button
         type="submit"
-        className="w-full rounded-lg bg-[#00594e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+        disabled={isSubmitting}
+        className="w-full rounded-lg bg-[#00594e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        Registrar usuario
+        {submitLabel}
       </button>
     </form>
   );

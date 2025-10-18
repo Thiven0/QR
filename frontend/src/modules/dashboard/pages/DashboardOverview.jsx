@@ -1,4 +1,7 @@
-
+import { useEffect, useState } from 'react';
+import { apiRequest } from '../../../services/apiClient';
+import UserStatsCharts from '../../../shared/components/UserStatsCharts';
+import useAuth from '../../auth/hooks/useAuth';
 const stats = [
   { label: 'Ingresos hoy', value: 128, change: '+12%', descriptor: 'vs dia anterior' },
   { label: 'Usuarios activos', value: 842, change: '+38', descriptor: 'con accesos validados' },
@@ -119,6 +122,48 @@ const userBreakdown = [
 ]
 
 const Content = () => {
+  const { token } = useAuth();
+  const [usersSnapshot, setUsersSnapshot] = useState([]);
+  const [usersSnapshotLoading, setUsersSnapshotLoading] = useState(false);
+  const [usersSnapshotError, setUsersSnapshotError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+
+    const fetchUsersSnapshot = async () => {
+      try {
+        if (isMounted) {
+          setUsersSnapshotLoading(true);
+          setUsersSnapshotError('');
+        }
+
+        const response = await apiRequest('/users', { token });
+        const data = Array.isArray(response) ? response : response?.data || [];
+
+        if (isMounted) {
+          setUsersSnapshot(data);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUsersSnapshot([]);
+          setUsersSnapshotError(error.message || 'No fue posible cargar los usuarios.');
+        }
+      } finally {
+        if (isMounted) {
+          setUsersSnapshotLoading(false);
+        }
+      }
+    };
+
+    fetchUsersSnapshot();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
   const updatedAt = new Date().toLocaleDateString('es-CO', {
     weekday: 'long',
     hour: '2-digit',
@@ -164,6 +209,17 @@ const Content = () => {
             </article>
           ))}
         </section>
+
+        <UserStatsCharts
+          className="mt-6"
+          users={usersSnapshot}
+          loading={usersSnapshotLoading}
+          error={usersSnapshotError}
+          permisoLabels={['Administrador', 'Celador', 'Usuario']}
+          estadoLabels={['activo', 'inactivo']}
+          title="Distribucion actual de usuarios"
+          description="Datos consolidados del directorio para decisiones rapidas."
+        />
 
         <section className="space-y-4">
           <div className="flex items-center justify-between">

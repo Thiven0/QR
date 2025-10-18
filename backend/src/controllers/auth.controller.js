@@ -1,6 +1,8 @@
-﻿const bcrypt = require('bcrypt');
+const bcrypt = require('bcrypt');
 const { User } = require('../models/user.model');
+const VisitorTicket = require('../models/visitor-ticket.model');
 const { createToken, verifyToken } = require('../services/token.service');
+const { getActiveVisitorTicketForUser, serializeVisitorTicket } = require('../utils/visitorTicket');
 
 const ACCESS_KEY = process.env.TOKEN_ACCESS_KEY || 'accessKey123';
 const SECRET_KEY = process.env.TOKEN_SECRET_KEY || 'secretKey123';
@@ -51,6 +53,37 @@ const login = async (req, res) => {
       });
     }
 
+    const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
+    let serializedTicket = null;
+
+    if (isVisitor) {
+      const activeTicketDoc = await getActiveVisitorTicketForUser(user._id);
+
+      if (!activeTicketDoc) {
+        const lastTicket = await VisitorTicket.findOne({ user: user._id }).sort({ expiresAt: -1 });
+        if (lastTicket) {
+          lastTicket.expiresAt = new Date(Date.now() - 1000);
+          await lastTicket.save();
+        }
+        if (user.estado !== 'inactivo') {
+          user.estado = 'inactivo';
+          await user.save();
+        }
+
+        return res.status(403).json({
+          status: 'error',
+          message: 'Tu ticket temporal ha expirado. Registra tu visita nuevamente.',
+        });
+      }
+
+      serializedTicket = serializeVisitorTicket(activeTicketDoc);
+
+      if (user.estado !== 'activo') {
+        user.estado = 'activo';
+        await user.save();
+      }
+    }
+
     const token = createSessionToken({
       userId: user._id,
       nombre: user.nombre,
@@ -64,6 +97,10 @@ const login = async (req, res) => {
 
     const { password: _, ...userData } = user.toObject();
 
+    if (serializedTicket) {
+      userData.visitorTicket = serializedTicket;
+    }
+
     // TODO(TEST) Remover log despues de validar los servicios.
     console.log('[AUTH][LOGIN][TEST]', {
       userId: user._id.toString(),
@@ -76,6 +113,7 @@ const login = async (req, res) => {
       message: 'Sesion iniciada correctamente',
       token,
       user: userData,
+      ticket: serializedTicket || undefined,
     });
   } catch (error) {
     return res.status(500).json({
@@ -105,9 +143,24 @@ const profile = async (req, res) => {
     });
   }
 
+  const userData = user.toObject();
+  let serializedTicket = null;
+
+  if ((userData.rolAcademico || '').toLowerCase() === 'visitante') {
+    const activeTicketDoc = await getActiveVisitorTicketForUser(user._id);
+
+    if (activeTicketDoc) {
+      serializedTicket = serializeVisitorTicket(activeTicketDoc);
+      userData.visitorTicket = serializedTicket;
+    } else {
+      userData.visitorTicket = null;
+    }
+  }
+
   return res.status(200).json({
     status: 'success',
-    user,
+    user: userData,
+    ticket: serializedTicket,
   });
 };
 

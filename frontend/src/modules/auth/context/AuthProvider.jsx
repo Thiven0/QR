@@ -1,21 +1,24 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../../../services/apiClient';
 
 const STORAGE_KEYS = {
   token: 'qr_token',
   user: 'qr_user',
+  ticket: 'qr_ticket',
 };
 
 export const AuthContext = createContext({
   user: null,
   token: null,
+  ticket: null,
   loading: true,
   login: async () => {},
   logout: () => {},
   hasPermission: () => false,
+  establishSession: () => {},
 });
 
-const persistSession = (token, user) => {
+const persistSession = (token, user, ticket) => {
   if (token) {
     localStorage.setItem(STORAGE_KEYS.token, token);
   } else {
@@ -27,76 +30,172 @@ const persistSession = (token, user) => {
   } else {
     localStorage.removeItem(STORAGE_KEYS.user);
   }
+
+  if (ticket) {
+    localStorage.setItem(STORAGE_KEYS.ticket, JSON.stringify(ticket));
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.ticket);
+  }
 };
 
 const readPersistedSession = () => {
   try {
     const token = localStorage.getItem(STORAGE_KEYS.token);
     const userRaw = localStorage.getItem(STORAGE_KEYS.user);
+    const ticketRaw = localStorage.getItem(STORAGE_KEYS.ticket);
     const user = userRaw ? JSON.parse(userRaw) : null;
-    return { token, user };
+    const ticket = ticketRaw ? JSON.parse(ticketRaw) : null;
+    return { token, user, ticket };
   } catch (error) {
     console.warn('No se pudo leer la sesión almacenada', error);
-    return { token: null, user: null };
+    return { token: null, user: null, ticket: null };
   }
 };
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const visitorLogoutTimerRef = useRef(null);
+  const tokenRef = useRef(null);
+
+  const clearVisitorTimer = useCallback(() => {
+    if (visitorLogoutTimerRef.current) {
+      clearTimeout(visitorLogoutTimerRef.current);
+      visitorLogoutTimerRef.current = null;
+    }
+  }, []);
+
+  const performLocalLogout = useCallback(() => {
+    clearVisitorTimer();
+    setUser(null);
+    setToken(null);
+    setTicket(null);
+    tokenRef.current = null;
+    persistSession(null, null, null);
+  }, [clearVisitorTimer]);
+
+  const performVisitorAutoLogout = useCallback(async () => {
+    try {
+      if (tokenRef.current) {
+        await apiRequest('/visitors/expire', {
+          method: 'POST',
+          token: tokenRef.current,
+        });
+      }
+    } catch (error) {
+      console.warn('No fue posible expirar el ticket temporal', error);
+    } finally {
+      performLocalLogout();
+    }
+  }, [performLocalLogout]);
+
+  const scheduleVisitorAutoLogout = useCallback(
+    (ticketInfo) => {
+      clearVisitorTimer();
+
+      if (!ticketInfo?.expiresAt) {
+        return;
+      }
+
+      const expiresAt = new Date(ticketInfo.expiresAt);
+      const delay = expiresAt.getTime() - Date.now();
+
+      if (!Number.isFinite(delay) || delay <= 0) {
+        performVisitorAutoLogout();
+        return;
+      }
+
+      visitorLogoutTimerRef.current = setTimeout(performVisitorAutoLogout, delay);
+    },
+    [clearVisitorTimer, performVisitorAutoLogout]
+  );
+
   useEffect(() => {
-    const { token: storedToken, user: storedUser } = readPersistedSession();
+    const { token: storedToken, user: storedUser, ticket: storedTicket } = readPersistedSession();
 
     if (!storedToken) {
       setLoading(false);
       return;
     }
 
+    if (storedUser) {
+      setUser(storedUser);
+    }
+
+    if (storedTicket) {
+      setTicket(storedTicket);
+    }
+
+    tokenRef.current = storedToken;
+
     const restoreSession = async () => {
       try {
         const profile = await apiRequest('/auth/profile', { token: storedToken });
-        setUser(profile.user);
+        const profileUser = profile.user;
+        const profileTicket = profile.ticket || null;
+
+        setUser(profileUser);
         setToken(storedToken);
+        setTicket(profileTicket);
+        tokenRef.current = storedToken;
+        persistSession(storedToken, profileUser, profileTicket);
       } catch (error) {
         console.warn('No se pudo restaurar la sesión', error);
-        persistSession(null, null);
-        setUser(null);
-        setToken(null);
+        performLocalLogout();
       } finally {
         setLoading(false);
       }
     };
 
-    if (storedUser) {
-      setUser(storedUser);
-    }
-
     restoreSession();
-  }, []);
+  }, [performLocalLogout]);
 
-  const login = useCallback(async ({ email, password }) => {
-    const response = await apiRequest('/auth/login', {
-      method: 'POST',
-      data: { email, password },
-    });
+  useEffect(() => {
+    const isVisitor = (user?.rolAcademico || '').toLowerCase() === 'visitante';
 
-    const sessionUser = response.user;
-    const sessionToken = response.token;
+    if (isVisitor) {
+      if (ticket) {
+        scheduleVisitorAutoLogout(ticket);
+      } else if (tokenRef.current) {
+        performVisitorAutoLogout();
+      }
+    } else {
+      clearVisitorTimer();
+    }
+  }, [user, ticket, scheduleVisitorAutoLogout, performVisitorAutoLogout, clearVisitorTimer]);
 
+  const establishSession = useCallback(({ user: sessionUser, token: sessionToken, ticket: sessionTicket }) => {
     setUser(sessionUser);
     setToken(sessionToken);
-    persistSession(sessionToken, sessionUser);
-
-    return response;
+    setTicket(sessionTicket || null);
+    tokenRef.current = sessionToken || null;
+    persistSession(sessionToken, sessionUser, sessionTicket || null);
   }, []);
+
+  const login = useCallback(
+    async ({ email, password }) => {
+      const response = await apiRequest('/auth/login', {
+        method: 'POST',
+        data: { email, password },
+      });
+
+      establishSession({
+        user: response.user,
+        token: response.token,
+        ticket: response.ticket || null,
+      });
+
+      return response;
+    },
+    [establishSession]
+  );
 
   const logout = useCallback(() => {
-    setUser(null);
-    setToken(null);
-    persistSession(null, null);
-  }, []);
+    performLocalLogout();
+  }, [performLocalLogout]);
 
   const hasPermission = useCallback(
     (requiredPermissions = []) => {
@@ -108,8 +207,17 @@ const AuthProvider = ({ children }) => {
   );
 
   const value = useMemo(
-    () => ({ user, token, loading, login, logout, hasPermission }),
-    [user, token, loading, login, logout, hasPermission]
+    () => ({
+      user,
+      token,
+      ticket,
+      loading,
+      login,
+      logout,
+      hasPermission,
+      establishSession,
+    }),
+    [user, token, ticket, loading, login, logout, hasPermission, establishSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

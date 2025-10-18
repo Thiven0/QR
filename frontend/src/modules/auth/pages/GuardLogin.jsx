@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import GuardLoginForm from '../components/GuardLoginForm';
 
 const GuardLogin = () => {
@@ -13,6 +14,15 @@ const GuardLogin = () => {
             </p>
           </div>
           <GuardLoginForm />
+          <div className="pt-4 text-center text-sm text-[#475569]">
+            ¿Eres visitante?{' '}
+            <Link
+              to="/register-visitor"
+              className="font-semibold text-[#00594e] underline-offset-2 transition hover:text-[#00312a] hover:underline"
+            >
+              Registra tu visita aquí
+            </Link>
+          </div>
         </article>
 
         <aside className="relative overflow-hidden rounded-2xl border border-[#00594e]/30 bg-gradient-to-br from-[#00594e] to-[#00382b] text-white shadow-md">

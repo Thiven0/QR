@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProfileCard from '../../../shared/components/ProfileCard';
+import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 
@@ -47,6 +48,50 @@ const mapUserToForm = (user) => ({
   estado: user.estado || 'inactivo',
 });
 
+const formatVisitorTicketInfo = (ticket) => {
+  if (!ticket) {
+    return {
+      status: 'none',
+      description: 'Sin ticket activo',
+      token: null,
+      isExpired: true,
+    };
+  }
+
+  const expiresAt = ticket.expiresAt ? new Date(ticket.expiresAt) : null;
+  const isExpired = !!ticket.isExpired;
+  const descriptionParts = [];
+
+  if (isExpired) {
+    if (expiresAt && Number.isFinite(expiresAt.getTime())) {
+      descriptionParts.push(`Expirado el ${expiresAt.toLocaleString()}`);
+    } else {
+      descriptionParts.push('Ticket expirado');
+    }
+  } else {
+    if (ticket.formattedRemaining) {
+      descriptionParts.push(`Expira en ${ticket.formattedRemaining}`);
+    }
+    if (expiresAt && Number.isFinite(expiresAt.getTime())) {
+      descriptionParts.push(`(${expiresAt.toLocaleString()})`);
+    }
+  }
+
+  const description =
+    descriptionParts.length > 0
+      ? descriptionParts.join(' ')
+      : isExpired
+        ? 'Ticket expirado'
+        : 'Ticket activo';
+
+  return {
+    status: isExpired ? 'expired' : 'active',
+    token: ticket.token,
+    description,
+    isExpired,
+  };
+};
+
 const UserDirectory = () => {
   const { token, hasPermission } = useAuth();
   const isAdmin = hasPermission(['Administrador']);
@@ -65,6 +110,10 @@ const UserDirectory = () => {
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [permisoFilter, setPermisoFilter] = useState('');
+  const [estadoFilter, setEstadoFilter] = useState('');
 
   const loadUsers = async () => {
     if (!token) return;
@@ -73,7 +122,7 @@ const UserDirectory = () => {
     setError('');
 
     try {
-      const response = await apiRequest('/users', { token });
+      const response = await apiRequest('/users?includeVisitorTicket=true', { token });
       const data = Array.isArray(response) ? response : response?.data || [];
       setUsers(data);
     } catch (err) {
@@ -87,6 +136,40 @@ const UserDirectory = () => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          user.nombre,
+          user.apellido,
+          `${user.nombre || ''} ${user.apellido || ''}`,
+          user.email,
+          user.cedula,
+        ]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+      const matchesPermiso =
+        !permisoFilter || (user.permisoSistema || '').toLowerCase() === permisoFilter.toLowerCase();
+
+      const matchesEstado =
+        !estadoFilter || (user.estado || '').toLowerCase() === estadoFilter.toLowerCase();
+
+      return matchesSearch && matchesPermiso && matchesEstado;
+    });
+  }, [users, searchTerm, permisoFilter, estadoFilter]);
+
+  const hasActiveFilters = Boolean(searchTerm.trim() || permisoFilter || estadoFilter);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setPermisoFilter('');
+    setEstadoFilter('');
+  };
 
   const openEditModal = (user) => {
     setEditUserId(user._id);
@@ -237,6 +320,39 @@ const UserDirectory = () => {
     }
   };
 
+  const handleReactivateTicket = async (userId) => {
+    if (!userId || reactivatingId) return;
+
+    setReactivatingId(userId);
+    setFeedback('');
+
+    try {
+      const response = await apiRequest('/visitors/reactivate', {
+        method: 'POST',
+        token,
+        data: { userId },
+      });
+
+      const updatedTicket = response.ticket || null;
+
+      setUsers((prev) =>
+        prev.map((userItem) =>
+          userItem._id === userId ? { ...userItem, visitorTicket: updatedTicket } : userItem
+        )
+      );
+
+      if (viewUser?._id === userId) {
+        setViewUser((prev) => (prev ? { ...prev, visitorTicket: updatedTicket } : prev));
+      }
+
+      setFeedback('Ticket temporal reactivado correctamente.');
+    } catch (err) {
+      setFeedback(err.message || 'No fue posible reactivar el ticket temporal.');
+    } finally {
+      setReactivatingId(null);
+    }
+  };
+
   return (
     <section className="min-h-screen bg-[#f8fafc] px-4 py-8 sm:py-12">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -257,6 +373,72 @@ const UserDirectory = () => {
           )}
         </header>
 
+        <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-12">
+          <label className="sm:col-span-5">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Buscar</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Nombre, apellido, correo o cedula"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            />
+          </label>
+
+          <label className="sm:col-span-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Permiso</span>
+            <select
+              value={permisoFilter}
+              onChange={(event) => setPermisoFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            >
+              <option value="">Todos</option>
+              {PERMISOS_SISTEMA.map((permiso) => (
+                <option key={permiso} value={permiso}>
+                  {permiso}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="sm:col-span-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Estado</span>
+            <select
+              value={estadoFilter}
+              onChange={(event) => setEstadoFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            >
+              <option value="">Todos</option>
+              {ESTADOS.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado.charAt(0).toUpperCase() + estado.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-end sm:col-span-1">
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        <UserStatsCharts
+          className="mt-6"
+          users={users}
+          loading={loading}
+          permisoLabels={PERMISOS_SISTEMA}
+          estadoLabels={ESTADOS}
+          title="Distribucion del directorio"
+          description="Visualiza la composicion de usuarios por permiso y estado en tiempo real."
+        />
+
         {feedback && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
             {feedback}
@@ -273,11 +455,16 @@ const UserDirectory = () => {
           <p className="text-sm font-medium text-[#00594e]">Cargando usuarios...</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {users.map((user) => (
-              <div
-                key={user._id}
-                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:shadow-md"
-              >
+            {filteredUsers.map((user) => {
+              const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
+              const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
+              const canReactivateTicket = visitorTicketInfo.status !== 'active';
+
+              return (
+                <div
+                  key={user._id}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:shadow-md"
+                >
                 <div className="flex items-center gap-4">
                   <img
                     src={user.imagen || 'https://ui-avatars.com/api/?background=00594e&color=fff&name=' + encodeURIComponent(user.nombre || 'Usuario')}
@@ -292,6 +479,30 @@ const UserDirectory = () => {
                     <span className="text-xs font-semibold text-[#00594e]">{user.permisoSistema}</span>
                   </div>
                 </div>
+
+                  {isVisitor && (
+                    <div className="mt-3 rounded-lg border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
+                      <p className="mt-1 text-xs text-[#0f172a]">
+                        {visitorTicketInfo.description || 'Sin ticket activo'}
+                      </p>
+                      {visitorTicketInfo.token && (
+                        <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">
+                          Token: {visitorTicketInfo.token}
+                        </p>
+                      )}
+                      {canReactivateTicket && (
+                        <button
+                          type="button"
+                          onClick={() => handleReactivateTicket(user._id)}
+                          disabled={reactivatingId === user._id}
+                          className="mt-2 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-[11px] font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {reactivatingId === user._id ? 'Reactivando...' : 'Reactivar ticket'}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
@@ -320,12 +531,15 @@ const UserDirectory = () => {
                     </>
                   )}
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
 
-            {users.length === 0 && !loading && (
+            {filteredUsers.length === 0 && !loading && (
               <p className="text-sm text-[#475569]">
-                No hay usuarios registrados actualmente. Utiliza el boton de registro para crear uno nuevo.
+                {hasActiveFilters
+                  ? 'No se encontraron usuarios que coincidan con los filtros aplicados.'
+                  : 'No hay usuarios registrados actualmente. Utiliza el boton de registro para crear uno nuevo.'}
               </p>
             )}
           </div>
@@ -349,6 +563,29 @@ const UserDirectory = () => {
               Cerrar
             </button>
             <ProfileCard user={viewUser} />
+            {(viewUser.rolAcademico || '').toLowerCase() === 'visitante' && (() => {
+              const visitorInfo = formatVisitorTicketInfo(viewUser.visitorTicket);
+              const canReactivateVisitor = visitorInfo.status !== 'active';
+              return (
+                <div className="mt-4 rounded-lg border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 px-4 py-3 text-sm text-[#0f172a]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
+                  <p className="mt-1 text-xs">{visitorInfo.description || 'Sin ticket activo'}</p>
+                  {visitorInfo.token && (
+                    <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">Token: {visitorInfo.token}</p>
+                  )}
+                  {canReactivateVisitor && (
+                    <button
+                      type="button"
+                      onClick={() => handleReactivateTicket(viewUser._id)}
+                      disabled={reactivatingId === viewUser._id}
+                      className="mt-3 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {reactivatingId === viewUser._id ? 'Reactivando...' : 'Reactivar ticket'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

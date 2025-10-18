@@ -1,6 +1,8 @@
 ﻿const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { User, PERMISOS_SISTEMA } = require("../models/user.model");
+const VisitorTicket = require("../models/visitor-ticket.model");
+const { serializeVisitorTicket } = require("../utils/visitorTicket");
 
 const DEFAULT_ALLOWED_BY_ROLE = {
   Administrador: PERMISOS_SISTEMA,
@@ -193,9 +195,48 @@ const listUsers = async (req, res) => {
 
     const users = await User.find(query).select("-password").sort({ created_at: -1 });
 
+    let result = users;
+
+    if (req.query.includeVisitorTicket === "true") {
+      const now = new Date();
+      const visitorUsers = users.filter(
+        (user) => (user.rolAcademico || "").toLowerCase() === "visitante"
+      );
+
+      if (visitorUsers.length) {
+        const visitorIds = visitorUsers.map((user) => user._id);
+        const tickets = await VisitorTicket.find({
+          user: { $in: visitorIds },
+        })
+          .sort({ expiresAt: -1 })
+          .lean();
+
+        const ticketMap = tickets.reduce((acc, ticket) => {
+          const key = ticket.user.toString();
+          if (!acc.has(key)) {
+            acc.set(key, ticket);
+          }
+          return acc;
+        }, new Map());
+
+        result = users.map((userDoc) => {
+          const user = userDoc.toObject();
+          const ticket = ticketMap.get(user._id.toString());
+          user.visitorTicket = serializeVisitorTicket(ticket);
+          return user;
+        });
+      } else {
+        result = users.map((userDoc) => {
+          const user = userDoc.toObject();
+          user.visitorTicket = null;
+          return user;
+        });
+      }
+    }
+
     return res.status(200).json({
       status: "success",
-      data: users,
+      data: result,
     });
   } catch (error) {
     return res.status(500).json({

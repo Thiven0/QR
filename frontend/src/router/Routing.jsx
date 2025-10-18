@@ -12,6 +12,7 @@ import RegistroDirectory from '../modules/dashboard/pages/RegistroDirectory';
 import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
 import ProfileUser from '../modules/dashboard/pages/ProfileUser';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
+import RegisterVisitor from '../modules/public/pages/RegisterVisitor';
 import NotFound from '../pages/NotFound';
 import useAuth from '../modules/auth/hooks/useAuth';
 
@@ -30,6 +31,7 @@ export const Routing = () => {
         <Routes>
           <Route path="/" element={<PublicLayout />}>
             <Route index element={<GuardLogin />} />
+            <Route path="register-visitor" element={<RegisterVisitor />} />
           </Route>
 
           <Route
