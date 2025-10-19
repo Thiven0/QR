@@ -1,13 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../../services/apiClient';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import useAuth from '../../auth/hooks/useAuth';
-const stats = [
-  { label: 'Ingresos hoy', value: 128, change: '+12%', descriptor: 'vs dia anterior' },
-  { label: 'Usuarios activos', value: 842, change: '+38', descriptor: 'con accesos validados' },
-  { label: 'Alertas abiertas', value: 4, change: '-3', descriptor: 'gestionadas esta semana' },
-  { label: 'Visitas programadas', value: 19, change: 'Nuevas', descriptor: 'pendientes de confirmar' }
-]
 
 const areaTiles = [
   {
@@ -76,56 +70,15 @@ const areaTiles = [
   }
 ]
 
-const attendanceSummary = [
-  { period: 'Diario', value: '86%', note: 'Actualizado 09:45', delta: '+2% vs ayer' },
-  { period: 'Semanal', value: '79%', note: 'Semana en curso', delta: '+5% vs semana pasada' },
-  { period: 'Mensual', value: '82%', note: 'Mes corriente', delta: '+1.4% vs promedio' }
-]
-
-const facultyHighlights = [
-  { faculty: 'Ingenieria de Sistemas', distribution: '28%', trend: '+4%', status: 'Alta asistencia' },
-  { faculty: 'Administracion', distribution: '19%', trend: '+1%', status: 'Estable' },
-  { faculty: 'Arquitectura', distribution: '16%', trend: '-2%', status: 'Revisar turnos' },
-  { faculty: 'Medicina Veterinaria', distribution: '14%', trend: '+3%', status: 'En crecimiento' }
-]
-
-const accessFeed = [
-  { name: 'Maria Gomez', id: 'CC 10293847', time: '08:12', gate: 'Bloque A', status: 'Entrada' },
-  { name: 'Luis Perez', id: 'CC 75920184', time: '08:05', gate: 'Bloque C', status: 'Salida' },
-  { name: 'Carolina Ortiz', id: 'CC 10023764', time: '07:57', gate: 'Biblioteca', status: 'Entrada tardia' },
-  { name: 'Jorge Diaz', id: 'CC 83920173', time: '07:51', gate: 'Laboratorios', status: 'Entrada' }
-]
-
-const alertFeed = [
-  { title: 'Acceso fuera de horario', context: 'Ingreso 05:42 - Bloque C', severity: 'Alerta critica' },
-  { title: 'Movimiento inusual', context: 'Permanencia 90 min en deposito', severity: 'Revisar camaras' },
-  { title: 'Intento fallido', context: 'QR invalido - Visitante', severity: 'Denegado automatico' }
-]
-
-const configShortcuts = [
-  { title: 'Roles y permisos', detail: 'Asigna niveles de acceso por equipo.' },
-  { title: 'Horarios y puntos', detail: 'Define ventanas de ingreso y puertas activas.' },
-  { title: 'Integraciones', detail: 'Conecta CRMs, control horario y CCTV.' }
-]
-
-const reportOptions = [
-  { label: 'Reporte PDF', description: 'KPIs diarios, alertas y resumen de accesos.', badge: 'PDF' },
-  { label: 'Exportar Excel', description: 'Listado de usuarios y log historico completo.', badge: 'XLSX' },
-  { label: 'Estadistica historica', description: 'Comparativas por periodo y programa.', badge: 'CSV' }
-]
-
-const userBreakdown = [
-  { segment: 'Estudiantes', count: '1,240', status: 'Activos 92%' },
-  { segment: 'Docentes', count: '312', status: 'Activos 87%' },
-  { segment: 'Administrativos', count: '148', status: 'Activos 95%' },
-  { segment: 'Visitantes', count: '64', status: 'Requiere renovar QR' }
-]
-
 const Content = () => {
   const { token } = useAuth();
   const [usersSnapshot, setUsersSnapshot] = useState([]);
   const [usersSnapshotLoading, setUsersSnapshotLoading] = useState(false);
   const [usersSnapshotError, setUsersSnapshotError] = useState('');
+  const [entriesToday, setEntriesToday] = useState(0);
+  const [entryStatsLoading, setEntryStatsLoading] = useState(false);
+  const [entryStatsError, setEntryStatsError] = useState('');
+  const [entryRecords, setEntryRecords] = useState([]);
 
   useEffect(() => {
     if (!token) return;
@@ -164,11 +117,600 @@ const Content = () => {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+
+    const fetchEntryStats = async () => {
+      try {
+        if (isMounted) {
+          setEntryStatsLoading(true);
+          setEntryStatsError('');
+        }
+
+        const response = await apiRequest('/exitEntry', { token });
+        const data = Array.isArray(response) ? response : response?.data || [];
+
+        if (!isMounted) return;
+
+        setEntryRecords(data);
+
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(startOfDay);
+        endOfDay.setDate(endOfDay.getDate() + 1);
+
+        const todayCount = data.reduce((count, record) => {
+          const fechaEntrada = record?.fechaEntrada ? new Date(record.fechaEntrada) : null;
+          if (!fechaEntrada || Number.isNaN(fechaEntrada.getTime())) {
+            return count;
+          }
+          return fechaEntrada >= startOfDay && fechaEntrada < endOfDay ? count + 1 : count;
+        }, 0);
+
+        setEntriesToday(todayCount);
+      } catch (error) {
+        if (isMounted) {
+          setEntryStatsError(error.message || 'No fue posible obtener los registros de hoy.');
+          setEntriesToday(0);
+          setEntryRecords([]);
+        }
+      } finally {
+        if (isMounted) {
+          setEntryStatsLoading(false);
+        }
+      }
+    };
+
+    fetchEntryStats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
   const updatedAt = new Date().toLocaleDateString('es-CO', {
     weekday: 'long',
     hour: '2-digit',
     minute: '2-digit'
   })
+
+  const activeUsersCount = usersSnapshot.reduce((count, user) => {
+    return (user?.estado || '').toLowerCase() === 'activo' ? count + 1 : count;
+  }, 0);
+
+  const inactiveUsersCount = usersSnapshot.reduce((count, user) => {
+    return (user?.estado || '').toLowerCase() === 'inactivo' ? count + 1 : count;
+  }, 0);
+
+  const totalUsersCount = usersSnapshot.length;
+
+  const formatMetricValue = (value, loading, error) => {
+    if (loading) return '...';
+    if (error) return '--';
+    return value.toLocaleString('es-CO');
+  };
+
+  const overviewStats = [
+    {
+      label: 'Ingresos hoy',
+      value: formatMetricValue(entriesToday, entryStatsLoading, entryStatsError),
+      detail: entryStatsError || 'Personas registradas el dia de hoy.',
+      isError: Boolean(entryStatsError),
+    },
+    {
+      label: 'Usuarios activos',
+      value: formatMetricValue(activeUsersCount, usersSnapshotLoading, usersSnapshotError),
+      detail: usersSnapshotError || 'Personas con estado activo en el sistema.',
+      isError: Boolean(usersSnapshotError),
+    },
+    {
+      label: 'Usuarios inactivos',
+      value: formatMetricValue(inactiveUsersCount, usersSnapshotLoading, usersSnapshotError),
+      detail: usersSnapshotError || 'Personas con estado inactivo o pendientes por reactivar.',
+      isError: Boolean(usersSnapshotError),
+    },
+    {
+      label: 'Total usuarios',
+      value: formatMetricValue(totalUsersCount, usersSnapshotLoading, usersSnapshotError),
+      detail: usersSnapshotError || 'Conteo total de registros en el directorio.',
+      isError: Boolean(usersSnapshotError),
+    },
+  ];
+
+  const formatPercentage = (value) => {
+    if (!Number.isFinite(value) || value <= 0) return '0%';
+    if (value >= 99.5) return '100%';
+    if (value < 1) return '<1%';
+    if (value < 10) return `${value.toFixed(1)}%`;
+    return `${Math.round(value)}%`;
+  };
+
+  const ensureDate = (value) => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const formatDateTime = (value) => {
+    const date = ensureDate(value);
+    if (!date) return 'Sin registro';
+    return date.toLocaleString('es-CO', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const attendanceSummaryData = useMemo(() => {
+    const now = new Date();
+    const periods = [
+      { period: 'Diario', days: 1 },
+      { period: 'Semanal', days: 7 },
+      { period: 'Mensual', days: 30 },
+    ];
+
+    return periods.map(({ period, days }) => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      if (days > 1) {
+        start.setDate(start.getDate() - (days - 1));
+      }
+
+      const records = entryRecords.filter((record) => {
+        const entryDate = ensureDate(record?.fechaEntrada);
+        return entryDate && entryDate >= start && entryDate <= now;
+      });
+
+      const uniqueUsers = new Set(
+        records
+          .map((record) => {
+            const user = record?.usuario;
+            if (!user) return null;
+            if (typeof user === 'string') return user;
+            return user._id || user.id || user.cedula || user.email || null;
+          })
+          .filter(Boolean)
+      );
+
+      const percentage = totalUsersCount ? (uniqueUsers.size / totalUsersCount) * 100 : 0;
+      const latestActivity = records.reduce((latest, record) => {
+        const candidate =
+          ensureDate(record?.updatedAt) ||
+          ensureDate(record?.fechaSalida) ||
+          ensureDate(record?.fechaEntrada);
+        if (!candidate) return latest;
+        if (!latest || candidate > latest) return candidate;
+        return latest;
+      }, null);
+
+      return {
+        period,
+        value: formatPercentage(percentage),
+        note: latestActivity ? `Actualizado ${formatDateTime(latestActivity)}` : 'Sin actividad registrada',
+        delta: `${uniqueUsers.size} usuario${uniqueUsers.size === 1 ? '' : 's'} único${uniqueUsers.size === 1 ? '' : 's'}`,
+      };
+    });
+  }, [entryRecords, totalUsersCount]);
+
+  const facultyHighlightsData = useMemo(() => {
+    if (!usersSnapshot.length) {
+      return [
+        {
+          faculty: 'Sin datos',
+          distribution: '0%',
+          trend: 'Activos 0%',
+          status: 'Sin registros disponibles',
+        },
+      ];
+    }
+
+    const facultyMap = new Map();
+
+    usersSnapshot.forEach((user) => {
+      const labelRaw = String(user?.facultad || 'Sin facultad').trim();
+      const normalized = labelRaw.toLowerCase();
+      if (!facultyMap.has(normalized)) {
+        facultyMap.set(normalized, {
+          faculty: labelRaw || 'Sin facultad',
+          total: 0,
+          active: 0,
+        });
+      }
+      const entry = facultyMap.get(normalized);
+      entry.total += 1;
+      if ((user?.estado || '').toLowerCase() === 'activo') {
+        entry.active += 1;
+      }
+    });
+
+    return Array.from(facultyMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 4)
+      .map((item) => {
+        const distribution = totalUsersCount ? formatPercentage((item.total / totalUsersCount) * 100) : '0%';
+        const activeRate = item.total ? (item.active / item.total) * 100 : 0;
+        const status =
+          activeRate >= 75 ? 'Alta asistencia' : activeRate >= 50 ? 'Estable' : 'Requiere seguimiento';
+
+        return {
+          faculty: item.faculty,
+          distribution,
+          trend: `Activos ${formatPercentage(activeRate)}`,
+          status,
+        };
+      });
+  }, [usersSnapshot, totalUsersCount]);
+
+  const accessFeedItems = useMemo(() => {
+    if (!entryRecords.length) return [];
+
+    const events = [];
+
+    entryRecords.forEach((record) => {
+      const userDoc = record?.usuario || {};
+      const adminDoc = record?.administrador || {};
+
+      const userName = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre';
+      const identifier =
+        userDoc?.cedula ||
+        userDoc?.email ||
+        (typeof record?.usuario === 'string' ? record.usuario : userDoc?._id) ||
+        'Sin documento';
+      const administrator = adminDoc?.nombre
+        ? `Registrado por ${adminDoc.nombre}`
+        : 'Validado automaticamente';
+
+      const entryDate = ensureDate(record?.fechaEntrada);
+      if (entryDate) {
+        events.push({
+          key: `${record?._id || identifier}-entry`,
+          name: userName,
+          id: identifier,
+          timestamp: entryDate,
+          gate: administrator,
+          status: 'Entrada',
+        });
+      }
+
+      const exitDate = ensureDate(record?.fechaSalida);
+      if (exitDate) {
+        events.push({
+          key: `${record?._id || identifier}-exit`,
+          name: userName,
+          id: identifier,
+          timestamp: exitDate,
+          gate: administrator,
+          status: 'Salida',
+        });
+      }
+    });
+
+    return events
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 6)
+      .map((event) => ({
+        ...event,
+        time: event.timestamp.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+      }));
+  }, [entryRecords]);
+
+  const alertFeedItems = useMemo(() => {
+    const pending = entryRecords
+      .filter((record) => !record?.fechaSalida)
+      .sort((a, b) => {
+        const aDate = ensureDate(a?.fechaEntrada);
+        const bDate = ensureDate(b?.fechaEntrada);
+        if (!aDate || !bDate) return 0;
+        return bDate - aDate;
+      })
+      .slice(0, 4)
+      .map((record) => {
+        const userDoc = record?.usuario || {};
+        const name = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre';
+        return {
+          title: `${name} sin salida registrada`,
+          context: `Ingreso ${formatDateTime(record?.fechaEntrada)}`,
+          severity: 'Atención',
+        };
+      });
+
+    return pending;
+  }, [entryRecords]);
+
+  const configShortcutsData = useMemo(() => {
+    if (!usersSnapshot.length) {
+      return [
+        { title: 'Permisos del sistema', detail: 'Sin usuarios registrados.' },
+        { title: 'Estados', detail: 'Sin usuarios registrados.' },
+        { title: 'Roles academicos', detail: 'Sin usuarios registrados.' },
+      ];
+    }
+
+    const permissionCounts = new Map();
+    const roleCounts = new Map();
+
+    usersSnapshot.forEach((user) => {
+      const permiso = (user?.permisoSistema || 'Sin permiso').trim();
+      permissionCounts.set(permiso, (permissionCounts.get(permiso) || 0) + 1);
+
+      const roleLabel = (user?.rolAcademico || 'Sin rol').trim();
+      roleCounts.set(roleLabel, (roleCounts.get(roleLabel) || 0) + 1);
+    });
+
+    const formatEntries = (map) =>
+      Array.from(map.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, count]) => `${label}: ${count}`)
+        .join(' · ');
+
+    const topRoles = Array.from(roleCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([label, count]) => `${label}: ${count}`)
+      .join(' · ');
+
+    return [
+      {
+        title: 'Permisos del sistema',
+        detail: formatEntries(permissionCounts),
+      },
+      {
+        title: 'Estados',
+        detail: `Activos: ${activeUsersCount} · Inactivos: ${inactiveUsersCount}`,
+      },
+      {
+        title: 'Roles academicos',
+        detail: topRoles || 'Sin roles registrados.',
+      },
+    ];
+  }, [usersSnapshot, activeUsersCount, inactiveUsersCount]);
+
+  const reportOptionsData = useMemo(() => {
+    const now = new Date();
+    const ranges = [
+      { label: 'Ultimas 24 horas', days: 1, badge: '24h' },
+      { label: 'Ultimos 7 dias', days: 7, badge: '7d' },
+      { label: 'Ultimos 30 dias', days: 30, badge: '30d' },
+    ];
+
+    return ranges.map(({ label, days, badge }) => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (days - 1));
+
+      const records = entryRecords.filter((record) => {
+        const entryDate = ensureDate(record?.fechaEntrada);
+        return entryDate && entryDate >= start && entryDate <= now;
+      });
+
+      const uniqueUsers = new Set(
+        records
+          .map((record) => {
+            const user = record?.usuario;
+            if (!user) return null;
+            if (typeof user === 'string') return user;
+            return user._id || user.id || user.cedula || user.email || null;
+          })
+          .filter(Boolean)
+      );
+
+      return {
+        label,
+        description: `${records.length} registro${records.length === 1 ? '' : 's'} · ${uniqueUsers.size} usuario${uniqueUsers.size === 1 ? '' : 's'} únicos`,
+        badge,
+      };
+    });
+  }, [entryRecords]);
+
+  const userBreakdownData = useMemo(() => {
+    if (!usersSnapshot.length) {
+      return [
+        {
+          segment: 'Sin registros',
+          count: '0',
+          status: 'Activos 0%',
+        },
+      ];
+    }
+
+    const roleMap = new Map();
+
+    usersSnapshot.forEach((user) => {
+      const roleLabel = (user?.rolAcademico || 'Sin rol').trim();
+      const normalized = roleLabel.toLowerCase();
+
+      if (!roleMap.has(normalized)) {
+        roleMap.set(normalized, {
+          segment: roleLabel,
+          total: 0,
+          active: 0,
+        });
+      }
+
+      const entry = roleMap.get(normalized);
+      entry.total += 1;
+      if ((user?.estado || '').toLowerCase() === 'activo') {
+        entry.active += 1;
+      }
+    });
+
+    return Array.from(roleMap.values())
+      .sort((a, b) => b.total - a.total)
+      .map((item) => ({
+        segment: item.segment,
+        count: item.total.toLocaleString('es-CO'),
+        status: `Activos ${formatPercentage(item.total ? (item.active / item.total) * 100 : 0)}`,
+      }));
+  }, [usersSnapshot]);
+
+  const lastSevenDaysTrend = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let offset = 6; offset >= 0; offset--) {
+      const day = new Date(today);
+      day.setDate(today.getDate() - offset);
+      days.push(day);
+    }
+
+    const counts = days.map((day) => {
+      const nextDay = new Date(day);
+      nextDay.setDate(day.getDate() + 1);
+
+      const total = entryRecords.reduce((acc, record) => {
+        const entryDate = ensureDate(record?.fechaEntrada);
+        if (!entryDate) return acc;
+        return entryDate >= day && entryDate < nextDay ? acc + 1 : acc;
+      }, 0);
+
+      return {
+        label: day.toLocaleDateString('es-CO', { weekday: 'short' }),
+        value: total,
+        tooltip: `${day.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}: ${total} registro${total === 1 ? '' : 's'}`,
+      };
+    });
+
+    const max = counts.reduce((maxValue, item) => Math.max(maxValue, item.value), 0);
+
+    return {
+      max: Math.max(max, 1),
+      items: counts,
+    };
+  }, [entryRecords]);
+
+  const hourlyDistributionData = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(startOfToday);
+    endOfToday.setDate(endOfToday.getDate() + 1);
+
+    const hours = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: `${hour.toString().padStart(2, '0')}h`,
+      value: 0,
+    }));
+
+    entryRecords.forEach((record) => {
+      const entryDate = ensureDate(record?.fechaEntrada);
+      if (!entryDate || entryDate < startOfToday || entryDate >= endOfToday) {
+        return;
+      }
+      const hour = entryDate.getHours();
+      hours[hour].value += 1;
+    });
+
+    const filtered = hours.filter((item) => item.value > 0);
+    const items = (filtered.length ? filtered : hours.slice(6, 20)).map((item) => ({
+      ...item,
+      tooltip: `${item.label}: ${item.value} registro${item.value === 1 ? '' : 's'}`,
+    }));
+
+    const max = items.reduce((maxValue, item) => Math.max(maxValue, item.value), 0);
+
+    return {
+      max: Math.max(max, 1),
+      items,
+    };
+  }, [entryRecords]);
+
+  const parseDurationToMinutes = (record) => {
+    if (record?.duracionSesion) {
+      const parts = String(record.duracionSesion).split(':').map(Number);
+      if (parts.length >= 2 && parts.every((value) => Number.isFinite(value))) {
+        const hours = parts[0];
+        const minutes = parts[1];
+        return hours * 60 + minutes;
+      }
+    }
+
+    const entryDate = ensureDate(record?.fechaEntrada);
+    const exitDate = ensureDate(record?.fechaSalida);
+    if (entryDate && exitDate) {
+      const diff = exitDate.getTime() - entryDate.getTime();
+      if (diff > 0) {
+        return diff / 60000; // minutes
+      }
+    }
+
+    return null;
+  };
+
+  const topVisitorsData = useMemo(() => {
+    if (!entryRecords.length) return [];
+
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - 30);
+
+    const counter = new Map();
+
+    entryRecords.forEach((record) => {
+      const entryDate = ensureDate(record?.fechaEntrada);
+      if (!entryDate || entryDate < threshold) return;
+
+      const userDoc = record?.usuario || {};
+      const name = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre';
+      const key =
+        userDoc?._id ||
+        userDoc?.id ||
+        userDoc?.cedula ||
+        userDoc?.email ||
+        (typeof record?.usuario === 'string' ? record.usuario : name);
+
+      if (!counter.has(key)) {
+        counter.set(key, {
+          name,
+          cedula: userDoc?.cedula || 'Sin documento',
+          count: 0,
+        });
+      }
+
+      counter.get(key).count += 1;
+    });
+
+    return Array.from(counter.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [entryRecords]);
+
+  const sessionDurationSummary = useMemo(() => {
+    const durations = entryRecords
+      .map((record) => parseDurationToMinutes(record))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!durations.length) {
+      return {
+        average: 'Sin datos',
+        median: 'Sin datos',
+        count: 0,
+      };
+    }
+
+    const sum = durations.reduce((acc, value) => acc + value, 0);
+    const averageMinutes = sum / durations.length;
+
+    const sorted = [...durations].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const medianMinutes =
+      sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+
+    const formatMinutes = (value) => {
+      if (!Number.isFinite(value)) return 'Sin datos';
+      const hours = Math.floor(value / 60);
+      const minutes = Math.round(value % 60);
+      if (hours <= 0) return `${minutes} min`;
+      return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+    };
+
+    return {
+      average: formatMinutes(averageMinutes),
+      median: formatMinutes(medianMinutes),
+      count: durations.length,
+    };
+  }, [entryRecords]);
 
   const handleScroll = (id) => {
     if (typeof window === 'undefined') return
@@ -198,16 +740,74 @@ const Content = () => {
         </header>
 
         <section id="overview" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map((item) => (
+          {overviewStats.map((item) => (
             <article key={item.label} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-[#99a1af]">{item.label}</span>
               <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{item.value}</p>
-              <p className="mt-2 text-sm text-[#475569]">
-                <span className="font-semibold text-[#00594e]">{item.change}</span> {item.descriptor}
+              <p className={`mt-2 text-sm ${item.isError ? 'text-[#b91c1c]' : 'text-[#475569]'}`}>
+                {item.detail}
               </p>
               <div className="absolute right-6 top-6 h-12 w-12 rounded-full bg-[#00594e]/10" />
             </article>
           ))}
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Accesos ultimos 7 dias</h2>
+                <p className="text-sm text-[#64748b]">Comparativa diaria de registros confirmados</p>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
+                Pico: {Math.max(...lastSevenDaysTrend.items.map((item) => item.value)).toLocaleString('es-CO')}
+              </span>
+            </div>
+            <div className="flex h-48 items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
+              {lastSevenDaysTrend.items.map((item) => (
+                <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
+                  <div className="flex h-36 w-full items-end overflow-hidden rounded-md bg-[#0f172a]/5">
+                    <div
+                      className="w-full rounded-t-md bg-[#00594e]"
+                      style={{ height: `${Math.max((item.value / lastSevenDaysTrend.max) * 100, 6)}%` }}
+                      title={item.tooltip}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">{item.label}</span>
+                  <span className="text-xs text-[#0f172a]">{item.value.toLocaleString('es-CO')}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Distribucion por hora (hoy)</h2>
+                <p className="text-sm text-[#64748b]">Registro de entradas agrupadas por hora del dia</p>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
+                Total: {hourlyDistributionData.items.reduce((acc, item) => acc + item.value, 0).toLocaleString('es-CO')}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <div className="flex min-h-[12rem] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
+                {hourlyDistributionData.items.map((item) => (
+                  <div key={item.label} className="flex w-12 flex-col items-center gap-2">
+                    <div className="flex h-32 w-full items-end overflow-hidden rounded-md bg-[#B5A160]/10">
+                      <div
+                        className="w-full rounded-t-md bg-[#B5A160]"
+                        style={{ height: `${Math.max((item.value / hourlyDistributionData.max) * 100, 6)}%` }}
+                        title={item.tooltip}
+                      />
+                    </div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">{item.label}</span>
+                    <span className="text-[11px] text-[#0f172a]">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
         </section>
 
         <UserStatsCharts
@@ -278,7 +878,7 @@ const Content = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white text-sm text-[#334155]">
-                  {userBreakdown.map((row) => (
+                  {userBreakdownData.map((row) => (
                     <tr key={row.segment}>
                       <td className="px-6 py-4 font-semibold">{row.segment}</td>
                       <td className="px-6 py-4">{row.count}</td>
@@ -328,7 +928,7 @@ const Content = () => {
               <span className="text-xs font-medium uppercase tracking-wider text-[#B5A160]">Actualizado</span>
             </header>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              {attendanceSummary.map((item) => (
+              {attendanceSummaryData.map((item) => (
                 <div key={item.period} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">{item.period}</p>
                   <p className="mt-3 text-2xl font-semibold text-[#0f172a]">{item.value}</p>
@@ -348,7 +948,7 @@ const Content = () => {
             <h2 className="text-lg font-semibold text-[#0f172a]">Facultades y programas</h2>
             <p className="text-sm text-[#64748b]">Distribucion de estudiantes y tendencia de asistencia</p>
             <ul className="mt-6 space-y-4">
-              {facultyHighlights.map((item) => (
+              {facultyHighlightsData.map((item) => (
                 <li key={item.faculty} className="space-y-2">
                   <div className="flex items-center justify-between text-sm font-semibold text-[#0f172a]">
                     <span>{item.faculty}</span>
@@ -388,19 +988,27 @@ const Content = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white text-sm text-[#334155]">
-                  {accessFeed.map((item) => (
-                    <tr key={item.id + item.time}>
-                      <td className="px-6 py-4 font-semibold">{item.name}</td>
-                      <td className="px-6 py-4 text-[#64748b]">{item.id}</td>
-                      <td className="px-6 py-4">{item.time}</td>
-                      <td className="px-6 py-4">{item.gate}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center rounded-full bg-[#00594e]/10 px-2.5 py-1 text-xs font-semibold text-[#00594e]">
-                          {item.status}
-                        </span>
+                  {accessFeedItems.length > 0 ? (
+                    accessFeedItems.map((item) => (
+                      <tr key={item.key}>
+                        <td className="px-6 py-4 font-semibold">{item.name}</td>
+                        <td className="px-6 py-4 text-[#64748b]">{item.id}</td>
+                        <td className="px-6 py-4">{item.time}</td>
+                        <td className="px-6 py-4">{item.gate}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center rounded-full bg-[#00594e]/10 px-2.5 py-1 text-xs font-semibold text-[#00594e]">
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-xs text-[#64748b]">
+                        No hay movimientos registrados recientemente.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -412,13 +1020,19 @@ const Content = () => {
               <p className="text-sm text-[#64748b]">Seguimiento de eventos relevantes</p>
             </div>
             <ul className="space-y-4 text-sm text-[#475569]">
-              {alertFeed.map((alert) => (
-                <li key={alert.title} className="rounded-lg border border-[#00594e]/20 bg-[#00594e]/5 p-4">
-                  <p className="text-sm font-semibold text-[#0f172a]">{alert.title}</p>
-                  <p className="mt-1 text-xs text-[#475569]">{alert.context}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#00594e]">{alert.severity}</p>
+              {alertFeedItems.length > 0 ? (
+                alertFeedItems.map((alert) => (
+                  <li key={alert.title} className="rounded-lg border border-[#00594e]/20 bg-[#00594e]/5 p-4">
+                    <p className="text-sm font-semibold text-[#0f172a]">{alert.title}</p>
+                    <p className="mt-1 text-xs text-[#475569]">{alert.context}</p>
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#00594e]">{alert.severity}</p>
+                  </li>
+                ))
+              ) : (
+                <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#64748b]">
+                  No hay alertas activas en este momento.
                 </li>
-              ))}
+              )}
             </ul>
             <button className="mt-auto inline-flex items-center gap-2 self-start rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10">
               Configurar notificaciones
@@ -429,6 +1043,77 @@ const Content = () => {
           </article>
         </section>
 
+        <section className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Duracion de permanencia</h2>
+              <p className="text-sm text-[#64748b]">Sesiones con entrada y salida registradas</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Promedio</p>
+                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">{sessionDurationSummary.average}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Mediana</p>
+                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">{sessionDurationSummary.median}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Sesiones</p>
+                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">
+                  {sessionDurationSummary.count.toLocaleString('es-CO')}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-[#475569]">
+              Los calculos solo consideran registros con tiempo total determinado.
+            </p>
+          </article>
+
+          <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Visitantes frecuentes (30 dias)</h2>
+                <p className="text-sm text-[#64748b]">Usuarios con mayor numero de ingresos recientes</p>
+              </div>
+            </header>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">
+                      Usuario
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">
+                      Documento
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">
+                      Ingresos
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white text-sm text-[#334155]">
+                  {topVisitorsData.length > 0 ? (
+                    topVisitorsData.map((row) => (
+                      <tr key={row.name + row.cedula}>
+                        <td className="px-6 py-4 font-semibold">{row.name}</td>
+                        <td className="px-6 py-4 text-[#64748b]">{row.cedula}</td>
+                        <td className="px-6 py-4 text-[#0f172a]">{row.count.toLocaleString('es-CO')}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-4 text-center text-xs text-[#64748b]">
+                        No se registraron ingresos en el periodo analizado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
         <section id="config" className="grid gap-6 lg:grid-cols-2">
           <article className="flex h-full flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
@@ -436,7 +1121,7 @@ const Content = () => {
               <p className="text-sm text-[#64748b]">Ajusta roles, horarios y conexiones del sistema.</p>
             </div>
             <ul className="space-y-4 text-sm text-[#475569]">
-              {configShortcuts.map((item) => (
+              {configShortcutsData.map((item) => (
                 <li key={item.title} className="flex items-start gap-3">
                   <span className="mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
                   <div>
@@ -460,7 +1145,7 @@ const Content = () => {
               <p className="text-sm text-[#64748b]">Descarga datos para auditoria y seguimiento historico.</p>
             </div>
             <ul className="space-y-4 text-sm text-[#475569]">
-              {reportOptions.map((item) => (
+              {reportOptionsData.map((item) => (
                 <li key={item.label} className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 p-4">
                   <div>
                     <p className="text-sm font-semibold text-[#0f172a]">{item.label}</p>

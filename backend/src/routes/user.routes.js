@@ -1,6 +1,7 @@
 const express = require("express");
 const authMiddleware = require("../middlewares/auth");
 const userController = require("../controllers/user.controller");
+const vehicleController = require("../controllers/vehicle.controller");
 
 const router = express.Router();
 
@@ -11,5 +12,6 @@ router.delete("/:id", authMiddleware(["Administrador"]), userController.deleteUs
 router.post("/toggle-access", authMiddleware(["Administrador", "Celador"]), userController.toggleAccessByCedula);
 router.post("/parse-scan", authMiddleware(["Administrador", "Celador"]), userController.parseScannedData);
 router.post("/validate-scan", authMiddleware(["Administrador", "Celador"]), userController.validateScannedUser);
+router.get("/:userId/vehicles", authMiddleware(["Administrador", "Celador"]), vehicleController.listVehiclesByUser);
 
 module.exports = router;

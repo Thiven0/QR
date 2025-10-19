@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import { apiRequest } from '../../../services/apiClient';
@@ -95,6 +95,9 @@ const formatVisitorTicketInfo = (ticket) => {
 const UserDirectory = () => {
   const { token, hasPermission } = useAuth();
   const isAdmin = hasPermission(['Administrador']);
+  const canAccessVehicles = hasPermission(['Administrador', 'Celador']);
+  const canRegisterVehicles = hasPermission(['Administrador']);
+  const navigate = useNavigate();
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -114,6 +117,8 @@ const UserDirectory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [permisoFilter, setPermisoFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
+  const [userVehicleCounts, setUserVehicleCounts] = useState({});
+  const [loadingVehicleCountFor, setLoadingVehicleCountFor] = useState(null);
 
   const loadUsers = async () => {
     if (!token) return;
@@ -125,6 +130,16 @@ const UserDirectory = () => {
       const response = await apiRequest('/users?includeVisitorTicket=true', { token });
       const data = Array.isArray(response) ? response : response?.data || [];
       setUsers(data);
+      setUserVehicleCounts((prev) => {
+        if (!prev || Object.keys(prev).length === 0) return prev;
+        const next = {};
+        data.forEach((user) => {
+          if (prev[user._id] !== undefined) {
+            next[user._id] = prev[user._id];
+          }
+        });
+        return next;
+      });
     } catch (err) {
       setError(err.message || 'No fue posible obtener los usuarios');
     } finally {
@@ -169,6 +184,57 @@ const UserDirectory = () => {
     setSearchTerm('');
     setPermisoFilter('');
     setEstadoFilter('');
+  };
+
+  const fetchVehicleCount = async (userId) => {
+    if (!token || !userId) return 0;
+    if (loadingVehicleCountFor === userId) return userVehicleCounts[userId] ?? 0;
+
+    setLoadingVehicleCountFor(userId);
+    try {
+      const response = await apiRequest(`/users/${userId}/vehicles`, { token });
+      const data = Array.isArray(response) ? response : response?.data || [];
+      setUserVehicleCounts((prev) => ({ ...prev, [userId]: data.length }));
+      return data.length;
+    } catch (err) {
+      setUserVehicleCounts((prev) => ({ ...prev, [userId]: 0 }));
+      return 0;
+    } finally {
+      setLoadingVehicleCountFor(null);
+    }
+  };
+
+  const handleViewUser = (user) => {
+    setViewUser(user);
+    if (user?._id) {
+      fetchVehicleCount(user._id);
+    }
+  };
+
+  const getVehicleCount = (userId) => {
+    if (!userId) return null;
+    return userVehicleCounts[userId] ?? null;
+  };
+
+  const handleVehicleNavigation = async (user) => {
+    if (!user?._id) return;
+    let count = userVehicleCounts[user._id];
+    if (count === undefined) {
+      count = await fetchVehicleCount(user._id);
+    }
+    openVehiclesPage(user, (count || 0) > 0, 'list');
+  };
+
+  const openVehiclesPage = (user, hasVehicles, view = 'list') => {
+    if (!user?._id) return;
+    const search = view ? `?view=${view}` : '';
+    navigate(`/dashboard/vehicles${search}`, {
+      state: {
+        user,
+        hasVehicles,
+        from: 'directory',
+      },
+    });
   };
 
   const openEditModal = (user) => {
@@ -310,6 +376,13 @@ const UserDirectory = () => {
       if (viewUser?._id === deleteTarget._id) {
         setViewUser(null);
       }
+
+      setUserVehicleCounts((prev) => {
+        if (!prev || !(deleteTarget._id in prev)) return prev;
+        const next = { ...prev };
+        delete next[deleteTarget._id];
+        return next;
+      });
 
       setFeedback('Usuario eliminado correctamente.');
       setDeleteTarget(null);
@@ -507,7 +580,7 @@ const UserDirectory = () => {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setViewUser(user)}
+                    onClick={() => handleViewUser(user)}
                     className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
                   >
                     Ver
@@ -584,6 +657,55 @@ const UserDirectory = () => {
                     </button>
                   )}
                 </div>
+              );
+            })()}
+            {canAccessVehicles && viewUser?._id && (() => {
+              const vehicleCount = getVehicleCount(viewUser._id);
+              const hasVehicles = (vehicleCount || 0) > 0;
+              const isLoadingVehicles = loadingVehicleCountFor === viewUser._id;
+              return (
+              <div className="mt-4 rounded-lg border border-dashed border-[#0f172a]/20 bg-white px-4 py-3 text-sm text-[#0f172a] shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#0f172a]">Vehiculos del usuario</p>
+                    <p className="text-xs text-[#475569]">
+                      {isLoadingVehicles
+                        ? 'Cargando informacion de vehiculos...'
+                        : hasVehicles
+                          ? `${vehicleCount} vehiculo${vehicleCount === 1 ? '' : 's'} registrados.`
+                          : 'Sin vehiculos registrados.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchVehicleCount(viewUser._id)}
+                    disabled={isLoadingVehicles}
+                    className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isLoadingVehicles ? 'Actualizando...' : 'Actualizar conteo'}
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {hasVehicles && (
+                    <button
+                      type="button"
+                      onClick={() => handleVehicleNavigation(viewUser)}
+                      className="inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                    >
+                      Ver vehiculos
+                    </button>
+                  )}
+                  {canRegisterVehicles && (
+                    <button
+                      type="button"
+                      onClick={() => openVehiclesPage(viewUser, hasVehicles, 'register')}
+                      className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                    >
+                      Registrar vehiculo
+                    </button>
+                  )}
+                </div>
+              </div>
               );
             })()}
           </div>
