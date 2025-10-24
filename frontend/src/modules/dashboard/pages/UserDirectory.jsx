@@ -1,0 +1,932 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import ProfileCard from '../../../shared/components/ProfileCard';
+import UserStatsCharts from '../../../shared/components/UserStatsCharts';
+import { apiRequest } from '../../../services/apiClient';
+import useAuth from '../../auth/hooks/useAuth';
+
+const PERMISOS_SISTEMA = ['Administrador', 'Celador', 'Usuario'];
+const ESTADOS = ['activo', 'inactivo'];
+
+const EMPTY_FORM = {
+  cedula: '',
+  nombre: '',
+  apellido: '',
+  email: '',
+  password: '',
+  RH: '',
+  facultad: '',
+  telefono: '',
+  imagen: '',
+  imagenQR: '',
+  rolAcademico: '',
+  permisoSistema: 'Usuario',
+  estado: 'inactivo',
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const mapUserToForm = (user) => ({
+  cedula: user.cedula || '',
+  nombre: user.nombre || '',
+  apellido: user.apellido || '',
+  email: user.email || '',
+  password: '',
+  RH: user.RH || user.rh || '',
+  facultad: user.facultad || '',
+  telefono: user.telefono || '',
+  imagen: user.imagen || '',
+  imagenQR: user.imagenQR || '',
+  rolAcademico: user.rolAcademico || user.rol || '',
+  permisoSistema: user.permisoSistema || 'Usuario',
+  estado: user.estado || 'inactivo',
+});
+
+const formatVisitorTicketInfo = (ticket) => {
+  if (!ticket) {
+    return {
+      status: 'none',
+      description: 'Sin ticket activo',
+      token: null,
+      isExpired: true,
+    };
+  }
+
+  const expiresAt = ticket.expiresAt ? new Date(ticket.expiresAt) : null;
+  const isExpired = !!ticket.isExpired;
+  const descriptionParts = [];
+
+  if (isExpired) {
+    if (expiresAt && Number.isFinite(expiresAt.getTime())) {
+      descriptionParts.push(`Expirado el ${expiresAt.toLocaleString()}`);
+    } else {
+      descriptionParts.push('Ticket expirado');
+    }
+  } else {
+    if (ticket.formattedRemaining) {
+      descriptionParts.push(`Expira en ${ticket.formattedRemaining}`);
+    }
+    if (expiresAt && Number.isFinite(expiresAt.getTime())) {
+      descriptionParts.push(`(${expiresAt.toLocaleString()})`);
+    }
+  }
+
+  const description =
+    descriptionParts.length > 0
+      ? descriptionParts.join(' ')
+      : isExpired
+        ? 'Ticket expirado'
+        : 'Ticket activo';
+
+  return {
+    status: isExpired ? 'expired' : 'active',
+    token: ticket.token,
+    description,
+    isExpired,
+  };
+};
+
+const UserDirectory = () => {
+  const { token, hasPermission } = useAuth();
+  const isAdmin = hasPermission(['Administrador']);
+  const canAccessVehicles = hasPermission(['Administrador', 'Celador']);
+  const canRegisterVehicles = hasPermission(['Administrador']);
+  const navigate = useNavigate();
+
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+
+  const [viewUser, setViewUser] = useState(null);
+
+  const [editUserId, setEditUserId] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editErrors, setEditErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [permisoFilter, setPermisoFilter] = useState('');
+  const [estadoFilter, setEstadoFilter] = useState('');
+  const [userVehicleCounts, setUserVehicleCounts] = useState({});
+  const [loadingVehicleCountFor, setLoadingVehicleCountFor] = useState(null);
+
+  const loadUsers = async () => {
+    if (!token) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await apiRequest('/users?includeVisitorTicket=true', { token });
+      const data = Array.isArray(response) ? response : response?.data || [];
+      setUsers(data);
+      setUserVehicleCounts((prev) => {
+        if (!prev || Object.keys(prev).length === 0) return prev;
+        const next = {};
+        data.forEach((user) => {
+          if (prev[user._id] !== undefined) {
+            next[user._id] = prev[user._id];
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      setError(err.message || 'No fue posible obtener los usuarios');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          user.nombre,
+          user.apellido,
+          `${user.nombre || ''} ${user.apellido || ''}`,
+          user.email,
+          user.cedula,
+        ]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+      const matchesPermiso =
+        !permisoFilter || (user.permisoSistema || '').toLowerCase() === permisoFilter.toLowerCase();
+
+      const matchesEstado =
+        !estadoFilter || (user.estado || '').toLowerCase() === estadoFilter.toLowerCase();
+
+      return matchesSearch && matchesPermiso && matchesEstado;
+    });
+  }, [users, searchTerm, permisoFilter, estadoFilter]);
+
+  const hasActiveFilters = Boolean(searchTerm.trim() || permisoFilter || estadoFilter);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setPermisoFilter('');
+    setEstadoFilter('');
+  };
+
+  const fetchVehicleCount = async (userId) => {
+    if (!token || !userId) return 0;
+    if (loadingVehicleCountFor === userId) return userVehicleCounts[userId] ?? 0;
+
+    setLoadingVehicleCountFor(userId);
+    try {
+      const response = await apiRequest(`/users/${userId}/vehicles`, { token });
+      const data = Array.isArray(response) ? response : response?.data || [];
+      setUserVehicleCounts((prev) => ({ ...prev, [userId]: data.length }));
+      return data.length;
+    } catch (err) {
+      setUserVehicleCounts((prev) => ({ ...prev, [userId]: 0 }));
+      return 0;
+    } finally {
+      setLoadingVehicleCountFor(null);
+    }
+  };
+
+  const handleViewUser = (user) => {
+    setViewUser(user);
+    if (user?._id) {
+      fetchVehicleCount(user._id);
+    }
+  };
+
+  const getVehicleCount = (userId) => {
+    if (!userId) return null;
+    return userVehicleCounts[userId] ?? null;
+  };
+
+  const handleVehicleNavigation = async (user) => {
+    if (!user?._id) return;
+    let count = userVehicleCounts[user._id];
+    if (count === undefined) {
+      count = await fetchVehicleCount(user._id);
+    }
+    openVehiclesPage(user, (count || 0) > 0, 'list');
+  };
+
+  const openVehiclesPage = (user, hasVehicles, view = 'list') => {
+    if (!user?._id) return;
+    const search = view ? `?view=${view}` : '';
+    navigate(`/dashboard/vehicles${search}`, {
+      state: {
+        user,
+        hasVehicles,
+        from: 'directory',
+      },
+    });
+  };
+
+  const openEditModal = (user) => {
+    setEditUserId(user._id);
+    setEditForm(mapUserToForm(user));
+    setEditErrors({});
+    setFeedback('');
+  };
+
+  const closeEditModal = () => {
+    setEditUserId(null);
+    setEditForm(EMPTY_FORM);
+    setEditErrors({});
+    setSaving(false);
+  };
+
+  const handleEditChange = (event) => {
+    const { name, value } = event.target;
+    setEditForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleEditFileChange = async (event) => {
+    const { name, files } = event.target;
+    if (!files?.length) return;
+
+    try {
+      const dataUrl = await readFileAsDataUrl(files[0]);
+      setEditForm((prev) => ({
+        ...prev,
+        [name]: dataUrl,
+      }));
+    } catch (err) {
+      console.error('No fue posible leer el archivo', err);
+    }
+  };
+
+  const removeImageField = (field) => {
+    setEditForm((prev) => ({
+      ...prev,
+      [field]: '',
+    }));
+  };
+
+  const validateEditForm = () => {
+    const nextErrors = {};
+
+    if (!editForm.cedula.trim()) nextErrors.cedula = 'La cedula es obligatoria';
+    if (!editForm.nombre.trim()) nextErrors.nombre = 'El nombre es obligatorio';
+    if (!editForm.email.trim()) nextErrors.email = 'El correo es obligatorio';
+    if (!editForm.permisoSistema) nextErrors.permisoSistema = 'Selecciona un permiso';
+    if (!editForm.estado) nextErrors.estado = 'Selecciona un estado';
+
+    setEditErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const buildUpdatePayload = () => {
+    const payload = {
+      cedula: editForm.cedula.trim(),
+      nombre: editForm.nombre.trim(),
+      apellido: editForm.apellido.trim(),
+      email: editForm.email.trim().toLowerCase(),
+      RH: editForm.RH.trim().toUpperCase(),
+      facultad: editForm.facultad.trim(),
+      telefono: editForm.telefono.trim(),
+      imagen: editForm.imagen,
+      imagenQR: editForm.imagenQR,
+      rolAcademico: editForm.rolAcademico.trim(),
+      permisoSistema: editForm.permisoSistema,
+      estado: editForm.estado,
+    };
+
+    if (editForm.password.trim()) {
+      payload.password = editForm.password;
+    }
+
+    return payload;
+  };
+
+  const submitEditForm = async (event) => {
+    event.preventDefault();
+    if (!editUserId) return;
+    if (!validateEditForm()) return;
+
+    setSaving(true);
+    setFeedback('');
+
+    try {
+      const payload = buildUpdatePayload();
+      const response = await apiRequest(`/users/${editUserId}`, {
+        method: 'PUT',
+        token,
+        data: payload,
+      });
+
+      const updatedUser = response.user || response.data || null;
+      if (updatedUser) {
+        setUsers((prev) =>
+          prev.map((user) => (user._id === editUserId ? updatedUser : user))
+        );
+
+        if (viewUser?._id === editUserId) {
+          setViewUser(updatedUser);
+        }
+      } else {
+        await loadUsers();
+      }
+
+      setFeedback('Usuario actualizado correctamente.');
+      closeEditModal();
+    } catch (err) {
+      const apiErrors = err.details?.errors;
+      if (apiErrors && typeof apiErrors === 'object') {
+        setEditErrors((prev) => ({ ...prev, ...apiErrors }));
+      } else {
+        setFeedback(err.message || 'No fue posible actualizar el usuario.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setFeedback('');
+
+    try {
+      await apiRequest(`/users/${deleteTarget._id}`, {
+        method: 'DELETE',
+        token,
+      });
+
+      setUsers((prev) => prev.filter((user) => user._id !== deleteTarget._id));
+
+      if (viewUser?._id === deleteTarget._id) {
+        setViewUser(null);
+      }
+
+      setUserVehicleCounts((prev) => {
+        if (!prev || !(deleteTarget._id in prev)) return prev;
+        const next = { ...prev };
+        delete next[deleteTarget._id];
+        return next;
+      });
+
+      setFeedback('Usuario eliminado correctamente.');
+      setDeleteTarget(null);
+    } catch (err) {
+      setFeedback(err.message || 'No fue posible eliminar al usuario.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleReactivateTicket = async (userId) => {
+    if (!userId || reactivatingId) return;
+
+    setReactivatingId(userId);
+    setFeedback('');
+
+    try {
+      const response = await apiRequest('/visitors/reactivate', {
+        method: 'POST',
+        token,
+        data: { userId },
+      });
+
+      const updatedTicket = response.ticket || null;
+
+      setUsers((prev) =>
+        prev.map((userItem) =>
+          userItem._id === userId ? { ...userItem, visitorTicket: updatedTicket } : userItem
+        )
+      );
+
+      if (viewUser?._id === userId) {
+        setViewUser((prev) => (prev ? { ...prev, visitorTicket: updatedTicket } : prev));
+      }
+
+      setFeedback('Ticket temporal reactivado correctamente.');
+    } catch (err) {
+      setFeedback(err.message || 'No fue posible reactivar el ticket temporal.');
+    } finally {
+      setReactivatingId(null);
+    }
+  };
+
+  return (
+    <section className="min-h-screen bg-[#f8fafc] px-4 py-8 sm:py-12">
+      <div className="mx-auto max-w-6xl space-y-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-[#0f172a]">Directorio de usuarios</h1>
+            <p className="text-sm text-[#475569]">
+              Consulta, edita y administra la informacion de los usuarios registrados en el sistema.
+            </p>
+          </div>
+          {isAdmin && (
+            <Link
+              to="/dashboard/staff/register"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+            >
+              Registrar usuario
+            </Link>
+          )}
+        </header>
+
+        <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-12">
+          <label className="sm:col-span-5">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Buscar</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Nombre, apellido, correo o cedula"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            />
+          </label>
+
+          <label className="sm:col-span-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Permiso</span>
+            <select
+              value={permisoFilter}
+              onChange={(event) => setPermisoFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            >
+              <option value="">Todos</option>
+              {PERMISOS_SISTEMA.map((permiso) => (
+                <option key={permiso} value={permiso}>
+                  {permiso}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="sm:col-span-3">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[#00594e]">Estado</span>
+            <select
+              value={estadoFilter}
+              onChange={(event) => setEstadoFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/50"
+            >
+              <option value="">Todos</option>
+              {ESTADOS.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado.charAt(0).toUpperCase() + estado.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-end sm:col-span-1">
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        <UserStatsCharts
+          className="mt-6"
+          users={users}
+          loading={loading}
+          permisoLabels={PERMISOS_SISTEMA}
+          estadoLabels={ESTADOS}
+          title="Distribucion del directorio"
+          description="Visualiza la composicion de usuarios por permiso y estado en tiempo real."
+        />
+
+        {feedback && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {feedback}
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm font-medium text-[#00594e]">Cargando usuarios...</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {filteredUsers.map((user) => {
+              const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
+              const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
+              const canReactivateTicket = visitorTicketInfo.status !== 'active';
+
+              return (
+                <div
+                  key={user._id}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:shadow-md"
+                >
+                <div className="flex items-center gap-4">
+                  <img
+                    src={user.imagen || 'https://ui-avatars.com/api/?background=00594e&color=fff&name=' + encodeURIComponent(user.nombre || 'Usuario')}
+                    alt={user.nombre || 'Usuario'}
+                    className="h-14 w-14 rounded-full border border-slate-200 object-cover"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-base font-semibold text-[#0f172a]">
+                      {user.nombre} {user.apellido}
+                    </span>
+                    <span className="text-sm text-[#475569]">{user.email}</span>
+                    <span className="text-xs font-semibold text-[#00594e]">{user.permisoSistema}</span>
+                  </div>
+                </div>
+
+                  {isVisitor && (
+                    <div className="mt-3 rounded-lg border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
+                      <p className="mt-1 text-xs text-[#0f172a]">
+                        {visitorTicketInfo.description || 'Sin ticket activo'}
+                      </p>
+                      {visitorTicketInfo.token && (
+                        <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">
+                          Token: {visitorTicketInfo.token}
+                        </p>
+                      )}
+                      {canReactivateTicket && (
+                        <button
+                          type="button"
+                          onClick={() => handleReactivateTicket(user._id)}
+                          disabled={reactivatingId === user._id}
+                          className="mt-2 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-[11px] font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {reactivatingId === user._id ? 'Reactivando...' : 'Reactivar ticket'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleViewUser(user)}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                  >
+                    Ver
+                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(user)}
+                        className="rounded-md border border-[#0f766e]/40 px-3 py-1.5 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(user)}
+                        className="rounded-md border border-[#b91c1c]/40 px-3 py-1.5 text-xs font-semibold text-[#b91c1c] transition hover:bg-[#b91c1c]/10"
+                      >
+                        Eliminar
+                      </button>
+                    </>
+                  )}
+                </div>
+                </div>
+              );
+            })}
+
+            {filteredUsers.length === 0 && !loading && (
+              <p className="text-sm text-[#475569]">
+                {hasActiveFilters
+                  ? 'No se encontraron usuarios que coincidan con los filtros aplicados.'
+                  : 'No hay usuarios registrados actualmente. Utiliza el boton de registro para crear uno nuevo.'}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {viewUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setViewUser(null)}
+        >
+          <div
+            className="relative w-full max-w-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setViewUser(null)}
+              className="absolute right-4 top-4 rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
+            >
+              Cerrar
+            </button>
+            <ProfileCard user={viewUser} />
+            {(viewUser.rolAcademico || '').toLowerCase() === 'visitante' && (() => {
+              const visitorInfo = formatVisitorTicketInfo(viewUser.visitorTicket);
+              const canReactivateVisitor = visitorInfo.status !== 'active';
+              return (
+                <div className="mt-4 rounded-lg border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 px-4 py-3 text-sm text-[#0f172a]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
+                  <p className="mt-1 text-xs">{visitorInfo.description || 'Sin ticket activo'}</p>
+                  {visitorInfo.token && (
+                    <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">Token: {visitorInfo.token}</p>
+                  )}
+                  {canReactivateVisitor && (
+                    <button
+                      type="button"
+                      onClick={() => handleReactivateTicket(viewUser._id)}
+                      disabled={reactivatingId === viewUser._id}
+                      className="mt-3 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {reactivatingId === viewUser._id ? 'Reactivando...' : 'Reactivar ticket'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {canAccessVehicles && viewUser?._id && (() => {
+              const vehicleCount = getVehicleCount(viewUser._id);
+              const hasVehicles = (vehicleCount || 0) > 0;
+              const isLoadingVehicles = loadingVehicleCountFor === viewUser._id;
+              return (
+              <div className="mt-4 rounded-lg border border-dashed border-[#0f172a]/20 bg-white px-4 py-3 text-sm text-[#0f172a] shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#0f172a]">Vehiculos del usuario</p>
+                    <p className="text-xs text-[#475569]">
+                      {isLoadingVehicles
+                        ? 'Cargando informacion de vehiculos...'
+                        : hasVehicles
+                          ? `${vehicleCount} vehiculo${vehicleCount === 1 ? '' : 's'} registrados.`
+                          : 'Sin vehiculos registrados.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchVehicleCount(viewUser._id)}
+                    disabled={isLoadingVehicles}
+                    className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isLoadingVehicles ? 'Actualizando...' : 'Actualizar conteo'}
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {hasVehicles && (
+                    <button
+                      type="button"
+                      onClick={() => handleVehicleNavigation(viewUser)}
+                      className="inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                    >
+                      Ver vehiculos
+                    </button>
+                  )}
+                  {canRegisterVehicles && (
+                    <button
+                      type="button"
+                      onClick={() => openVehiclesPage(viewUser, hasVehicles, 'register')}
+                      className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                    >
+                      Registrar vehiculo
+                    </button>
+                  )}
+                </div>
+              </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {editUserId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={closeEditModal}
+        >
+          <div
+            className="relative w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeEditModal}
+              className="absolute right-4 top-4 rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-300"
+            >
+              Cancelar
+            </button>
+            <h2 className="text-2xl font-semibold text-[#0f172a]">Editar usuario</h2>
+            <p className="text-sm text-[#475569]">Actualiza los datos y guarda los cambios para sincronizar el directorio.</p>
+
+            <form className="mt-6 space-y-6" onSubmit={submitEditForm}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  { name: 'cedula', label: 'Cedula', type: 'text', required: true },
+                  { name: 'nombre', label: 'Nombre', type: 'text', required: true },
+                  { name: 'apellido', label: 'Apellido', type: 'text' },
+                  { name: 'email', label: 'Correo', type: 'email', required: true },
+                  { name: 'telefono', label: 'Telefono', type: 'text' },
+                  { name: 'RH', label: 'RH', type: 'text' },
+                  { name: 'facultad', label: 'Facultad', type: 'text' },
+                  { name: 'rolAcademico', label: 'Rol academico', type: 'text' },
+                  { name: 'password', label: 'Password (opcional)', type: 'password' },
+                ].map((field) => (
+                  <label key={field.name} className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">
+                      {field.label}
+                    </span>
+                    <input
+                      name={field.name}
+                      type={field.type}
+                      value={editForm[field.name]}
+                      onChange={handleEditChange}
+                      required={field.required}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                    />
+                    {editErrors[field.name] && (
+                      <span className="text-xs font-medium text-[#b45309]">{editErrors[field.name]}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Permiso del sistema</span>
+                  <select
+                    name="permisoSistema"
+                    value={editForm.permisoSistema}
+                    onChange={handleEditChange}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                    required
+                  >
+                    {PERMISOS_SISTEMA.map((permiso) => (
+                      <option key={permiso} value={permiso}>
+                        {permiso}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.permisoSistema && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.permisoSistema}</span>
+                  )}
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Estado</span>
+                  <select
+                    name="estado"
+                    value={editForm.estado}
+                    onChange={handleEditChange}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                    required
+                  >
+                    {ESTADOS.map((estado) => (
+                      <option key={estado} value={estado}>
+                        {estado}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.estado && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.estado}</span>
+                  )}
+                </label>
+              </div>
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Imagen de perfil</span>
+                  <div className="flex items-center gap-3">
+                    <label
+                      htmlFor="edit-imagen"
+                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
+                    >
+                      Seleccionar archivo
+                    </label>
+                    {editForm.imagen && (
+                      <>
+                        <img src={editForm.imagen} alt="Preview perfil" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <button
+                          type="button"
+                          onClick={() => removeImageField('imagen')}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-xs text-[#0f172a] hover:bg-slate-100"
+                        >
+                          Quitar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    id="edit-imagen"
+                    name="imagen"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditFileChange}
+                    className="hidden"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Imagen QR</span>
+                  <div className="flex items-center gap-3">
+                    <label
+                      htmlFor="edit-imagenQR"
+                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#B5A160]/40 bg-[#B5A160]/10 px-4 py-2 text-xs font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/20"
+                    >
+                      Seleccionar archivo
+                    </label>
+                    {editForm.imagenQR && (
+                      <>
+                        <img src={editForm.imagenQR} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <button
+                          type="button"
+                          onClick={() => removeImageField('imagenQR')}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-xs text-[#0f172a] hover:bg-slate-100"
+                        >
+                          Quitar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    id="edit-imagenQR"
+                    name="imagenQR"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditFileChange}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5b55] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[#b91c1c]/40 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-[#b91c1c]">Eliminar usuario</h3>
+            <p className="mt-2 text-sm text-[#475569]">
+              Estas seguro de eliminar a <span className="font-semibold text-[#0f172a]">{deleteTarget.nombre} {deleteTarget.apellido}</span>? Esta accion no se puede deshacer.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={confirmDeleteUser}
+                className="rounded-lg bg-[#b91c1c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991b1b] focus:outline-none focus:ring-2 focus:ring-[#b91c1c] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
+export default UserDirectory;
