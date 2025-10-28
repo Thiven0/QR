@@ -1,8 +1,14 @@
 const mongoose = require("mongoose");
 
 const connectDatabase = async () => {
+  const mongoUri = process.env.MONGODB_URI;
+
+  if (!mongoUri) {
+    throw new Error("La variable de entorno MONGODB_URI no esta configurada");
+  }
+
   try {
-    await mongoose.connect("mongodb+srv://admin1:admin1@cluster0.xxyp4j3.mongodb.net/universidad?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect(mongoUri);
     console.log("base de datos conectada");
   } catch (error) {
     console.log("el error es: ", error);
