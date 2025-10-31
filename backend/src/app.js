@@ -1,30 +1,28 @@
 const express = require("express");
 const cors = require("cors");
 
-const authRoutes = require("./routes/auth.routes");
-const userRoutes = require("./routes/user.routes");
-const entryExitRoutes = require("./routes/entry-exit.routes");
-const visitorRoutes = require("./routes/visitor.routes");
-const vehicleRoutes = require("./routes/vehicle.routes");
+const createApp = () => {
+  const app = express();
 
-const app = express();
+  app.use(cors());
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  app.use("/api/auth", require("./routes/auth.routes"));
+  app.use("/api/users", require("./routes/user.routes"));
+  app.use("/api/exitEntry", require("./routes/entry-exit.routes"));
+  app.use("/api/visitors", require("./routes/visitor.routes"));
+  app.use("/api/vehicles", require("./routes/vehicle.routes"));
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/exitEntry", entryExitRoutes);
-app.use("/api/visitors", visitorRoutes);
-app.use("/api/vehicles", vehicleRoutes);
-
-app.get("/ruta-prueba", (req, res) => {
-  res.status(200).json({
-    id: 1,
-    nombre: "Harold",
-    web: "web1",
+  app.get("/ruta-prueba", (req, res) => {
+    res.status(200).json({
+      id: 1,
+      nombre: "Harold",
+      web: "web1",
+    });
   });
-});
 
-module.exports = app;
+  return app;
+};
+
+module.exports = createApp;
