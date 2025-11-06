@@ -242,8 +242,45 @@ const reactivateVisitorTicket = async (req, res) => {
   }
 };
 
+const listVisitorTickets = async (_req, res) => {
+  try {
+    const tickets = await VisitorTicket.find().populate(
+      "user",
+      "nombre apellido email permisoSistema estado rolAcademico created_at"
+    );
+
+    const data = tickets.map((ticket) => {
+      const serialized = serializeVisitorTicket(ticket);
+      return {
+        _id: ticket._id,
+        user: ticket.user,
+        token: ticket.token,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        expiresAt: ticket.expiresAt,
+        status: serialized?.status ?? "unknown",
+        isExpired: Boolean(serialized?.isExpired),
+        remainingMinutes: serialized?.remainingMinutes ?? 0,
+        formattedRemaining: serialized?.formattedRemaining ?? "0h 0m",
+      };
+    });
+
+    return res.status(200).json({
+      status: "success",
+      data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: "No fue posible obtener los tickets de visitantes",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   registerVisitor,
   expireVisitorSession,
   reactivateVisitorTicket,
+  listVisitorTickets,
 };

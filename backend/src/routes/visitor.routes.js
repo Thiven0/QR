@@ -11,5 +11,10 @@ router.post(
   authMiddleware(['Administrador', 'Celador']),
   visitorController.reactivateVisitorTicket
 );
+router.get(
+  "/tickets",
+  authMiddleware(['Administrador', 'Celador']),
+  visitorController.listVisitorTickets
+);
 
 module.exports = router;
