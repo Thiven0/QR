@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import QRCode from 'qrcode';
 import { useNavigate } from 'react-router-dom';
 import RegisterForm from '../../dashboard/components/RegisterUserForm';
 import { apiRequest } from '../../../services/apiClient';
@@ -8,6 +9,11 @@ const validateVisitor = (formData) => {
   const errors = {};
 
   if (!formData.nombre?.trim()) errors.nombre = 'El nombre es obligatorio.';
+  if (!formData.cedula?.trim()) {
+    errors.cedula = 'La cedula es obligatoria.';
+  } else if (!/^\d+$/.test(formData.cedula)) {
+    errors.cedula = 'Solo numeros.';
+  }
   if (!formData.correo?.trim()) {
     errors.correo = 'El correo es obligatorio.';
   } else if (!/\S+@\S+\.\S+/.test(formData.correo)) {
@@ -20,16 +26,18 @@ const validateVisitor = (formData) => {
     errors.password = 'La contrasena debe tener al menos 6 caracteres.';
   }
 
-  if (formData.cedula && !/^\d+$/.test(formData.cedula)) {
-    errors.cedula = 'Solo numeros.';
-  }
-
-  if (formData.telefono && !/^\d+$/.test(formData.telefono)) {
+  if (!formData.telefono?.trim()) {
+    errors.telefono = 'El telefono es obligatorio.';
+  } else if (!/^\d+$/.test(formData.telefono)) {
     errors.telefono = 'Solo numeros.';
   }
 
-  if (formData.rh && !/^(A|B|AB|O)[+-]$/.test(formData.rh)) {
-    errors.rh = 'Ej: A+, O-';
+  if (!formData.rh?.trim()) {
+    errors.rh = 'Selecciona un tipo de sangre.';
+  }
+
+  if (!formData.facultad?.trim()) {
+    errors.facultad = 'Selecciona una facultad.';
   }
 
   return errors;
@@ -40,6 +48,27 @@ const RegisterVisitor = () => {
   const navigate = useNavigate();
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  const buildQrRawText = (data) => {
+    const fullName = [data.nombre, data.apellido].filter(Boolean).join(' ').trim();
+    const lines = [
+      fullName,
+      data.cedula,
+      data.facultad,
+      data.rh,
+      data.telefono,
+    ];
+    return lines.filter(Boolean).join('\n\n');
+  };
+
+  const generateQrImage = async (data) => {
+    const rawText = buildQrRawText(data);
+    return QRCode.toDataURL(rawText, {
+      width: 512,
+      errorCorrectionLevel: 'M',
+      margin: 1,
+    });
+  };
 
   const handleSubmit = async (formData) => {
     if (submitting) return;
@@ -53,17 +82,24 @@ const RegisterVisitor = () => {
 
     try {
       setSubmitting(true);
+      const qrImage = await generateQrImage(formData);
+
+      const payloadData = {
+        ...formData,
+        imagenQR: qrImage,
+      };
+
       const payload = {
-        cedula: formData.cedula,
-        nombre: formData.nombre,
-        apellido: formData.apellido,
-        RH: formData.rh,
-        facultad: formData.facultad,
-        telefono: formData.telefono,
-        email: formData.correo,
-        password: formData.password,
-        imagen: formData.imagen,
-        imagenQR: formData.imagenQR,
+        cedula: payloadData.cedula,
+        nombre: payloadData.nombre,
+        apellido: payloadData.apellido,
+        RH: payloadData.rh,
+        facultad: payloadData.facultad,
+        telefono: payloadData.telefono,
+        email: payloadData.correo,
+        password: payloadData.password,
+        imagen: payloadData.imagen,
+        imagenQR: payloadData.imagenQR,
       };
 
       const response = await apiRequest('/visitors/register', {
@@ -79,6 +115,14 @@ const RegisterVisitor = () => {
 
       navigate('/dashboard');
     } catch (error) {
+      if (error instanceof Error && error.message?.includes('QR')) {
+        setErrors({
+          general: 'No fue posible generar el codigo QR. Intenta nuevamente.',
+        });
+        setSubmitting(false);
+        return;
+      }
+
       const apiErrors = error.details?.errors;
       if (apiErrors) {
         setErrors(apiErrors);
@@ -126,11 +170,13 @@ const RegisterVisitor = () => {
                 onSubmit={handleSubmit}
                 errors={errors}
                 onFieldChange={handleFieldChange}
-                initialValues={{ rol: 'Visitante' }}
+                initialValues={{ rol: 'Usuario' }}
                 disabledFields={['rol']}
                 enablePassword
                 submitLabel={submitting ? 'Registrando...' : 'Registrar visita'}
                 isSubmitting={submitting}
+                showRoleField={false}
+                showQrField={false}
               />
             </div>
           </article>
@@ -139,12 +185,12 @@ const RegisterVisitor = () => {
             <div>
               <h2 className="text-xl font-semibold text-[#0f172a]">Ticket temporal</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                Al completar el registro se iniciará sesión automáticamente. Tu ticket temporal tendrá una vigencia limitada;
-                cuando expire, deberás registrar una nueva visita.
+                Al completar el registro se iniciara sesion automaticamente. Tu ticket temporal tendra una vigencia limitada;
+                cuando expire, deberas registrar una nueva visita.
               </p>
             </div>
             <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-4 text-sm text-[#00594e]">
-              Mantén tus credenciales a la mano. Si el ticket expira se cerrará tu sesión automáticamente y tu estado pasará a inactivo.
+              Manten tus credenciales a la mano. Si el ticket expira se cerrara tu sesion automaticamente y tu estado pasara a inactivo.
             </div>
           </aside>
         </div>

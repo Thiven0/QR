@@ -10,17 +10,17 @@ const GuardLogin = () => {
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#00594e]">Acceso al panel</p>
             <h1 className="text-3xl font-bold text-[#0f172a]">Bienvenido de nuevo</h1>
             <p className="text-sm text-[#475569]">
-              Inicia sesión para gestionar accesos, escaneo QR y reportes desde el tablero central.
+              Inicia sesion para gestionar accesos, escaneo QR y reportes desde el tablero central.
             </p>
           </div>
           <GuardLoginForm />
           <div className="pt-4 text-center text-sm text-[#475569]">
-            ¿Eres visitante?{' '}
+            Eres visitante?{' '}
             <Link
               to="/register-visitor"
               className="font-semibold text-[#00594e] underline-offset-2 transition hover:text-[#00312a] hover:underline"
             >
-              Registra tu visita aquí
+              Registra tu visita aqui
             </Link>
           </div>
         </article>
@@ -34,17 +34,17 @@ const GuardLogin = () => {
               <p className="text-sm font-semibold uppercase tracking-[0.25em] text-white/70">Dashboard unificado</p>
               <h2 className="text-2xl font-semibold leading-snug">Controla accesos en tiempo real</h2>
               <p className="text-sm text-white/80">
-                Visualiza entradas recientes, reporta incidentes y mantiene la bitácora alineada con el equipo administrativo.
+                Visualiza entradas recientes, reporta incidentes y mantiene la bitacora alineada con el equipo administrativo.
               </p>
             </div>
 
             <div className="grid gap-3 text-sm">
               <div className="rounded-lg border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
                 <p className="font-semibold">Reportes diarios</p>
-                <p className="text-white/70">Genera resúmenes PDF en un clic desde el tablero.</p>
+                <p className="text-white/70">Genera resumenes PDF en un clic desde el tablero.</p>
               </div>
               <div className="rounded-lg border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
-                <p className="font-semibold">Escáner QR integrado</p>
+                <p className="font-semibold">Escaner QR integrado</p>
                 <p className="text-white/70">Sincroniza en vivo los accesos de visitantes recurrentes.</p>
               </div>
             </div>
