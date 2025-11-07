@@ -4,6 +4,8 @@ const { User } = require("../models/user.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
 const { createToken } = require("../services/token.service");
 const { serializeVisitorTicket } = require("../utils/visitorTicket");
+const Registro = require("../models/entry-exit.model");
+const { Vehicle } = require("../models/vehicle.model");
 
 const VISITOR_ROLE = "Visitante";
 const VISITOR_PERMISSION = "Usuario";
@@ -35,6 +37,55 @@ const createVisitorSessionToken = (user) => {
     permisoSistema: user.permisoSistema,
     expiresInDays: Math.max(VISITOR_SESSION_DAYS, 1),
   });
+};
+
+const formatTime = (date) => {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+const formatDuration = (start, end) => {
+  if (!(start instanceof Date) || !(end instanceof Date)) {
+    return undefined;
+  }
+
+  const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) {
+    return "00:00:00";
+  }
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  return `${hours}:${minutes}:${seconds}`;
+};
+
+const closeActiveRegistroForVisitor = async (userId, motivo = "ticket_expirado") => {
+  if (!userId) return null;
+
+  const registro = await Registro.findOne({
+    usuario: userId,
+    $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
+  }).sort({ fechaEntrada: -1 });
+
+  if (!registro) return null;
+
+  const now = new Date();
+  registro.fechaSalida = now;
+  registro.horaSalida = formatTime(now);
+  registro.duracionSesion = formatDuration(registro.fechaEntrada, now);
+  registro.cierreForzado = true;
+  registro.cierreMotivo = motivo;
+
+  await registro.save();
+
+  if (registro.vehiculo) {
+    await Vehicle.findByIdAndUpdate(registro.vehiculo, { estado: "inactivo" }).catch(() => {});
+  }
+
+  return registro;
 };
 
 const registerVisitor = async (req, res) => {
@@ -88,7 +139,7 @@ const registerVisitor = async (req, res) => {
       imagenQR,
       rolAcademico: VISITOR_ROLE,
       permisoSistema: VISITOR_PERMISSION,
-      estado: "activo",
+      estado: "inactivo",
     });
 
     const savedVisitor = await visitorUser.save();
@@ -160,6 +211,8 @@ const expireVisitorSession = async (req, res) => {
       await user.save();
     }
 
+    await closeActiveRegistroForVisitor(userId, 'ticket_expirado');
+
     return res.status(200).json({
       status: "success",
       message: "Ticket expirado y usuario marcado como inactivo",
@@ -219,11 +272,6 @@ const reactivateVisitorTicket = async (req, res) => {
     } else {
       const payload = buildTicketPayload(userId);
       ticket = await VisitorTicket.create(payload);
-    }
-
-    if (user.estado !== 'activo') {
-      user.estado = 'activo';
-      await user.save();
     }
 
     const serializedTicket = serializeVisitorTicket(ticket);

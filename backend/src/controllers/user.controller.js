@@ -1,12 +1,23 @@
 ﻿const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { User, PERMISOS_SISTEMA } = require("../models/user.model");
+const Registro = require("../models/entry-exit.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
-const { serializeVisitorTicket } = require("../utils/visitorTicket");
+const { serializeVisitorTicket, getActiveVisitorTicketForUser } = require("../utils/visitorTicket");
 
 const DEFAULT_ALLOWED_BY_ROLE = {
   Administrador: PERMISOS_SISTEMA,
   Celador: ["Usuario"],
+};
+
+const findActiveRegistroForUser = async (userId) => {
+  if (!userId) return null;
+  return Registro.findOne({
+    usuario: userId,
+    $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
+  })
+    .sort({ fechaEntrada: -1 })
+    .populate("vehiculo", "type brand model color plate estado");
 };
 
 const normalizePermiso = (permiso) => {
@@ -362,12 +373,49 @@ const validateScannedUser = async (req, res) => {
     }
 
     const { password, ...userData } = user.toObject();
+    const isVisitor = (user.rolAcademico || "").toLowerCase() === "visitante";
+    let ticketInfo = null;
+
+    if (isVisitor) {
+      const activeTicket = await getActiveVisitorTicketForUser(user._id);
+      if (!activeTicket) {
+        return res.status(403).json({
+          status: "error",
+          message: "El ticket temporal del visitante ha expirado. Debe generar un nuevo registro antes de ingresar.",
+        });
+      }
+      ticketInfo = serializeVisitorTicket(activeTicket);
+      userData.visitorTicket = ticketInfo;
+    }
+
+    const activeRegistro = await findActiveRegistroForUser(user._id);
+    let activeRegistroPayload = null;
+    if (activeRegistro) {
+      activeRegistroPayload = {
+        _id: activeRegistro._id,
+        fechaEntrada: activeRegistro.fechaEntrada,
+        horaEntrada: activeRegistro.horaEntrada,
+        vehiculo: activeRegistro.vehiculo
+          ? {
+              _id: activeRegistro.vehiculo._id,
+              type: activeRegistro.vehiculo.type,
+              plate: activeRegistro.vehiculo.plate,
+              estado: activeRegistro.vehiculo.estado,
+              brand: activeRegistro.vehiculo.brand,
+              model: activeRegistro.vehiculo.model,
+              color: activeRegistro.vehiculo.color,
+            }
+          : null,
+      };
+    }
 
     return res.status(200).json({
       status: 'success',
       message: 'Usuario encontrado',
       userId: user._id,
       user: userData,
+      activeRegistro: activeRegistroPayload,
+      visitorTicket: ticketInfo,
     });
   } catch (error) {
     return res.status(500).json({

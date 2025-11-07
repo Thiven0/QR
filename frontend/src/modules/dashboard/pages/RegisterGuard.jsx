@@ -24,6 +24,8 @@ const FACULTADES = [
   'Medicina Veterinaria y Zootecnia',
 ];
 
+const TIPOS_SANGRE = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
 const INITIAL_FORM = {
   cedula: '',
   nombre: '',
@@ -98,20 +100,23 @@ const RegisterGuard = () => {
   const generateQrFromForm = async () => {
     setQrError('');
 
-    const requiredForQr = {
-      nombre: form.nombre,
-      cedula: form.cedula,
-      facultad: form.facultad,
-      RH: form.RH,
-      telefono: form.telefono,
-    };
+    const requiresFacultad = form.permisoSistema === 'Usuario';
+    const requiredFields = ['nombre', 'cedula', 'RH', 'telefono'];
+    if (requiresFacultad) {
+      requiredFields.splice(2, 0, 'facultad');
+    }
 
-    const missingFields = Object.entries(requiredForQr)
-      .filter(([, value]) => !String(value || '').trim())
-      .map(([key]) => key);
+    const missingFields = requiredFields.filter(
+      (field) => !String(form[field] || '').trim()
+    );
 
     if (missingFields.length) {
-      setQrError('Completa los campos obligatorios (nombre, cedula, facultad, RH y telefono) antes de generar el QR.');
+      const fieldsLabel = requiresFacultad
+        ? 'nombre, cedula, facultad, RH y telefono'
+        : 'nombre, cedula, RH y telefono';
+      setQrError(
+        `Completa los campos obligatorios (${fieldsLabel}) antes de generar el QR.`
+      );
       return;
     }
 
@@ -223,7 +228,7 @@ const RegisterGuard = () => {
                       inputMode: 'numeric',
                       pattern: '[0-9]*',
                     },
-                    { name: 'RH', label: 'RH', type: 'text' },
+                    { name: 'RH', label: 'RH', type: 'select' },
                   ].map((field) => {
                     const handleFieldChange = (event) => {
                       if (['cedula', 'telefono'].includes(field.name)) {
@@ -232,6 +237,32 @@ const RegisterGuard = () => {
                       }
                       handleChange(event);
                     };
+
+                    if (field.name === 'RH') {
+                      return (
+                        <div key={field.name}>
+                          <label className="block space-y-2">
+                            <span className="text-sm font-medium text-[#00594e]">{field.label}</span>
+                            <select
+                              name="RH"
+                              value={form.RH}
+                              onChange={handleChange}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                            >
+                              <option value="">Selecciona el tipo de sangre</option>
+                              {TIPOS_SANGRE.map((tipo) => (
+                                <option key={tipo} value={tipo}>
+                                  {tipo}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {errors.RH && (
+                            <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.RH}</p>
+                          )}
+                        </div>
+                      );
+                    }
 
                     return (
                       <div key={field.name}>
