@@ -21,7 +21,29 @@ const buildConicGradient = (segments = []) => {
 
 const ensureDate = (value) => {
   if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
+
+  if (value instanceof Date) {
+    const clone = new Date(value.getTime());
+    return Number.isNaN(clone.getTime()) ? null : clone;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-').map(Number);
+      if (
+        Number.isFinite(year) &&
+        Number.isFinite(month) &&
+        Number.isFinite(day)
+      ) {
+        const date = new Date(year, month - 1, day);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+      return null;
+    }
+  }
+
+  const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
@@ -1245,33 +1267,35 @@ const DashboardStats = () => {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <article className="flex min-w-0 flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
               <h2 className="text-lg font-semibold text-[#0f172a]">Entradas por día</h2>
               <p className="text-sm text-[#64748b]">Registros diarios dentro del rango seleccionado.</p>
             </header>
             {dailyEntriesSeries.items.length > 0 ? (
-              <div className="flex items-end gap-2 overflow-x-auto">
-                {dailyEntriesSeries.items.map((item) => (
-                  <div key={item.key} className="flex min-w-[2.2rem] flex-col items-center gap-2">
-                    <div className="flex h-48 w-full items-end overflow-hidden rounded-md bg-slate-100">
-                      <div
-                        className="w-full rounded-t-md bg-[#00594e]"
-                        style={{
-                          height: `${Math.max(
-                            (item.value / dailyEntriesSeries.max) * 100,
-                            item.value > 0 ? 6 : 0
-                          )}%`,
-                        }}
-                        title={`${item.tooltip}: ${item.value.toLocaleString('es-CO')} entradas`}
-                      />
+              <div className="-mx-2 overflow-x-auto px-2">
+                <div className="flex items-end gap-2">
+                  {dailyEntriesSeries.items.map((item) => (
+                    <div key={item.key} className="flex min-w-[2.2rem] flex-shrink-0 flex-col items-center gap-2">
+                      <div className="flex h-48 w-full items-end overflow-hidden rounded-md bg-slate-100">
+                        <div
+                          className="w-full rounded-t-md bg-[#00594e]"
+                          style={{
+                            height: `${Math.max(
+                              (item.value / dailyEntriesSeries.max) * 100,
+                              item.value > 0 ? 6 : 0
+                            )}%`,
+                          }}
+                          title={`${item.tooltip}: ${item.value.toLocaleString('es-CO')} entradas`}
+                        />
+                      </div>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-[#64748b]">
+                        {item.label}
+                      </span>
+                      <span className="text-xs text-[#0f172a]">{item.value.toLocaleString('es-CO')}</span>
                     </div>
-                    <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-[#64748b]">
-                      {item.label}
-                    </span>
-                    <span className="text-xs text-[#0f172a]">{item.value.toLocaleString('es-CO')}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-[#64748b]">
@@ -1279,7 +1303,7 @@ const DashboardStats = () => {
               </p>
             )}
           </article>
-          <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <article className="flex min-w-0 flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
               <h2 className="text-lg font-semibold text-[#0f172a]">Hora pico</h2>
               <p className="text-sm text-[#64748b]">Franjas con mayor volumen de entradas registradas.</p>

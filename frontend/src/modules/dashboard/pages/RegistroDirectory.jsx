@@ -214,39 +214,67 @@ const RegistroDirectory = () => {
     const isOpen = !registro?.fechaSalida;
     const baseClasses = 'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold';
 
-    if (isOpen) {
-      return (
-        <span className={`${baseClasses} bg-[#dcfce7] text-[#166534]`}>
-          <span className="h-2 w-2 rounded-full bg-[#16a34a]" />
-          En progreso
-        </span>
-      );
-    }
-
-    return (
+    const mainBadge = isOpen ? (
+      <span className={`${baseClasses} bg-[#dcfce7] text-[#166534]`}>
+        <span className="h-2 w-2 rounded-full bg-[#16a34a]" />
+        En progreso
+      </span>
+    ) : (
       <span className={`${baseClasses} bg-[#fef3c7] text-[#92400e]`}>
         <span className="h-2 w-2 rounded-full bg-[#f97315]" />
         Finalizado
       </span>
+    );
+
+    const forcedBadge = registro?.cierreForzado ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#b91c1c]">
+        <span className="h-2 w-2 rounded-full bg-[#b91c1c]" />
+        Cierre por ticket
+      </span>
+    ) : null;
+
+    return (
+      <div className="flex flex-col gap-1">
+        {mainBadge}
+        {forcedBadge}
+      </div>
     );
   };
 
   const handleExport = () => {
     if (!filteredRegistros.length) return;
 
-    const headers = ['Usuario', 'Correo', 'Porteria', 'Entrada', 'Hora entrada', 'Salida', 'Hora salida', 'Duracion'];
+    const headers = [
+      'Usuario',
+      'Correo',
+      'Rol',
+      'Vehiculo',
+      'Placa vehiculo',
+      'Porteria',
+      'Entrada',
+      'Hora entrada',
+      'Salida',
+      'Hora salida',
+      'Duracion',
+      'Cierre forzado',
+    ];
     const rows = filteredRegistros.map((registro) => {
       const usuario = registro.usuario || {};
       const administrador = registro.administrador || {};
+      const vehiculo = registro.vehiculo || {};
       return [
         `${usuario.nombre || ''} ${usuario.apellido || ''}`.trim(),
         usuario.email || '',
+        usuario.rolAcademico || '',
+        vehiculo.type || '',
+        vehiculo.plate || '',
         administrador.nombre || '',
         formatDateTime(registro.fechaEntrada),
         formatTime(registro.horaEntrada),
         formatDateTime(registro.fechaSalida),
         formatTime(registro.horaSalida),
         formatDurationValue(registro.duracionSesion),
+        registro.cierreForzado ? `Si (${registro.cierreMotivo || 'ticket'})` : 'No',
       ];
     });
 
@@ -479,12 +507,15 @@ const RegistroDirectory = () => {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                    Usuario
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                    Porteria
-                  </th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                  Usuario
+                </th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                  Vehiculo
+                </th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                  Porteria
+                </th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Estado
                   </th>
@@ -502,7 +533,7 @@ const RegistroDirectory = () => {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={7} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       Cargando registros...
                     </td>
                   </tr>
@@ -530,6 +561,30 @@ const RegistroDirectory = () => {
                             {`${usuario.nombre || ''} ${usuario.apellido || ''}`.trim() || 'Sin nombre'}
                           </div>
                           <div className="text-xs text-[#475569]">{usuario.email || 'Sin correo'}</div>
+                          {(usuario.rolAcademico || '').toLowerCase() === 'visitante' && (
+                            <span className="mt-1 inline-flex w-fit items-center rounded-full bg-[#0f172a]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f172a]">
+                              Visitante
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {registro.vehiculo ? (
+                            <div className="flex flex-col">
+                              <span className="text-sm font-semibold text-[#0f172a]">
+                                {registro.vehiculo.type || 'Vehiculo'}
+                              </span>
+                              <span className="text-xs text-[#475569]">
+                                Placa: {registro.vehiculo.plate || 'Sin placa'}
+                              </span>
+                              <span className="mt-1 inline-flex w-fit items-center rounded-full bg-[#0f766e]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f766e]">
+                                Con vehiculo
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
+                              Sin vehiculo
+                            </span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="font-semibold text-[#0f172a]">{administrador.nombre || 'Sin asignar'}</div>
@@ -552,7 +607,7 @@ const RegistroDirectory = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={7} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       No se encontraron registros con los filtros seleccionados.
                     </td>
                   </tr>
@@ -607,6 +662,17 @@ const RegistroDirectory = () => {
                     <span className="font-semibold text-[#0f172a]">Documento:</span>{' '}
                     {selected.usuario?.cedula || 'Sin documento'}
                   </p>
+                  {selected.usuario?.rolAcademico && (
+                    <p>
+                      <span className="font-semibold text-[#0f172a]">Rol:</span>{' '}
+                      <span className="capitalize">{selected.usuario.rolAcademico}</span>
+                      {(selected.usuario.rolAcademico || '').toLowerCase() === 'visitante' && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-[#0f172a]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f172a]">
+                          Visitante
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
               </section>
               <section>
@@ -621,6 +687,31 @@ const RegistroDirectory = () => {
                     {selected.administrador?.email || 'Sin correo'}
                   </p>
                 </div>
+              </section>
+
+              <section className="md:col-span-2">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-[#0f766e]">Vehiculo asociado</h4>
+                {selected.vehiculo ? (
+                  <div className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#475569] sm:grid-cols-2">
+                    <p>
+                      <span className="font-semibold text-[#0f172a]">Tipo:</span> {selected.vehiculo.type || 'Sin tipo'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#0f172a]">Placa:</span> {selected.vehiculo.plate || 'Sin placa'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#0f172a]">Color:</span> {selected.vehiculo.color || 'Sin color'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#0f172a]">Estado:</span>{' '}
+                      <span className="capitalize">{selected.vehiculo.estado || 'desconocido'}</span>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white px-4 py-2 text-sm text-[#94a3b8]">
+                    Este registro no tiene un vehiculo asociado.
+                  </p>
+                )}
               </section>
             </div>
 
@@ -647,6 +738,11 @@ const RegistroDirectory = () => {
                   <span className="font-semibold">Duracion de la sesion:</span>{' '}
                   {formatDurationValue(selected.duracionSesion)}
                 </p>
+                {selected.cierreForzado && (
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#b45309]">
+                    Cierre por ticket expirado
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-[#0f172a]/70">
                   Creado el {formatDateTime(getRegistroTimestamp(selected, ['createdAt', 'created_at']))} - Actualizado el{' '}
                   {formatDateTime(getRegistroTimestamp(selected, ['updatedAt', 'updated_at']))}

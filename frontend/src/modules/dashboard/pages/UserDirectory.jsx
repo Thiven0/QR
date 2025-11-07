@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiTruck } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
@@ -208,7 +208,7 @@ const UserDirectory = () => {
 
   const handleViewUser = (user) => {
     setViewUser(user);
-    if (user?._id) {
+    if (user?._id && userVehicleCounts[user._id] === undefined) {
       fetchVehicleCount(user._id);
     }
   };
@@ -217,6 +217,26 @@ const UserDirectory = () => {
     if (!userId) return null;
     return userVehicleCounts[userId] ?? null;
   };
+
+  useEffect(() => {
+    if (!canAccessVehicles || !filteredUsers.length) return undefined;
+
+    const missingUserIds = filteredUsers
+      .map((user) => user._id)
+      .filter((id) => id && userVehicleCounts[id] === undefined);
+
+    if (!missingUserIds.length) return undefined;
+
+    const timers = missingUserIds.map((userId, index) =>
+      setTimeout(() => {
+        fetchVehicleCount(userId);
+      }, index * 120)
+    );
+
+    return () => {
+      timers.forEach((timerId) => clearTimeout(timerId));
+    };
+  }, [filteredUsers, canAccessVehicles, userVehicleCounts, fetchVehicleCount]);
 
   const handleVehicleNavigation = async (user) => {
     if (!user?._id) return;
@@ -536,6 +556,8 @@ const UserDirectory = () => {
               const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
               const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
               const canReactivateTicket = visitorTicketInfo.status !== 'active';
+              const vehicleCount = getVehicleCount(user._id);
+              const hasVehicles = typeof vehicleCount === 'number' && vehicleCount > 0;
 
               return (
                 <div
@@ -548,10 +570,21 @@ const UserDirectory = () => {
                     alt={user.nombre || 'Usuario'}
                     className="h-14 w-14 rounded-full border border-slate-200 object-cover"
                   />
-                  <div className="flex flex-col">
-                    <span className="text-base font-semibold text-[#0f172a]">
-                      {user.nombre} {user.apellido}
-                    </span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-semibold text-[#0f172a]">
+                        {user.nombre} {user.apellido}
+                      </span>
+                      {hasVehicles && (
+                        <span
+                          title={`${vehicleCount} vehiculo${vehicleCount === 1 ? '' : 's'} registrados`}
+                          className="inline-flex items-center gap-1 rounded-full border border-[#0f766e]/30 bg-[#0f766e]/5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#0f766e]"
+                        >
+                          <FiTruck className="h-3.5 w-3.5" aria-hidden="true" />
+                          {vehicleCount}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-sm text-[#475569]">{user.email}</span>
                     <span className="text-xs font-semibold text-[#00594e]">{user.permisoSistema}</span>
                   </div>

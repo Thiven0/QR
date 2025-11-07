@@ -1,35 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FiTruck, FiUserCheck } from 'react-icons/fi';
 import QrScanner from 'react-qr-scanner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
 
-const PARSED_FIELDS_ORDER = [
-  { key: 'nombre' },
-  { key: 'cedula' },
-  { key: 'programa' },
-  { key: 'tipo_sangre' },
-  { key: 'telefono' },
-];
-
 const TAB_USER = 'user';
 const TAB_VEHICLE = 'vehicle';
 
-const renderParsedData = (parsed) => {
-  if (!parsed || typeof parsed !== 'object') return null;
+const TAB_ITEMS = [
+  {
+    id: TAB_USER,
+    label: 'Usuarios',
+    description: 'Registra ingresos o salidas',
+    icon: FiUserCheck,
+    accent: '#0f766e',
+  },
+  {
+    id: TAB_VEHICLE,
+    label: 'Vehiculos',
+    description: 'Gestiona el estado del vehiculo',
+    icon: FiTruck,
+    accent: '#b45309',
+  },
+];
 
-  return (
-    <div className="mt-2 space-y-3 rounded-lg border border-slate-200 bg-[#f8fafc] p-4">
-      {PARSED_FIELDS_ORDER.map(({ key }) => (
-        <div key={key} className="space-y-1">
-          <p className="text-xs font-semibold text-[#0f766e]">{key}</p>
-          <p className="rounded-md bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm">
-            {parsed[key] ? String(parsed[key]) : 'Sin registrar'}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-};
+const MOVEMENT_OPTIONS = [
+  {
+    id: 'entry',
+    title: 'Ingresando',
+    description: 'Marcara el ingreso y dejara al usuario en estado activo.',
+  },
+  {
+    id: 'exit',
+    title: 'Saliendo',
+    description: 'Cerrara la sesion actual y dejara al usuario inactivo.',
+  },
+];
 
 const renderUserDetails = (user) => {
   if (!user || typeof user !== 'object') return null;
@@ -79,36 +85,6 @@ const VehicleStatusChip = ({ estado }) => {
   );
 };
 
-const renderVehicleDetails = (vehicle) => {
-  if (!vehicle) return null;
-
-  const rows = [
-    { label: 'Tipo', value: vehicle.type || 'Sin especificar' },
-    { label: 'Marca', value: vehicle.brand || 'Sin marca' },
-    { label: 'Modelo', value: vehicle.model || 'Sin modelo' },
-    { label: 'Color', value: vehicle.color || 'Sin color' },
-    { label: 'Placa / identificador', value: vehicle.plate || 'Sin placa' },
-    { label: 'Notas', value: vehicle.notes || 'Sin notas' },
-  ];
-
-  return (
-    <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0f172a]">Resumen del vehiculo</h3>
-        <VehicleStatusChip estado={vehicle.estado} />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {rows.map(({ label, value }) => (
-          <div key={label} className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">{label}</p>
-            <p className="text-sm text-[#1f2937]">{value}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 const buildFeedbackBox = (feedback) => {
   if (!feedback) return null;
   const isSuccess = feedback.type === 'success';
@@ -134,6 +110,10 @@ const QRScannerPage = () => {
   const [userProcessing, setUserProcessing] = useState(false);
   const [userLastRawText, setUserLastRawText] = useState('');
   const [userResetting, setUserResetting] = useState(false);
+  const [showUserConfirmation, setShowUserConfirmation] = useState(false);
+  const [userMovementType, setUserMovementType] = useState('entry');
+  const [confirmingUserMovement, setConfirmingUserMovement] = useState(false);
+  const [userConfirmationError, setUserConfirmationError] = useState('');
 
   // Vehicle scan state
   const [vehicleScanData, setVehicleScanData] = useState(null);
@@ -142,7 +122,11 @@ const QRScannerPage = () => {
   const [vehicleProcessing, setVehicleProcessing] = useState(false);
   const [vehicleLastRawText, setVehicleLastRawText] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
-  const [togglingVehicle, setTogglingVehicle] = useState(false);
+  const [showVehicleConfirmation, setShowVehicleConfirmation] = useState(false);
+  const [vehicleMovementType, setVehicleMovementType] = useState('entry');
+  const [confirmingVehicleMovement, setConfirmingVehicleMovement] = useState(false);
+  const [vehicleConfirmationError, setVehicleConfirmationError] = useState('');
+  const [vehicleSelectionLocked, setVehicleSelectionLocked] = useState(false);
 
   const resetUserState = () => {
     setUserScanData(null);
@@ -151,6 +135,10 @@ const QRScannerPage = () => {
     setUserProcessing(false);
     setUserLastRawText('');
     setUserResetting(false);
+    setShowUserConfirmation(false);
+    setUserMovementType('entry');
+    setConfirmingUserMovement(false);
+    setUserConfirmationError('');
   };
 
   const resetVehicleState = () => {
@@ -160,7 +148,11 @@ const QRScannerPage = () => {
     setVehicleProcessing(false);
     setVehicleLastRawText('');
     setSelectedVehicleId('');
-    setTogglingVehicle(false);
+    setShowVehicleConfirmation(false);
+    setVehicleMovementType('entry');
+    setConfirmingVehicleMovement(false);
+    setVehicleConfirmationError('');
+    setVehicleSelectionLocked(false);
   };
 
   const playBeep = useCallback(() => {
@@ -279,23 +271,18 @@ const QRScannerPage = () => {
 
       setUserFeedback({
         type: 'success',
-        message: message || 'Usuario encontrado',
+        message: message || 'Usuario validado. Selecciona el movimiento y confirma el registro.',
       });
 
-      if (userId) {
-        const registroResponse = await apiRequest('/exitEntry/from-scan', {
-          method: 'POST',
-          data: { userId },
-          token,
-        });
-
-        setUserScanData((prev) => ({
-          ...(prev || baseData),
-          userId,
-          user,
-          registro: registroResponse.data || registroResponse.registro || registroResponse,
-        }));
+      if (!userId) {
+        setShowUserConfirmation(false);
+        return;
       }
+
+      const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
+      setUserMovementType(defaultMovement);
+      setShowUserConfirmation(true);
+      setUserConfirmationError('');
     } catch (error) {
       console.error(error);
       const message =
@@ -347,7 +334,16 @@ const QRScannerPage = () => {
       playBeep();
 
       const validationResponse = await validateScanData(parsedData);
-      const { userId, user, message } = validationResponse;
+      const { userId, user, message, activeRegistro } = validationResponse;
+
+      if (!userId) {
+        setVehicleFeedback({
+          type: 'error',
+          message: 'No se pudo identificar al usuario escaneado.',
+        });
+        setVehicleLastRawText('');
+        return;
+      }
 
       const vehiclesResponse = await apiRequest(`/users/${userId}/vehicles`, {
         token,
@@ -376,12 +372,27 @@ const QRScannerPage = () => {
         userId,
         user,
         vehicles: vehiclesData,
+        activeRegistro: activeRegistro || null,
       });
-      setSelectedVehicleId(vehiclesData[0]._id);
+
+      const lockedVehicleId = activeRegistro?.vehiculo?._id || '';
+      const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
+
+      if (lockedVehicleId) {
+        setSelectedVehicleId(lockedVehicleId);
+        setVehicleSelectionLocked(true);
+      } else {
+        setSelectedVehicleId(vehiclesData[0]?._id || '');
+        setVehicleSelectionLocked(false);
+      }
+
+      setVehicleMovementType(defaultMovement);
+      setVehicleConfirmationError('');
       setVehicleFeedback({
         type: 'success',
         message: message || 'Selecciona un vehiculo para cambiar su estado.',
       });
+      setShowVehicleConfirmation(true);
     } catch (error) {
       console.error(error);
       const message =
@@ -473,56 +484,120 @@ const QRScannerPage = () => {
     }
   };
 
-  const handleToggleVehicle = async () => {
-    if (!selectedVehicleId || !token) {
-      setVehicleFeedback({
-        type: 'error',
-        message: 'Selecciona un vehiculo para continuar.',
-      });
+  const handleConfirmUserMovement = async () => {
+    if (!token) {
+      setUserConfirmationError('Inicia sesion para confirmar el registro.');
+      return;
+    }
+    if (!userScanData?.userId) {
+      setUserConfirmationError('No hay un usuario validado para registrar.');
       return;
     }
 
-    setTogglingVehicle(true);
+    setConfirmingUserMovement(true);
+    setUserConfirmationError('');
 
     try {
-      const response = await apiRequest(`/vehicles/${selectedVehicleId}/toggle-status`, {
+      const response = await apiRequest('/exitEntry/from-scan', {
         method: 'POST',
         token,
+        data: {
+          userId: userScanData.userId,
+          direction: userMovementType,
+        },
       });
 
-      const updatedVehicle = response.data || response.vehicle || null;
-      const updatedUser = response.user || null;
+      const registro = response.data || response.registro || response;
+      const updatedUser = response.user || userScanData.user;
 
-      setVehicleScanData((prev) => {
-        if (!prev) return prev;
-        const nextVehicles = (prev.vehicles || []).map((vehicle) =>
-          vehicle._id === updatedVehicle._id ? updatedVehicle : vehicle
-        );
-        return {
-          ...prev,
-          vehicles: nextVehicles,
-          user: updatedUser || prev.user,
-        };
-      });
+      setUserScanData((prev) => ({
+        ...(prev || {}),
+        registro,
+        user: updatedUser,
+      }));
 
-      setVehicleFeedback({
+      setUserFeedback({
         type: 'success',
-        message: response.message || `Vehiculo marcado como ${updatedVehicle?.estado || 'actualizado'}.`,
+        message: response.message || 'Registro confirmado correctamente.',
       });
+      setShowUserConfirmation(false);
     } catch (error) {
       console.error(error);
       const message =
         error.details?.message ||
         error.message ||
-        'No fue posible actualizar el estado del vehiculo.';
-      setVehicleFeedback({
-        type: 'error',
-        message,
-      });
+        'No se pudo confirmar el movimiento del usuario.';
+      setUserConfirmationError(message);
     } finally {
-      setTogglingVehicle(false);
+      setConfirmingUserMovement(false);
     }
   };
+
+  const handleConfirmVehicleMovement = async () => {
+    if (!token) {
+      setVehicleConfirmationError('Inicia sesion para confirmar el registro.');
+      return;
+    }
+    if (!vehicleScanData?.userId) {
+      setVehicleConfirmationError('No hay un usuario validado para registrar.');
+      return;
+    }
+    if (!selectedVehicleId) {
+      setVehicleConfirmationError('Selecciona un vehiculo para continuar.');
+      return;
+    }
+
+    setConfirmingVehicleMovement(true);
+    setVehicleConfirmationError('');
+
+    try {
+      const response = await apiRequest('/exitEntry/from-scan', {
+        method: 'POST',
+        token,
+        data: {
+          userId: vehicleScanData.userId,
+          direction: vehicleMovementType,
+          vehicleId: selectedVehicleId,
+        },
+      });
+
+      const registro = response.data || response.registro || response;
+      const updatedVehicle = response.vehicle || registro?.vehiculo || null;
+      const updatedUser = response.user || vehicleScanData.user;
+
+      setVehicleScanData((prev) => {
+        if (!prev) return prev;
+        const updatedVehicles = Array.isArray(prev.vehicles)
+          ? prev.vehicles.map((vehicle) =>
+              updatedVehicle && vehicle._id === updatedVehicle._id ? updatedVehicle : vehicle
+            )
+          : prev.vehicles;
+
+        return {
+          ...prev,
+          registro,
+          user: updatedUser,
+          vehicles: updatedVehicles,
+        };
+      });
+
+      setVehicleFeedback({
+        type: 'success',
+        message: response.message || 'Registro confirmado correctamente. El vehiculo quedo actualizado.',
+      });
+      setShowVehicleConfirmation(false);
+    } catch (error) {
+      console.error(error);
+      const message =
+        error.details?.message ||
+        error.message ||
+        'No se pudo confirmar el movimiento con vehiculo.';
+      setVehicleConfirmationError(message);
+    } finally {
+      setConfirmingVehicleMovement(false);
+    }
+  };
+
 
   const selectedVehicle = useMemo(() => {
     if (!vehicleScanData?.vehicles?.length || !selectedVehicleId) return null;
@@ -546,31 +621,51 @@ const QRScannerPage = () => {
   const resetting = activeTab === TAB_USER ? userResetting : false;
 
   return (
+    <>
     <section className="min-h-screen bg-[#f8fafc] px-4 py-8 sm:py-12">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <div className="text-sm font-medium text-center text-[#64748b] border-b border-slate-200">
-          <ul className="flex flex-wrap -mb-px">
-            {[{ id: TAB_USER, label: 'Usuarios' }, { id: TAB_VEHICLE, label: 'Vehiculos' }].map((tab) => {
-              const isActive = activeTab === tab.id;
-              const baseClasses =
-                'inline-block px-5 py-3 border-b-2 border-transparent rounded-t-lg transition-colors';
-              const activeClasses = 'text-[#00594e] border-[#00594e] font-semibold';
-              const inactiveClasses =
-                'text-[#475569] hover:text-[#0f172a] hover:border-slate-300';
+        <div className="rounded-2xl border border-[#00594e]/15 bg-white p-4 shadow-sm">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {TAB_ITEMS.map(({ id, label, description, icon: Icon, accent }) => {
+              const isActive = activeTab === id;
               return (
-                <li key={tab.id} className="me-2">
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
-                    aria-current={isActive ? 'page' : undefined}
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleTabChange(id)}
+                  aria-pressed={isActive}
+                  className={`group flex w-full items-center gap-4 rounded-xl border-2 px-4 py-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                    isActive
+                      ? 'border-[#00594e] bg-[#00594e]/5 shadow-md ring-0'
+                      : 'border-slate-200 hover:border-[#0f766e]/60 hover:bg-[#0f766e]/5'
+                  }`}
+                >
+                  <span
+                    className="flex h-12 w-12 items-center justify-center rounded-full"
+                    style={{
+                      backgroundColor: isActive ? `${accent}1a` : '#f1f5f9',
+                      color: accent,
+                    }}
                   >
-                    {tab.label}
-                  </button>
-                </li>
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <span className="flex flex-1 flex-col">
+                    <span className="text-base font-semibold text-[#0f172a]">{label}</span>
+                    <span className="text-xs text-[#475569]">{description}</span>
+                  </span>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      isActive
+                        ? 'bg-[#00594e] text-white'
+                        : 'bg-slate-100 text-[#475569]'
+                    }`}
+                  >
+                    {isActive ? 'Activo' : 'Seleccionar'}
+                  </span>
+                </button>
               );
             })}
-          </ul>
+          </div>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[1.45fr_0.9fr]">
@@ -615,7 +710,7 @@ const QRScannerPage = () => {
             <button
               type="button"
               onClick={handleReset}
-              disabled={processing || resetting || togglingVehicle}
+              disabled={processing || resetting || confirmingVehicleMovement}
               className="mt-6 inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
             >
               {activeTab === TAB_USER
@@ -630,19 +725,29 @@ const QRScannerPage = () => {
             <div>
               <h2 className="text-xl font-semibold text-[#0f172a]">Resultado del escaneo</h2>
               {activeTab === TAB_USER ? (
-                userScanData ? (
-                  <div className="mt-4 space-y-6">
-                    <div>
-                      <p className="text-sm font-semibold text-[#0f172a]">Datos escaneados</p>
-                      {renderParsedData(userScanData.parsed)}
+                userScanData && userScanData.user ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl border border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#475569]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Usuario validado</p>
+                      <p className="mt-2 text-base font-semibold text-[#0f172a]">
+                        {`${userScanData.user.nombre || ''} ${userScanData.user.apellido || ''}`.trim() ||
+                          'Sin nombre'}
+                      </p>
+                      <p className="text-xs text-[#94a3b8]">{userScanData.user.email || 'Sin correo'}</p>
+                      <p className="mt-2 text-xs text-[#475569]">
+                        Confirma el movimiento en el modal para registrar la entrada o salida.
+                      </p>
                     </div>
-
-                    {userScanData.user && (
-                      <div>
-                        <p className="text-sm font-semibold text-[#0f172a]">Usuario validado</p>
-                        {renderUserDetails(userScanData.user)}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserConfirmationError('');
+                        setShowUserConfirmation(true);
+                      }}
+                      className="inline-flex w-full items-center justify-center rounded-lg border border-[#0f766e]/40 px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                    >
+                      Abrir confirmacion
+                    </button>
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-[#475569]">
@@ -650,80 +755,86 @@ const QRScannerPage = () => {
                   </p>
                 )
               ) : vehicleScanData ? (
-                <div className="mt-4 space-y-6">
-                  <div>
-                    <p className="text-sm font-semibold text-[#0f172a]">Datos escaneados</p>
-                    {renderParsedData(vehicleScanData.parsed)}
-                  </div>
-
-                  {vehicleScanData.user && (
-                    <div>
-                      <p className="text-sm font-semibold text-[#0f172a]">Propietario</p>
-                      {renderUserDetails(vehicleScanData.user)}
-                    </div>
-                  )}
-
-                  {vehicleScanData.vehicles && vehicleScanData.vehicles.length > 0 ? (
-                    <div className="space-y-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">
-                        Selecciona un vehiculo
+                vehicleScanData.vehicles && vehicleScanData.vehicles.length > 0 ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl border border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#475569]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">
+                        Vehiculos asociados
                       </p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {vehicleScanData.vehicles.map((vehicle) => {
-                          const isSelected = selectedVehicleId === vehicle._id;
-                          return (
-                            <button
-                              key={vehicle._id}
-                              type="button"
-                              onClick={() => setSelectedVehicleId(vehicle._id)}
-                              className={`w-full rounded-xl border p-4 text-left transition ${
-                                isSelected
-                                  ? 'border-[#0f766e] bg-[#ecfeff] shadow-md'
-                                  : 'border-slate-200 bg-white hover:border-[#0f766e]/60 hover:shadow-sm'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-[#0f172a]">
-                                    {vehicle.type || 'Sin tipo'}
-                                  </p>
-                                  <p className="text-xs text-[#475569]">
-                                    Placa: {vehicle.plate || 'Sin placa'}
-                                  </p>
+                      <p className="mt-2 text-xs">
+                        Selecciona el vehiculo correcto antes de confirmar el movimiento.
+                      </p>
+                      {vehicleSelectionLocked && selectedVehicle && (
+                        <p className="mt-2 text-xs font-semibold text-[#b45309]">
+                          El usuario ingreso con el vehiculo {selectedVehicle.plate || selectedVehicle.type || 'asignado'}.
+                          No es posible cambiarlo para registrar la salida.
+                        </p>
+                      )}
+                    </div>
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {vehicleScanData.vehicles.map((vehicle) => {
+                            const isSelected = selectedVehicleId === vehicle._id;
+                            const disabled = vehicleSelectionLocked && vehicle._id !== selectedVehicleId;
+                            return (
+                              <button
+                                key={vehicle._id}
+                                type="button"
+                                onClick={() => {
+                                  if (disabled) return;
+                                  setSelectedVehicleId(vehicle._id);
+                                }}
+                                disabled={disabled}
+                                className={`w-full rounded-xl border p-4 text-left transition ${
+                                  isSelected
+                                    ? 'border-[#0f766e] bg-[#ecfeff] shadow-md'
+                                    : 'border-slate-200 bg-white hover:border-[#0f766e]/60 hover:shadow-sm'
+                                } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-[#0f172a]">
+                                      {vehicle.type || 'Sin tipo'}
+                                    </p>
+                                    <p className="text-xs text-[#475569]">
+                                      Placa: {vehicle.plate || 'Sin placa'}
+                                    </p>
+                                  </div>
+                                  <VehicleStatusChip estado={vehicle.estado} />
                                 </div>
-                                <VehicleStatusChip estado={vehicle.estado} />
-                              </div>
-                              <div className="mt-3 space-y-1 text-xs text-[#475569]">
-                                <p>Color: {vehicle.color || 'Sin color'}</p>
-                                <p>Modelo: {vehicle.model || 'Sin modelo'}</p>
-                              </div>
-                              {isSelected && (
-                                <span className="mt-3 inline-flex items-center rounded-full bg-[#0f766e]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#0f766e]">
-                                  Seleccionado
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {renderVehicleDetails(selectedVehicle)}
-                      <button
-                        type="button"
-                        onClick={handleToggleVehicle}
-                        disabled={togglingVehicle || !selectedVehicleId}
-                        className="inline-flex items-center justify-center rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0c5b55] disabled:cursor-not-allowed disabled:opacity-70"
+                                <div className="mt-3 space-y-1 text-xs text-[#475569]">
+                                  <p>Color: {vehicle.color || 'Sin color'}</p>
+                                  <p>Modelo: {vehicle.model || 'Sin modelo'}</p>
+                                </div>
+                                {isSelected && (
+                                  <span className="mt-3 inline-flex items-center rounded-full bg-[#0f766e]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#0f766e]">
+                                    Seleccionado
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVehicleConfirmationError('');
+                            setShowVehicleConfirmation(true);
+                          }}
+                        disabled={!selectedVehicleId}
+                        className="inline-flex items-center justify-center rounded-lg border border-[#0f766e]/40 px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
                       >
-                        {togglingVehicle ? 'Actualizando...' : 'Cambiar estado del vehiculo'}
+                        Abrir confirmacion
                       </button>
                     </div>
-                  ) : (
-                    <p className="text-sm text-[#b91c1c]">
-                      {vehicleFeedback?.type === 'error'
-                        ? vehicleFeedback.message
-                        : 'No hay vehiculos registrados para este usuario.'}
-                    </p>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-[#b91c1c]">
+                    {vehicleFeedback?.type === 'error'
+                      ? vehicleFeedback.message
+                      : 'No hay vehiculos registrados para este usuario.'}
+                  </p>
+                )
               ) : (
                 <p className="mt-2 text-sm text-[#475569]">
                   Esperando un escaneo. Mantenga el codigo dentro del marco para ver la lectura aqui.
@@ -734,6 +845,266 @@ const QRScannerPage = () => {
         </div>
       </div>
     </section>
+
+    {showUserConfirmation && userScanData?.user && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+        <div
+          className="absolute inset-0 bg-black/40"
+          onClick={() => {
+            setShowUserConfirmation(false);
+            setUserConfirmationError('');
+          }}
+        />
+        <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+          <button
+            type="button"
+            onClick={() => {
+              setShowUserConfirmation(false);
+              setUserConfirmationError('');
+            }}
+            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-[#475569] transition hover:bg-slate-200"
+            aria-label="Cerrar confirmacion"
+          >
+            &times;
+          </button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Confirmar registro</p>
+              <h3 className="text-2xl font-bold text-[#0f172a]">Selecciona el movimiento</h3>
+              <p className="text-sm text-[#475569]">
+                Indica si el usuario esta ingresando o saliendo antes de guardar el registro.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
+                Estado actual:
+                <span className="ml-1 font-semibold capitalize">{userScanData.user.estado || 'desconocido'}</span>
+              </span>
+              {userScanData?.registro?.horaEntrada && (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
+                  Ultimo movimiento:
+                  <span className="ml-1 font-semibold">{userScanData.registro.horaEntrada}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {MOVEMENT_OPTIONS.map((option) => {
+                const isSelected = userMovementType === option.id;
+                return (
+                  <label
+                    key={option.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 transition ${
+                      isSelected ? 'border-[#00594e] bg-[#00594e]/5' : 'border-slate-200 hover:border-[#0f766e]/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="movement-type"
+                      value={option.id}
+                      checked={isSelected}
+                      onChange={() => setUserMovementType(option.id)}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-[#0f172a]">{option.title}</p>
+                      <p className="text-xs text-[#475569]">{option.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4">
+              {renderUserDetails(userScanData.user)}
+            </div>
+
+            {userConfirmationError && (
+              <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-4 py-2 text-sm font-semibold text-[#7f1d1d]">
+                {userConfirmationError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserConfirmation(false);
+                  setUserConfirmationError('');
+                }}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUserMovement}
+                disabled={confirmingUserMovement}
+                className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
+              >
+                {confirmingUserMovement ? 'Registrando...' : 'Confirmar registro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    {showVehicleConfirmation &&
+      vehicleScanData?.user &&
+      Array.isArray(vehicleScanData.vehicles) &&
+      vehicleScanData.vehicles.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => {
+              setShowVehicleConfirmation(false);
+              setVehicleConfirmationError('');
+            }}
+          />
+          <div className="relative z-10 w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                setShowVehicleConfirmation(false);
+                setVehicleConfirmationError('');
+              }}
+              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-[#475569] transition hover:bg-slate-200"
+              aria-label="Cerrar confirmacion"
+            >
+            &times;
+            </button>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Confirmar registro</p>
+                <h3 className="text-2xl font-bold text-[#0f172a]">Usuario y vehiculo</h3>
+                <p className="text-sm text-[#475569]">
+                  Define el movimiento y selecciona el vehiculo que se activara junto al registro.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
+                  Estado actual:
+                  <span className="ml-1 font-semibold capitalize">{vehicleScanData.user.estado || 'desconocido'}</span>
+                </span>
+                {vehicleScanData?.registro?.horaEntrada && (
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
+                    Ultimo movimiento:
+                    <span className="ml-1 font-semibold">{vehicleScanData.registro.horaEntrada}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {MOVEMENT_OPTIONS.map((option) => {
+                  const isSelected = vehicleMovementType === option.id;
+                  return (
+                    <label
+                      key={option.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 transition ${
+                        isSelected ? 'border-[#00594e] bg-[#00594e]/5' : 'border-slate-200 hover:border-[#0f766e]/50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="vehicle-movement-type"
+                        value={option.id}
+                        checked={isSelected}
+                        onChange={() => setVehicleMovementType(option.id)}
+                        className="mt-1"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-[#0f172a]">{option.title}</p>
+                        <p className="text-xs text-[#475569]">{option.description}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {vehicleSelectionLocked && (
+                <div className="rounded-lg border border-[#b45309]/40 bg-[#fef3c7] px-4 py-2 text-xs font-semibold text-[#92400e]">
+                  El usuario tiene un vehiculo asociado a su ingreso. Debe registrar la salida con el mismo vehiculo.
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Selecciona vehiculo</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {vehicleScanData.vehicles.map((vehicle) => {
+                    const isSelected = selectedVehicleId === vehicle._id;
+                    const disabled = vehicleSelectionLocked && vehicle._id !== selectedVehicleId;
+                    return (
+                      <label
+                        key={vehicle._id}
+                        className={`flex cursor-pointer flex-col rounded-xl border-2 px-4 py-3 transition ${
+                          isSelected ? 'border-[#0f766e] bg-[#ecfeff]' : 'border-slate-200 hover:border-[#0f766e]/40'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-[#0f172a]">{vehicle.type || 'Sin tipo'}</p>
+                            <p className="text-xs text-[#475569]">Placa: {vehicle.plate || 'Sin placa'}</p>
+                          </div>
+                          <input
+                            type="radio"
+                            name="vehicle-selection"
+                            value={vehicle._id}
+                            checked={isSelected}
+                            disabled={disabled}
+                            onChange={() => {
+                              if (disabled) return;
+                              setSelectedVehicleId(vehicle._id);
+                            }}
+                            className="mt-1"
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-[#475569]">
+                          Estado actual:{' '}
+                          <span className="font-semibold capitalize">{vehicle.estado || 'desconocido'}</span>
+                        </p>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4">
+                {renderUserDetails(vehicleScanData.user)}
+              </div>
+
+              {vehicleConfirmationError && (
+                <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-4 py-2 text-sm font-semibold text-[#7f1d1d]">
+                  {vehicleConfirmationError}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVehicleConfirmation(false);
+                    setVehicleConfirmationError('');
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmVehicleMovement}
+                  disabled={confirmingVehicleMovement || !selectedVehicleId}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#0f766e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0c5b55] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
+                >
+                  {confirmingVehicleMovement ? 'Registrando...' : 'Confirmar registro'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
