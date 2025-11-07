@@ -65,11 +65,6 @@ const login = async (req, res) => {
           lastTicket.expiresAt = new Date(Date.now() - 1000);
           await lastTicket.save();
         }
-        if (user.estado !== 'inactivo') {
-          user.estado = 'inactivo';
-          await user.save();
-        }
-
         return res.status(403).json({
           status: 'error',
           message: 'Tu ticket temporal ha expirado. Registra tu visita nuevamente.',
@@ -78,10 +73,6 @@ const login = async (req, res) => {
 
       serializedTicket = serializeVisitorTicket(activeTicketDoc);
 
-      if (user.estado !== 'activo') {
-        user.estado = 'activo';
-        await user.save();
-      }
     }
 
     const token = createSessionToken({
