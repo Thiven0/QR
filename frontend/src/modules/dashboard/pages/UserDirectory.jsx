@@ -5,6 +5,7 @@ import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
+import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 
 const PERMISOS_SISTEMA = ['Administrador', 'Celador', 'Usuario'];
 const ESTADOS = ['activo', 'inactivo'];
@@ -186,6 +187,45 @@ const UserDirectory = () => {
     setSearchTerm('');
     setPermisoFilter('');
     setEstadoFilter('');
+  };
+
+  const handleExportUsers = () => {
+    if (!users.length) {
+      setFeedback('No hay usuarios para exportar.');
+      return;
+    }
+
+    const headers = [
+      'Cedula',
+      'Nombre',
+      'Apellido',
+      'Correo',
+      'Permiso',
+      'Estado',
+      'Rol academico',
+      'Telefono',
+      'Facultad',
+      'Vehiculos registrados',
+    ];
+
+    const rows = users.map((user) => [
+      user.cedula || '',
+      user.nombre || '',
+      user.apellido || '',
+      user.email || '',
+      user.permisoSistema || '',
+      user.estado || '',
+      user.rolAcademico || '',
+      user.telefono || '',
+      user.facultad || '',
+      typeof userVehicleCounts[user._id] === 'number' ? userVehicleCounts[user._id] : '',
+    ]);
+
+    const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSXUtils.book_new();
+    XLSXUtils.book_append_sheet(workbook, worksheet, 'Usuarios');
+    writeXLSXFile(workbook, `directorio-usuarios-${Date.now()}.xlsx`);
+    setFeedback('Archivo de usuarios exportado correctamente.');
   };
 
   const fetchVehicleCount = async (userId) => {
@@ -525,6 +565,18 @@ const UserDirectory = () => {
             </button>
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExportUsers}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#B5A160] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9a8952] focus:outline-none focus:ring-2 focus:ring-[#B5A160] focus:ring-offset-2"
+            >
+              Exportar Excel
+            </button>
+          </div>
+        )}
 
         <UserStatsCharts
           className="mt-6"

@@ -21,9 +21,9 @@ const validateVisitor = (formData) => {
   }
 
   if (!formData.password?.trim()) {
-    errors.password = 'La contrasena es obligatoria.';
+    errors.password = 'La contraseña es obligatoria.';
   } else if (formData.password.length < 6) {
-    errors.password = 'La contrasena debe tener al menos 6 caracteres.';
+    errors.password = 'La contraseña debe tener al menos 6 caracteres.';
   }
 
   if (!formData.telefono?.trim()) {

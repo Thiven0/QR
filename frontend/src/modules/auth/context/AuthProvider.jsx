@@ -13,7 +13,7 @@ export const AuthContext = createContext({
   ticket: null,
   loading: true,
   login: async () => {},
-  logout: () => {},
+  logout: async () => {},
   hasPermission: () => false,
   establishSession: () => {},
 });
@@ -113,6 +113,19 @@ const AuthProvider = ({ children }) => {
     [clearVisitorTimer, performVisitorAutoLogout]
   );
 
+  const notifyRemoteLogout = useCallback(async () => {
+    if (!tokenRef.current) return;
+
+    try {
+      await apiRequest('/auth/logout', {
+        method: 'POST',
+        token: tokenRef.current,
+      });
+    } catch (error) {
+      console.warn('No se pudo notificar el cierre de sesion', error);
+    }
+  }, []);
+
   useEffect(() => {
     const { token: storedToken, user: storedUser, ticket: storedTicket } = readPersistedSession();
 
@@ -193,9 +206,10 @@ const AuthProvider = ({ children }) => {
     [establishSession]
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await notifyRemoteLogout();
     performLocalLogout();
-  }, [performLocalLogout]);
+  }, [notifyRemoteLogout, performLocalLogout]);
 
   const hasPermission = useCallback(
     (requiredPermissions = []) => {

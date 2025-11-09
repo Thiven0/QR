@@ -117,7 +117,7 @@ const RegisterForm = ({
   const camposToRender = enablePassword
     ? [
         ...campos,
-        { id: "password", label: "Contrasena", type: "password" },
+        { id: "password", label: "Contraseña", type: "password" },
       ]
     : campos;
 
@@ -230,7 +230,7 @@ const RegisterForm = ({
                     type="button"
                     onClick={() => togglePasswordVisibility(campo.id)}
                     className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition hover:text-[#00594e] focus:outline-none"
-                    aria-label={isVisible ? "Ocultar contrasena" : "Mostrar contrasena"}
+                    aria-label={isVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
                   >
                     {isVisible ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
                   </button>

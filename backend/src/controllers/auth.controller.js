@@ -24,6 +24,28 @@ const createSessionToken = (payload = {}) => {
   });
 };
 
+const SESSION_STATE_PERMISSIONS = ['Administrador', 'Celador'];
+
+const shouldSyncSessionState = (userDoc) =>
+  !!userDoc && SESSION_STATE_PERMISSIONS.includes(userDoc.permisoSistema);
+
+const ensureUserEstado = async (userDoc, desiredEstado) => {
+  if (!shouldSyncSessionState(userDoc)) {
+    return false;
+  }
+
+  const normalizedDesired = desiredEstado === 'activo' ? 'activo' : 'inactivo';
+  const currentEstado = (userDoc.estado || 'inactivo').toLowerCase();
+
+  if (currentEstado === normalizedDesired) {
+    return false;
+  }
+
+  userDoc.estado = normalizedDesired;
+  await userDoc.save();
+  return true;
+};
+
 const login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -74,6 +96,8 @@ const login = async (req, res) => {
       serializedTicket = serializeVisitorTicket(activeTicketDoc);
 
     }
+
+    await ensureUserEstado(user, 'activo');
 
     const token = createSessionToken({
       userId: user._id,
@@ -155,6 +179,44 @@ const profile = async (req, res) => {
   });
 };
 
+const logout = async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Token no valido',
+    });
+  }
+
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    await ensureUserEstado(user, 'inactivo');
+
+    const { password: _, ...userData } = user.toObject();
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Sesion cerrada correctamente',
+      user: userData,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al cerrar sesion',
+      error: error.message,
+    });
+  }
+};
+
 const issueToken = (req, res) => {
   try {
     const { access_key: accessKey, secret_key: secretKey } = req.body || {};
@@ -209,5 +271,6 @@ const issueToken = (req, res) => {
 module.exports = {
   login,
   profile,
+  logout,
   issueToken,
 };

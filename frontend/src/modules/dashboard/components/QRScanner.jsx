@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiTruck, FiUserCheck } from 'react-icons/fi';
 import QrScanner from 'react-qr-scanner';
+import clsx from 'clsx';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
 
@@ -97,7 +98,7 @@ const buildFeedbackBox = (feedback) => {
 };
 
 const QRScannerPage = () => {
-  const { token } = useAuth();
+  const { token, user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState(TAB_USER);
   const [scannerKey, setScannerKey] = useState(0);
   const [cameraActive, setCameraActive] = useState(true);
@@ -114,6 +115,8 @@ const QRScannerPage = () => {
   const [userMovementType, setUserMovementType] = useState('entry');
   const [confirmingUserMovement, setConfirmingUserMovement] = useState(false);
   const [userConfirmationError, setUserConfirmationError] = useState('');
+  const [exitWithoutVehicleAcknowledged, setExitWithoutVehicleAcknowledged] = useState(false);
+  const [exitWithoutVehicleNote, setExitWithoutVehicleNote] = useState('');
 
   // Vehicle scan state
   const [vehicleScanData, setVehicleScanData] = useState(null);
@@ -128,6 +131,14 @@ const QRScannerPage = () => {
   const [vehicleConfirmationError, setVehicleConfirmationError] = useState('');
   const [vehicleSelectionLocked, setVehicleSelectionLocked] = useState(false);
 
+  const activeVehicle = userScanData?.activeRegistro?.vehiculo || null;
+  const requiresVehicleWarning = userMovementType === 'exit' && !!activeVehicle;
+  const vehicleDisplayLabel = activeVehicle?.plate || activeVehicle?.type || 'vehiculo registrado';
+  const guardDisplayName = useMemo(() => {
+    if (!authUser) return '';
+    return [authUser?.nombre, authUser?.apellido].filter(Boolean).join(' ').trim();
+  }, [authUser]);
+
   const resetUserState = () => {
     setUserScanData(null);
     setUserError('');
@@ -139,6 +150,8 @@ const QRScannerPage = () => {
     setUserMovementType('entry');
     setConfirmingUserMovement(false);
     setUserConfirmationError('');
+    setExitWithoutVehicleAcknowledged(false);
+    setExitWithoutVehicleNote('');
   };
 
   const resetVehicleState = () => {
@@ -254,6 +267,7 @@ const QRScannerPage = () => {
         rawText,
         scannedAt,
         parsed: parsedData,
+        activeRegistro: null,
       };
 
       setUserScanData(baseData);
@@ -261,12 +275,13 @@ const QRScannerPage = () => {
       playBeep();
 
       const validationResponse = await validateScanData(parsedData);
-      const { userId, user, message } = validationResponse;
+      const { userId, user, message, activeRegistro } = validationResponse;
 
       setUserScanData((prev) => ({
         ...(prev || baseData),
         userId,
         user,
+        activeRegistro: activeRegistro || null,
       }));
 
       setUserFeedback({
@@ -283,6 +298,8 @@ const QRScannerPage = () => {
       setUserMovementType(defaultMovement);
       setShowUserConfirmation(true);
       setUserConfirmationError('');
+      setExitWithoutVehicleAcknowledged(false);
+      setExitWithoutVehicleNote('');
     } catch (error) {
       console.error(error);
       const message =
@@ -484,6 +501,27 @@ const QRScannerPage = () => {
     }
   };
 
+  const buildVehicleWarningObservation = () => {
+    if (!activeVehicle) return '';
+    const timestamp = new Date().toLocaleString('es-CO');
+    const responsible = guardDisplayName || 'Operador';
+    return `Salida sin vehiculo confirmada desde el escaner de usuarios el ${timestamp} por ${responsible}. El vehiculo ${vehicleDisplayLabel} permanece activo dentro de la institucion.`;
+  };
+
+  useEffect(() => {
+    if (!showUserConfirmation) {
+      setExitWithoutVehicleAcknowledged(false);
+      setExitWithoutVehicleNote('');
+    }
+  }, [showUserConfirmation]);
+
+  useEffect(() => {
+    if (userMovementType !== 'exit') {
+      setExitWithoutVehicleAcknowledged(false);
+      setExitWithoutVehicleNote('');
+    }
+  }, [userMovementType]);
+
   const handleConfirmUserMovement = async () => {
     if (!token) {
       setUserConfirmationError('Inicia sesion para confirmar el registro.');
@@ -493,18 +531,30 @@ const QRScannerPage = () => {
       setUserConfirmationError('No hay un usuario validado para registrar.');
       return;
     }
+    if (requiresVehicleWarning && !exitWithoutVehicleAcknowledged) {
+      setUserConfirmationError('Confirma que el usuario sale sin su vehiculo antes de continuar.');
+      return;
+    }
 
     setConfirmingUserMovement(true);
     setUserConfirmationError('');
 
     try {
+      const exitObservation = requiresVehicleWarning
+        ? [buildVehicleWarningObservation(), exitWithoutVehicleNote.trim()].filter(Boolean).join(' ')
+        : undefined;
+      const payload = {
+        userId: userScanData.userId,
+        direction: userMovementType,
+      };
+      if (exitObservation) {
+        payload.exitObservation = exitObservation;
+      }
+
       const response = await apiRequest('/exitEntry/from-scan', {
         method: 'POST',
         token,
-        data: {
-          userId: userScanData.userId,
-          direction: userMovementType,
-        },
+        data: payload,
       });
 
       const registro = response.data || response.registro || response;
@@ -514,6 +564,7 @@ const QRScannerPage = () => {
         ...(prev || {}),
         registro,
         user: updatedUser,
+        activeRegistro: null,
       }));
 
       setUserFeedback({
@@ -521,6 +572,8 @@ const QRScannerPage = () => {
         message: response.message || 'Registro confirmado correctamente.',
       });
       setShowUserConfirmation(false);
+      setExitWithoutVehicleAcknowledged(false);
+      setExitWithoutVehicleNote('');
     } catch (error) {
       console.error(error);
       const message =
@@ -918,6 +971,62 @@ const QRScannerPage = () => {
 
             <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4">
               {renderUserDetails(userScanData.user)}
+            </div>
+
+            <div
+              className={clsx(
+                'space-y-3 rounded-xl border p-4',
+                requiresVehicleWarning
+                  ? 'border-amber-300 bg-amber-50 text-amber-900'
+                  : 'border-slate-200 bg-white text-[#475569]'
+              )}
+            >
+              <div>
+                <p className="text-sm font-semibold text-[#0f172a]">
+                  Observaciones del registro
+                </p>
+                {requiresVehicleWarning ? (
+                  <p className="mt-1 text-xs text-amber-800">
+                    El usuario ingreso con el vehiculo {vehicleDisplayLabel}. Si confirmas la salida desde este escaner,
+                    el vehiculo permanecera activo dentro de la institucion. Confirma que abandona el campus sin su vehiculo y registra una nota si corresponde.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs">
+                    Agrega un comentario opcional para dejar constancia en el historial del movimiento.
+                  </p>
+                )}
+              </div>
+              {requiresVehicleWarning && (
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={exitWithoutVehicleAcknowledged}
+                    onChange={(event) => setExitWithoutVehicleAcknowledged(event.target.checked)}
+                  />
+                  Confirmo que el usuario sale sin su vehiculo.
+                </label>
+              )}
+              <textarea
+                className={clsx(
+                  'w-full rounded-lg px-3 py-2 text-sm text-[#0f172a] focus:outline-none focus:ring-2',
+                  requiresVehicleWarning
+                    ? 'border border-amber-200 focus:border-amber-400 focus:ring-amber-300'
+                    : 'border border-slate-200 focus:border-[#0f766e] focus:ring-[#0f766e]/40'
+                )}
+                rows={3}
+                placeholder="Anotacion (opcional)"
+                value={exitWithoutVehicleNote}
+                onChange={(event) => setExitWithoutVehicleNote(event.target.value)}
+              />
+              {requiresVehicleWarning ? (
+                <p className="text-[11px] font-semibold text-amber-700">
+                  Esta confirmacion registrara una observacion en el historial del movimiento.
+                </p>
+              ) : (
+                <p className="text-[11px] text-[#94a3b8]">
+                  La observacion se almacena junto al registro para futuras referencias.
+                </p>
+              )}
             </div>
 
             {userConfirmationError && (

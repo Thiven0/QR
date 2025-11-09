@@ -17,11 +17,18 @@ const serializeVisitorTicket = (ticketDoc) => {
   const expiresAt = ticketDoc.expiresAt instanceof Date
     ? ticketDoc.expiresAt
     : new Date(ticketDoc.expiresAt);
+  const createdAt = ticketDoc.createdAt instanceof Date
+    ? ticketDoc.createdAt
+    : ticketDoc.createdAt
+      ? new Date(ticketDoc.createdAt)
+      : null;
 
   if (!Number.isFinite(expiresAt.getTime())) {
     return {
+      _id: ticketDoc._id,
       token: ticketDoc.token,
       expiresAt: ticketDoc.expiresAt,
+      createdAt,
       remainingMinutes: 0,
       formattedRemaining: '0h 0m',
       isExpired: true,
@@ -38,8 +45,10 @@ const serializeVisitorTicket = (ticketDoc) => {
   const remainingMinutesMod = remainingMinutes % 60;
 
   return {
+    _id: ticketDoc._id,
     token: ticketDoc.token,
     expiresAt,
+    createdAt,
     remainingMinutes,
     formattedRemaining: `${remainingHours}h ${remainingMinutesMod}m`,
     isExpired,
