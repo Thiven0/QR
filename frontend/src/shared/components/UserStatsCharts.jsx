@@ -176,7 +176,7 @@ const UserStatsCharts = ({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <ChartCard
           title="Por permiso del sistema"
           description="Distribucion por nivel de acceso asignado."

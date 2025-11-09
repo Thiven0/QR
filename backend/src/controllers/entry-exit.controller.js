@@ -62,7 +62,7 @@ const findRegistroAbiertoParaUsuario = async (userId) => {
   }).sort({ fechaEntrada: -1 });
 };
 
-const procesarTransicionDeUsuario = async ({ user, adminId, direction, vehicleId }) => {
+const procesarTransicionDeUsuario = async ({ user, adminId, direction, vehicleId, exitObservation }) => {
   const normalizedDirection =
     typeof direction === 'string' ? direction.trim().toLowerCase() : null;
   const action =
@@ -121,16 +121,25 @@ const procesarTransicionDeUsuario = async ({ user, adminId, direction, vehicleId
     registro.duracionSesion = formatDuration(registro.fechaEntrada, now);
     registro.cierreForzado = false;
     registro.cierreMotivo = undefined;
+    const shouldSkipVehicleUpdate = !!(exitObservation && !vehicleId);
+
     if (vehicle) {
       registro.vehiculo = vehicle._id;
     }
 
     user.estado = 'inactivo';
+    if (exitObservation) {
+      registro.observaciones = registro.observaciones
+        ? `${registro.observaciones}\n${exitObservation}`
+        : exitObservation;
+    }
+
+    const vehicleUpdatePromise = shouldSkipVehicleUpdate ? Promise.resolve(null) : updateVehicleState('inactivo');
 
     const [, , updatedVehiclePayload] = await Promise.all([
       registro.save(),
       user.save(),
-      updateVehicleState('inactivo'),
+      vehicleUpdatePromise,
     ]);
     await populateRegistroForResponse(registro);
 
@@ -211,7 +220,7 @@ exports.createRegistro = async (req, res) => {
 exports.getRegistros = async (req, res) => {
   try {
     const registros = await Registro.find()
-      .populate("usuario", "nombre apellido email")
+      .populate("usuario", "nombre apellido email cedula")
       .populate("administrador", "nombre cargo email")
       .populate("vehiculo", "type brand model color plate estado");
 
@@ -225,7 +234,7 @@ exports.getRegistros = async (req, res) => {
 exports.getRegistroById = async (req, res) => {
   try {
     const registro = await Registro.findById(req.params.id)
-      .populate("usuario", "nombre apellido email")
+      .populate("usuario", "nombre apellido email cedula")
       .populate("administrador", "nombre cargo email");
 
     if (!registro) return res.status(404).json({ message: "Registro no encontrado" });
@@ -242,7 +251,7 @@ exports.updateRegistro = async (req, res) => {
       req.params.id,
       req.body,
       { new: true }
-    ).populate("usuario", "nombre apellido email")
+    ).populate("usuario", "nombre apellido email cedula")
      .populate("administrador", "nombre cargo email");
 
     if (!registroActualizado) return res.status(404).json({ message: "Registro no encontrado" });
@@ -296,7 +305,14 @@ const handleScanAndUpdateUser = async (req, res) => {
 
     const direction = req.body?.direction;
     const vehicleId = req.body?.vehicleId;
-    const result = await procesarTransicionDeUsuario({ user, adminId, direction, vehicleId });
+    const exitObservationRaw = typeof req.body?.exitObservation === 'string' ? req.body.exitObservation.trim() : '';
+    const result = await procesarTransicionDeUsuario({
+      user,
+      adminId,
+      direction,
+      vehicleId,
+      exitObservation: exitObservationRaw || undefined,
+    });
 
     return res.status(result.statusCode).json(result.payload);
   } catch (error) {

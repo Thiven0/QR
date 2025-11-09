@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const CHART_COLORS = ['#00594e', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#94a3b8', '#b5a160'];
 
@@ -93,9 +95,11 @@ const DashboardStats = () => {
   const [visitorTickets, setVisitorTickets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const [dateRange, setDateRange] = useState(getDefaultRange);
   const [facultyFilter, setFacultyFilter] = useState('');
+  const reportRef = useRef(null);
 
   useEffect(() => {
     if (!token) return;
@@ -107,7 +111,7 @@ const DashboardStats = () => {
         setError('');
 
         const [usersResponse, recordsResponse, vehiclesResponse, ticketsResponse] = await Promise.all([
-          apiRequest('/users', { token }),
+          apiRequest('/users?includeVisitorTicket=true', { token }),
           apiRequest('/exitEntry', { token }),
           apiRequest('/vehicles', { token }),
           apiRequest('/visitors/tickets', { token }),
@@ -664,8 +668,37 @@ const DashboardStats = () => {
     };
   }, [vehicleAnalytics]);
 
+  const derivedVisitorTickets = useMemo(
+    () =>
+      users
+        .map((user) => {
+          const ticket = user?.visitorTicket;
+          if (!ticket) return null;
+          return {
+            ...ticket,
+            user,
+            createdAt: ticket.createdAt || user.created_at || user.createdAt || null,
+            userId: user._id,
+          };
+        })
+        .filter(Boolean),
+    [users]
+  );
+
   const visitorTicketAnalytics = useMemo(() => {
-    if (!visitorTickets.length) {
+    const ticketSource = visitorTickets.length ? visitorTickets : derivedVisitorTickets;
+    const visitorUsers = users.filter(
+      (user) => String(user?.rolAcademico || '').toLowerCase() === 'visitante'
+    );
+    const activeVisitorUsers = visitorUsers.filter(
+      (user) => String(user?.estado || '').toLowerCase() === 'activo'
+    );
+    const derivedExpiredUsers =
+      !visitorTickets.length && visitorUsers.length
+        ? visitorUsers.filter((user) => !user.visitorTicket)
+        : [];
+
+    if (!ticketSource.length && !derivedExpiredUsers.length) {
       return {
         total: 0,
         active: 0,
@@ -689,7 +722,7 @@ const DashboardStats = () => {
     const ticketPerUser = new Map();
     const dailyMap = new Map();
 
-    visitorTickets.forEach((ticket) => {
+    ticketSource.forEach((ticket) => {
       const userRef = ticket?.user;
       const userId =
         typeof userRef === 'string'
@@ -697,7 +730,8 @@ const DashboardStats = () => {
           : userRef?._id || userRef?.id || null;
 
       if (userId) {
-        ticketPerUser.set(userId, (ticketPerUser.get(userId) || 0) + 1);
+        const key = userId.toString();
+        ticketPerUser.set(key, (ticketPerUser.get(key) || 0) + 1);
       }
 
       const expiresAt = ensureDate(ticket?.expiresAt);
@@ -729,7 +763,17 @@ const DashboardStats = () => {
       }
     });
 
-    const total = visitorTickets.length;
+    derivedExpiredUsers.forEach((user) => {
+      const userId = user?._id || user?.id || null;
+      if (!userId) return;
+      const key = userId.toString();
+      if (!ticketPerUser.has(key)) {
+        ticketPerUser.set(key, 0);
+      }
+    });
+
+    expired += derivedExpiredUsers.length;
+    const total = ticketSource.length + derivedExpiredUsers.length;
 
     const reference = new Date();
     reference.setHours(0, 0, 0, 0);
@@ -746,13 +790,6 @@ const DashboardStats = () => {
       });
     }
     const dailyMax = dailyItems.reduce((acc, item) => Math.max(acc, item.value), 0);
-
-    const visitorUsers = users.filter(
-      (user) => String(user?.rolAcademico || '').toLowerCase() === 'visitante'
-    );
-    const activeVisitorUsers = visitorUsers.filter(
-      (user) => String(user?.estado || '').toLowerCase() === 'activo'
-    );
 
     const uniqueVisitors = ticketPerUser.size;
     const recurrentVisitors = Array.from(ticketPerUser.values()).filter((count) => count > 1).length;
@@ -772,7 +809,7 @@ const DashboardStats = () => {
         items: dailyItems,
       },
     };
-  }, [visitorTickets, users]);
+  }, [visitorTickets, derivedVisitorTickets, users]);
 
   const userStatusDonut = useMemo(() => {
     const items = [
@@ -1019,10 +1056,104 @@ const DashboardStats = () => {
     setFacultyFilter('');
   };
 
+  const sanitizeUnsupportedColors = (doc) => {
+    const regex = /(oklab|oklch)/i;
+    const root = doc.querySelector('[data-report-root]');
+    if (!root) return;
+
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      const element = walker.currentNode;
+      const styles = doc.defaultView?.getComputedStyle(element);
+      if (!styles) continue;
+
+      const backgroundImage = styles.backgroundImage;
+      if (backgroundImage && regex.test(backgroundImage)) {
+        element.style.backgroundImage = 'none';
+        const bgColor = styles.backgroundColor;
+        if (!bgColor || bgColor === 'transparent' || regex.test(bgColor)) {
+          element.style.backgroundColor = '#ffffff';
+        } else {
+          element.style.backgroundColor = bgColor;
+        }
+      }
+
+      const background = styles.background;
+      if (background && regex.test(background)) {
+        element.style.background = '#ffffff';
+      }
+
+      const backgroundColor = styles.backgroundColor;
+      if (backgroundColor && regex.test(backgroundColor)) {
+        element.style.backgroundColor = '#ffffff';
+      }
+
+      const color = styles.color;
+      if (color && regex.test(color)) {
+        element.style.color = '#0f172a';
+      }
+
+      const borderColor = styles.borderColor;
+      if (borderColor && regex.test(borderColor)) {
+        element.style.borderColor = '#e2e8f0';
+      }
+
+      const boxShadow = styles.boxShadow;
+      if (boxShadow && regex.test(boxShadow)) {
+        element.style.boxShadow = 'none';
+      }
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (downloadingReport) return;
+    if (!reportRef.current) {
+      setError('No fue posible encontrar el contenido del reporte.');
+      return;
+    }
+
+    try {
+      setDownloadingReport(true);
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        scrollY: -window.scrollY,
+        onclone: (clonedDoc) => {
+          sanitizeUnsupportedColors(clonedDoc);
+        },
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = pdfHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const dateLabel = new Date().toISOString().slice(0, 10);
+      pdf.save(`reporte-estadisticas-${dateLabel}.pdf`);
+    } catch (err) {
+      setError(err.message || 'No fue posible generar el PDF.');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   const totalFiltered = filteredRecords.length;
 
   return (
-    <section className="min-h-screen bg-[#f8fafc] px-4 pb-16 pt-6 sm:pt-8">
+    <section ref={reportRef} data-report-root className="min-h-screen bg-[#f8fafc] px-4 pb-16 pt-6 sm:pt-8">
       <div className="mx-auto max-w-7xl space-y-10">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -1035,9 +1166,11 @@ const DashboardStats = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037]"
+              onClick={handleDownloadReport}
+              disabled={downloadingReport}
+              className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Descargar reporte
+              {downloadingReport ? 'Generando...' : 'Descargar reporte'}
             </button>
             <button
               type="button"

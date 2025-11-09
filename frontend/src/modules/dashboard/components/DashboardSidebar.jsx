@@ -50,7 +50,7 @@ const SHELL_THEMES = {
 
 const buildLinkClasses = (isActive, palette) =>
   clsx(
-    'flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-semibold transition',
+    'flex items-center gap-2 rounded-2xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] whitespace-nowrap transition sm:gap-3 sm:px-4 sm:py-2.5 sm:text-sm sm:tracking-[0.12em]',
     'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent focus:ring-[#00594e]/20',
     isActive ? palette.active : palette.inactive
   );
@@ -91,8 +91,8 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       label: 'Directorio',
       permissions: ['Administrador', 'Celador'],
       icon: (
-        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 7.5a3 3 0 1 1 5.657 1.5M20.25 6.75a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0ZM3 21v-.75A4.5 4.5 0 0 1 7.5 15.75h3A4.5 4.5 0 0 1 15 20.25V21m3.75-9a4.5 4.5 0 0 1 4.5 4.5V21" />
+        <svg className="h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm6.5 1.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM3 20.25v-.5A4.75 4.75 0 0 1 7.75 15h4.5a4.75 4.75 0 0 1 4.75 4.75v.5a.75.75 0 0 1-.75.75h-12a.75.75 0 0 1-.75-.75ZM17.5 11a3.75 3.75 0 0 0-2.914 1.345.75.75 0 0 0 .571 1.235H18a3.75 3.75 0 0 1 3.75 3.75v.92a.75.75 0 0 0 1.5 0v-.92A5.25 5.25 0 0 0 17.5 11Z" />
         </svg>
       ),
     },
@@ -108,7 +108,7 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
           fill="currentColor"
           aria-hidden="true"
         >
-          <path d="M6.22 8.28a2 2 0 0 1 1.83-1.28h7.9a2 2 0 0 1 1.83 1.28l1.08 2.8c1.58.24 2.84 1.6 2.84 3.24v3.43a1.5 1.5 0 0 1-1.5 1.5h-1.13a2.5 2.5 0 0 1-4.94 0H9.27a2.5 2.5 0 0 1-4.94 0H3.2a1.5 1.5 0 0 1-1.5-1.5v-3.43c0-1.64 1.26-3 2.84-3.24l1.08-2.8ZM7.3 9.25l-.66 1.75h10.72l-.66-1.75a.5.5 0 0 0-.46-.32h-8.48a.5.5 0 0 0-.46.32ZM6.83 17.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm10.34 0a1.25 1.25 0 1 0 .01 2.5 1.25 1.25 0 0 0-.01-2.5Zm-8.17-3.5c0 .28.22.5.5.5h5c.28 0 .5-.22.5-.5s-.22-.5-.5-.5h-5a.5.5 0 0 0-.5.5Z" />
+          <path d="M6.22 8.28a2 2 0 0 1 1.83-1.28h7.9a2 2 0 0 1 1.83 1.28l1.08 2.8c1.58.24 2.84 1.6 2.84 3.24v3.43a1.5 1.5 0 0 1-1.5 1.5h-1.13a2.5 2.5 0 0 1-4.94 0H9.27a2.5 2.5 0 0 1-4.94 0H3.2a1.5 1.5 0 0 1-1.5-1.5v-3.43c0-1.64 1.26-3 2.84-3.24l1.08-2.8ZM7.3 9.25l-.66 1.75h10.72l-.66-1.75a.5.5 0 0 0-.46-.32h-8.48a.5.5 0 0 0-.46.32ZM6.83 17.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm10.34 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z" />
         </svg>
       ),
       isActiveOverride: isVehiclesPath && currentVehicleView !== 'register',
@@ -118,8 +118,8 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       label: 'Registrar vehiculo',
       permissions: ['Administrador'],
       icon: (
-        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        <svg className="h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M11 4a1 1 0 0 1 2 0v7h7a1 1 0 1 1 0 2h-7v7a1 1 0 1 1-2 0v-7H4a1 1 0 1 1 0-2h7V4Z" />
         </svg>
       ),
       isActiveOverride: isVehiclesPath && currentVehicleView === 'register',
@@ -129,7 +129,7 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       label: 'Estadisticas',
       permissions: ['Administrador'],
       icon: (
-        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
+        <svg className="h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7.5 15.75 11 11.25l3 3 4.5-6" />
         </svg>
       ),
@@ -139,8 +139,8 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       label: 'Historial registros',
       permissions: ['Administrador', 'Celador'],
       icon: (
-        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v18h16.5V6.75L15 3H3.75Zm6 5.25h7.5m-7.5 4.5h7.5m-7.5 4.5h7.5M6.75 8.25h.008v.008H6.75V8.25Zm0 4.5h.008v.008H6.75v-.008Zm0 4.5h.008v.008H6.75v-.008Z" />
+        <svg className="h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.828a2 2 0 0 0-.586-1.414l-4.828-4.828A2 2 0 0 0 13.172 2H6Zm7 1.914L18.086 9H13V3.914ZM8.5 11a.75.75 0 0 1 0 1.5h-1a.75.75 0 0 1 0-1.5h1Zm0 3.75a.75.75 0 0 1 0 1.5h-1a.75.75 0 0 1 0-1.5h1Zm0 3.75a.75.75 0 0 1 0 1.5h-1a.75.75 0 0 1 0-1.5h1Zm3-7.5a.75.75 0 0 1 .75-.75h4a.75.75 0 0 1 0 1.5h-4a.75.75 0 0 1-.75-.75Zm.75 3a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 0-1.5h-4Zm-.75 3.75a.75.75 0 0 1 .75-.75h4a.75.75 0 0 1 0 1.5h-4a.75.75 0 0 1-.75-.75Z" />
         </svg>
       ),
     },
@@ -149,7 +149,7 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       label: 'Registrar usuario',
       permissions: ['Administrador'],
       icon: (
-        <svg className="h-5 w-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 18 18">
+        <svg className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 18 18">
           <path d="M6.143 0H1.857A1.857 1.857 0 0 0 0 1.857v4.286C0 7.169.831 8 1.857 8h4.286A1.857 1.857 0 0 0 8 6.143V1.857A1.857 1.857 0 0 0 6.143 0Zm10 0h-4.286A1.857 1.857 0 0 0 10 1.857v4.286C10 7.169 10.831 8 11.857 8h4.286A1.857 1.857 0 0 0 18 6.143V1.857A1.857 1.857 0 0 0 16.143 0Zm-10 10H1.857A1.857 1.857 0 0 0 0 11.857v4.286C0 17.169.831 18 1.857 18h4.286A1.857 1.857 0 0 0 8 16.143v-4.286A1.857 1.857 0 0 0 6.143 10Zm10 0h-4.286A1.857 1.857 0 0 0 10 11.857v4.286c0 1.026.831 1.857 1.857 1.857h4.286A1.857 1.857 0 0 0 18 16.143v-4.286A1.857 1.857 0 0 0 16.143 10Z" />
         </svg>
       ),

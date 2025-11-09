@@ -36,7 +36,7 @@ const DashboardLayout = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
-      <DashboardNavbar onToggleSidebar={handleToggleSidebar} isSidebarOpen={isSidebarOpen && showSidebar} />
+      <DashboardNavbar />
       {showSidebar && <DashboardSidebar isOpen={isSidebarOpen} onClose={handleCloseSidebar} onToggle={handleToggleSidebar} />}
       <main
         className={`min-h-screen pt-28 transition-[margin] duration-300 ${showSidebar ? (isSidebarOpen ? 'sm:ml-64' : 'sm:ml-0') : ''}`}

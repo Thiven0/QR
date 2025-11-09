@@ -17,6 +17,7 @@ const RegistroSchema = new Schema(
     duracionSesion: { type: String },
     cierreForzado: { type: Boolean, default: false },
     cierreMotivo: { type: String, trim: true },
+    observaciones: { type: String, trim: true },
   },
   { timestamps: true }
 );

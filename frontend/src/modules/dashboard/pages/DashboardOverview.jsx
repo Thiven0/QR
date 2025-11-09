@@ -1,76 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../services/apiClient';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import useAuth from '../../auth/hooks/useAuth';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 
-const areaTiles = [
-  {
-    id: 'overview',
-    icon: '🏠',
-    title: 'Inicio / Dashboard',
-    description: 'Resumen operativo general con indicadores clave y graficos del dia.',
-    items: ['Vista general con KPIs', 'Graficos principales'],
-    action: 'Ver resumen'
-  },
-  {
-    id: 'users',
-    icon: '👥',
-    title: 'Usuarios',
-    description: 'Administra perfiles y monitorea su estado de acceso.',
-    items: ['Listado de usuarios por rol', 'Filtros por tipo y estado', 'Detalle de actividad individual'],
-    action: 'Gestionar usuarios'
-  },
-  {
-    id: 'analytics',
-    icon: '📊',
-    title: 'Estadisticas',
-    description: 'Analiza el comportamiento de asistencia y tendencias.',
-    items: ['Reportes diarios, semanales y mensuales', 'Comparativa por facultad o programa', 'Tendencias de acceso'],
-    action: 'Abrir estadisticas'
-  },
-  {
-    id: 'access',
-    icon: '🚪',
-    title: 'Control de accesos',
-    description: 'Seguimiento en tiempo real de entradas y salidas.',
-    items: ['Eventos en vivo', 'Log historico detallado', 'Intentos fallidos o denegados'],
-    action: 'Ver accesos'
-  },
-  {
-    id: 'faculties',
-    icon: '🏫',
-    title: 'Facultades / programas',
-    description: 'Visualiza la distribucion academica y asistencia.',
-    items: ['Resumen por facultad', 'Participacion por carrera', 'Ranking de asistencia'],
-    action: 'Explorar programas'
-  },
-  {
-    id: 'alerts',
-    icon: '🔔',
-    title: 'Alertas y notificaciones',
-    description: 'Gestiona eventos inusuales y avisos de seguridad.',
-    items: ['Accesos fuera de horario', 'Movimientos inusuales', 'Alertas de seguridad'],
-    action: 'Revisar alertas'
-  },
-  {
-    id: 'config',
-    icon: '⚙️',
-    title: 'Configuracion',
-    description: 'Ajusta la operacion segun politicas de seguridad.',
-    items: ['Roles y permisos', 'Parametros de horario y puntos', 'Integraciones con otros sistemas'],
-    action: 'Abrir configuracion'
-  },
-  {
-    id: 'reports',
-    icon: '📥',
-    title: 'Exportar / reportes',
-    description: 'Descarga informacion consolidada para auditorias.',
-    items: ['Reportes PDF y Excel', 'Estadisticas historicas', 'Resumenes de control de acceso'],
-    action: 'Generar reportes'
-  }
-]
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
+
+const STATS_COLORS = ['#00594e', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
+const ACTIVITY_CHART_DAYS = 10;
 
 const Content = () => {
+  const navigate = useNavigate();
   const { token } = useAuth();
   const [usersSnapshot, setUsersSnapshot] = useState([]);
   const [usersSnapshotLoading, setUsersSnapshotLoading] = useState(false);
@@ -192,32 +143,10 @@ const Content = () => {
     return value.toLocaleString('es-CO');
   };
 
-  const overviewStats = [
-    {
-      label: 'Ingresos hoy',
-      value: formatMetricValue(entriesToday, entryStatsLoading, entryStatsError),
-      detail: entryStatsError || 'Personas registradas el dia de hoy.',
-      isError: Boolean(entryStatsError),
-    },
-    {
-      label: 'Usuarios activos',
-      value: formatMetricValue(activeUsersCount, usersSnapshotLoading, usersSnapshotError),
-      detail: usersSnapshotError || 'Personas con estado activo en el sistema.',
-      isError: Boolean(usersSnapshotError),
-    },
-    {
-      label: 'Usuarios inactivos',
-      value: formatMetricValue(inactiveUsersCount, usersSnapshotLoading, usersSnapshotError),
-      detail: usersSnapshotError || 'Personas con estado inactivo o pendientes por reactivar.',
-      isError: Boolean(usersSnapshotError),
-    },
-    {
-      label: 'Total usuarios',
-      value: formatMetricValue(totalUsersCount, usersSnapshotLoading, usersSnapshotError),
-      detail: usersSnapshotError || 'Conteo total de registros en el directorio.',
-      isError: Boolean(usersSnapshotError),
-    },
-  ];
+  const formatCount = (value) => {
+    if (!Number.isFinite(value)) return '--';
+    return value.toLocaleString('es-CO');
+  };
 
   const formatPercentage = (value) => {
     if (!Number.isFinite(value) || value <= 0) return '0%';
@@ -603,8 +532,7 @@ const Content = () => {
       hours[hour].value += 1;
     });
 
-    const filtered = hours.filter((item) => item.value > 0);
-    const items = (filtered.length ? filtered : hours.slice(6, 20)).map((item) => ({
+    const items = hours.map((item) => ({
       ...item,
       tooltip: `${item.label}: ${item.value} registro${item.value === 1 ? '' : 's'}`,
     }));
@@ -616,6 +544,109 @@ const Content = () => {
       items,
     };
   }, [entryRecords]);
+
+  const activityDateSeries = useMemo(() => {
+    if (!entryRecords.length) {
+      return { labels: [], counts: [] };
+    }
+
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (ACTIVITY_CHART_DAYS - 1));
+
+    const buckets = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      buckets.push({
+        key: cursor.toISOString().slice(0, 10),
+        label: cursor.toLocaleDateString('es-CO', { month: 'short', day: 'numeric' }),
+        count: 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+    entryRecords.forEach((record) => {
+      if (!record?.fechaEntrada) return;
+      const bucketDate = new Date(record.fechaEntrada);
+      if (Number.isNaN(bucketDate)) return;
+      bucketDate.setHours(0, 0, 0, 0);
+      const key = bucketDate.toISOString().slice(0, 10);
+      const bucket = bucketMap.get(key);
+      if (bucket) {
+        bucket.count += 1;
+      }
+    });
+
+    return {
+      labels: buckets.map((bucket) => bucket.label),
+      counts: buckets.map((bucket) => bucket.count),
+    };
+  }, [entryRecords]);
+
+  const activityChartData = useMemo(
+    () => ({
+      labels: activityDateSeries.labels,
+      datasets: [
+        {
+          label: 'Registros por dia',
+          data: activityDateSeries.counts,
+          borderColor: '#0f766e',
+          backgroundColor: 'rgba(15, 118, 110, 0.15)',
+          tension: 0.35,
+          fill: true,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        },
+      ],
+    }),
+    [activityDateSeries]
+  );
+
+  const activityChartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          ticks: { color: '#0f172a', autoSkip: true, maxTicksLimit: 6 },
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#0f172a', precision: 0 },
+          grid: { color: 'rgba(148, 163, 184, 0.2)' },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.y} registro${context.parsed.y === 1 ? '' : 's'}`,
+          },
+        },
+      },
+    }),
+    []
+  );
+
+  const activityChartHasData = useMemo(
+    () => activityDateSeries.counts.some((value) => value > 0),
+    [activityDateSeries]
+  );
+  const activityChartTotal = useMemo(
+    () => activityDateSeries.counts.reduce((acc, value) => acc + value, 0),
+    [activityDateSeries]
+  );
+  const activityOpenCount = useMemo(
+    () => entryRecords.filter((record) => !record?.fechaSalida).length,
+    [entryRecords]
+  );
+  const activityClosedCount = useMemo(
+    () => entryRecords.filter((record) => record?.fechaSalida).length,
+    [entryRecords]
+  );
 
   const parseDurationToMinutes = (record) => {
     if (record?.duracionSesion) {
@@ -712,242 +743,579 @@ const Content = () => {
     };
   }, [entryRecords]);
 
+  const openSessionsCount = useMemo(() => {
+    if (!entryRecords.length) return 0;
+    return entryRecords.reduce((count, record) => (!record?.fechaSalida ? count + 1 : count), 0);
+  }, [entryRecords]);
+
+  const vehicleUsageSummary = useMemo(() => {
+    if (!entryRecords.length) {
+      return {
+        total: 0,
+        active: 0,
+        missing: 0,
+      };
+    }
+
+    const uniqueVehicles = new Set();
+    let active = 0;
+    let missing = 0;
+
+    entryRecords.forEach((record) => {
+      const vehicle = record?.vehiculo;
+      const vehicleId =
+        (typeof vehicle === 'string' && vehicle) ||
+        vehicle?._id ||
+        vehicle?.id ||
+        vehicle?.plate ||
+        vehicle?.placa ||
+        null;
+
+      if (vehicleId) {
+        uniqueVehicles.add(vehicleId);
+        if (!record?.fechaSalida) {
+          active += 1;
+        }
+      } else if (!record?.fechaSalida) {
+        missing += 1;
+      }
+    });
+
+    return {
+      total: uniqueVehicles.size,
+      active,
+      missing,
+    };
+  }, [entryRecords]);
+
+  const newUsersLastWeek = useMemo(() => {
+    if (!usersSnapshot.length) return 0;
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - 7);
+
+    return usersSnapshot.reduce((count, user) => {
+      const created =
+        ensureDate(user?.created_at) ||
+        ensureDate(user?.createdAt) ||
+        ensureDate(user?.registroFecha) ||
+        ensureDate(user?.fechaRegistro);
+
+      if (created && created >= threshold) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
+  }, [usersSnapshot]);
+
+  const recentAccessPreview = useMemo(() => accessFeedItems.slice(0, 3), [accessFeedItems]);
+
+  const vehicleActivityPreview = useMemo(() => {
+    if (!entryRecords.length) return [];
+
+    return entryRecords
+      .filter((record) => record?.vehiculo)
+      .slice(0, 4)
+      .map((record) => {
+        const vehicle = record?.vehiculo || {};
+        const identifier =
+          vehicle?.plate ||
+          vehicle?.placa ||
+          vehicle?.type ||
+          vehicle?.tipo ||
+          vehicle?._id ||
+          (typeof record?.vehiculo === 'string' ? record.vehiculo : 'Vehiculo sin dato');
+        const userDoc = record?.usuario || {};
+        const owner = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Sin propietario';
+
+        return {
+          id: identifier,
+          owner,
+          status: record?.fechaSalida ? 'Fuera del campus' : 'En campus',
+          time: formatDateTime(record?.updatedAt || record?.fechaEntrada),
+        };
+      });
+  }, [entryRecords]);
+
+  const lastSevenDaysTotals = useMemo(() => {
+    const items = Array.isArray(lastSevenDaysTrend?.items) ? lastSevenDaysTrend.items : [];
+    const total = items.reduce((acc, item) => acc + (Number.isFinite(item?.value) ? item.value : 0), 0);
+    const average = items.length ? Math.round(total / items.length) : 0;
+    const today = items.length ? (Number.isFinite(items[items.length - 1]?.value) ? items[items.length - 1].value : 0) : 0;
+
+    return {
+      total,
+      average,
+      today,
+    };
+  }, [lastSevenDaysTrend]);
+
+  const busiestHour = useMemo(() => {
+    const items = Array.isArray(hourlyDistributionData?.items) ? hourlyDistributionData.items : [];
+    if (!items.length) {
+      return { label: 'Sin datos', value: 0 };
+    }
+    return items.reduce((prev, current) => (current.value > prev.value ? current : prev), items[0]);
+  }, [hourlyDistributionData]);
+
+  const activeHourBlocks = useMemo(() => {
+    const items = Array.isArray(hourlyDistributionData?.items) ? hourlyDistributionData.items : [];
+    return items.filter((item) => item.value > 0).length;
+  }, [hourlyDistributionData]);
+
+  const attendanceSemanal = attendanceSummaryData.find((item) => item.period === 'Semanal') || attendanceSummaryData[0];
+  const topFaculty = facultyHighlightsData[0];
+  const frequentVisitor = topVisitorsData[0];
+  const lastAccessEvent = accessFeedItems[0] || null;
+
+  const facultyDistributionPreview = useMemo(() => {
+    if (!facultyHighlightsData.length) {
+      return { gradient: '#e2e8f0', segments: [] };
+    }
+
+    const segments = facultyHighlightsData.map((item, index) => ({
+      label: item.faculty,
+      value: Number.parseFloat(String(item.distribution).replace('%', '')) || 0,
+      color: STATS_COLORS[index % STATS_COLORS.length],
+    }));
+
+    const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+    if (!total) {
+      return { gradient: '#e2e8f0', segments };
+    }
+
+    let accumulator = 0;
+    const stops = segments.map((segment) => {
+      const start = (accumulator / total) * 360;
+      accumulator += segment.value;
+      const end = (accumulator / total) * 360;
+      return `${segment.color} ${start}deg ${end}deg`;
+    });
+
+    return {
+      gradient: `conic-gradient(${stops.join(', ')})`,
+      segments,
+    };
+  }, [facultyHighlightsData]);
+
+  const sectionSummaryCards = [
+    {
+      id: 'qr',
+      anchor: 'qr',
+      badge: 'Escaner',
+      title: 'Escanear QR',
+      value: formatCount(openSessionsCount),
+      description: 'Registros sin salida registrada',
+      footnote: alertFeedItems.length
+        ? `${formatCount(alertFeedItems.length)} alertas activas`
+        : lastAccessEvent
+          ? `Ultimo evento: ${lastAccessEvent.status} ${lastAccessEvent.time}`
+          : 'Sin actividad reciente',
+    },
+    {
+      id: 'directory',
+      anchor: 'enabled-users',
+      badge: 'Directorio',
+      title: 'Usuarios habilitados',
+      value: formatCount(totalUsersCount),
+      description: 'Registros totales en el sistema',
+      footnote: `Activos ${formatCount(activeUsersCount)} · Inactivos ${formatCount(inactiveUsersCount)}`,
+    },
+    {
+      id: 'vehicles',
+      anchor: 'vehicles',
+      badge: 'Vehiculos',
+      title: 'Monitoreo vehicular',
+      value: formatCount(vehicleUsageSummary.total),
+      description: 'Vehiculos detectados en accesos',
+      footnote: `${formatCount(vehicleUsageSummary.active)} en movimiento`,
+    },
+    {
+      id: 'vehicle-register',
+      anchor: 'vehicle-register',
+      badge: 'Registro',
+      title: 'Registrar vehiculo',
+      value: formatCount(vehicleUsageSummary.missing),
+      description: 'Ingresos pendientes por asociar vehiculo',
+      footnote: vehicleUsageSummary.missing ? 'Prioriza actualizarlos hoy' : 'Sin pendientes',
+    },
+    {
+      id: 'statistics',
+      anchor: 'statistics',
+      badge: 'Cobertura',
+      title: 'Estadisticas de asistencia',
+      value: attendanceSemanal?.value ?? '0%',
+      description: attendanceSemanal?.period ? `Periodo ${attendanceSemanal.period.toLowerCase()}` : 'Seguimiento general',
+      footnote: attendanceSemanal?.delta ?? attendanceSemanal?.note ?? '',
+    },
+    {
+      id: 'records-history',
+      anchor: 'records-history',
+      badge: 'Historial',
+      title: 'Registros procesados',
+      value: formatCount(entryRecords.length),
+      description: `Ultimos 7 dias: ${formatCount(lastSevenDaysTotals.total)}`,
+      footnote: lastAccessEvent ? `${lastAccessEvent.status} de ${lastAccessEvent.name}` : 'Sin eventos recientes',
+    },
+    {
+      id: 'user-register',
+      anchor: 'user-register',
+      badge: 'Altas',
+      title: 'Registrar usuario',
+      value: formatCount(newUsersLastWeek),
+      description: 'Nuevos usuarios en los ultimos 7 dias',
+      footnote: `Total directorio: ${formatCount(totalUsersCount)}`,
+    },
+  ];
+
   const handleScroll = (id) => {
     if (typeof window === 'undefined') return
     const section = document.getElementById(id)
     if (section) {
-      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const { top } = section.getBoundingClientRect()
+      const offset = window.pageYOffset + top - 80
+      window.scrollTo({ top: Math.max(offset, 0), behavior: 'smooth' })
     }
   }
 
+  const handleNavigate = (path) => {
+    if (!path) return;
+    navigate(path);
+  };
+
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 pb-16 pt-6 transition-all sm:pt-8">
-      <div className="mx-auto max-w-7xl space-y-12">
+    <div className="min-h-screen bg-[#f8fafc] px-4 pb-10 pt-6 transition-all sm:pt-8">
+      <div className="mx-auto max-w-7xl space-y-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[#00594e]">Panel del celador</p>
             <h1 className="text-3xl font-bold text-[#0f172a]">Centro de control y vigilancia</h1>
             <p className="text-sm text-[#475569]">Actualizado el {updatedAt}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button className="rounded-md bg-[#00594e] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00594e]">
-              Generar reporte PDF
-            </button>
-            <button className="rounded-md border border-[#00594e]/30 bg-white px-4 py-2 text-sm font-medium text-[#00594e] shadow-sm transition hover:bg-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#B5A160]/60">
-              Registrar incidencia
-            </button>
-          </div>
         </header>
-
-        <section id="overview" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {overviewStats.map((item) => (
-            <article key={item.label} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#99a1af]">{item.label}</span>
-              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{item.value}</p>
-              <p className={`mt-2 text-sm ${item.isError ? 'text-[#b91c1c]' : 'text-[#475569]'}`}>
-                {item.detail}
-              </p>
-              <div className="absolute right-6 top-6 h-12 w-12 rounded-full bg-[#00594e]/10" />
-            </article>
-          ))}
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-2">
-          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[#0f172a]">Accesos ultimos 7 dias</h2>
-                <p className="text-sm text-[#64748b]">Comparativa diaria de registros confirmados</p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
-                Pico: {Math.max(...lastSevenDaysTrend.items.map((item) => item.value)).toLocaleString('es-CO')}
-              </span>
-            </div>
-            <div className="flex h-48 items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
-              {lastSevenDaysTrend.items.map((item) => (
-                <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
-                  <div className="flex h-36 w-full items-end overflow-hidden rounded-md bg-[#0f172a]/5">
-                    <div
-                      className="w-full rounded-t-md bg-[#00594e]"
-                      style={{ height: `${Math.max((item.value / lastSevenDaysTrend.max) * 100, 6)}%` }}
-                      title={item.tooltip}
-                    />
-                  </div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">{item.label}</span>
-                  <span className="text-xs text-[#0f172a]">{item.value.toLocaleString('es-CO')}</span>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[#0f172a]">Distribucion por hora (hoy)</h2>
-                <p className="text-sm text-[#64748b]">Registro de entradas agrupadas por hora del dia</p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
-                Total: {hourlyDistributionData.items.reduce((acc, item) => acc + item.value, 0).toLocaleString('es-CO')}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <div className="flex min-h-[12rem] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
-                {hourlyDistributionData.items.map((item) => (
-                  <div key={item.label} className="flex w-12 flex-col items-center gap-2">
-                    <div className="flex h-32 w-full items-end overflow-hidden rounded-md bg-[#B5A160]/10">
-                      <div
-                        className="w-full rounded-t-md bg-[#B5A160]"
-                        style={{ height: `${Math.max((item.value / hourlyDistributionData.max) * 100, 6)}%` }}
-                        title={item.tooltip}
-                      />
-                    </div>
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">{item.label}</span>
-                    <span className="text-[11px] text-[#0f172a]">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <UserStatsCharts
-          className="mt-6"
-          users={usersSnapshot}
-          loading={usersSnapshotLoading}
-          error={usersSnapshotError}
-          permisoLabels={['Administrador', 'Celador', 'Usuario']}
-          estadoLabels={['activo', 'inactivo']}
-          title="Distribucion actual de usuarios"
-          description="Datos consolidados del directorio para decisiones rapidas."
-        />
 
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[#0f172a]">Mapa de operaciones</h2>
-            <span className="text-xs font-medium uppercase tracking-wider text-[#64748b]">Areas clave</span>
+            <h2 className="text-lg font-semibold text-[#0f172a]">Resumen por seccion</h2>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {areaTiles.map((tile) => (
-              <article key={tile.title} className="flex h-full flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl" aria-hidden="true">{tile.icon}</span>
-                  <div>
-                    <h3 className="text-lg font-semibold text-[#0f172a]">{tile.title}</h3>
-                    <p className="mt-1 text-sm text-[#475569]">{tile.description}</p>
-                  </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {sectionSummaryCards.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => card.anchor && handleScroll(card.anchor)}
+                className="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-[#00594e]/60 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#00594e]/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80"
+                disabled={!card.anchor}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#99a1af]">{card.title}</span>
+                  {card.badge ? (
+                    <span className="rounded-full bg-[#00594e]/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#00594e]">
+                      {card.badge}
+                    </span>
+                  ) : null}
                 </div>
-                <ul className="grid gap-2 text-sm text-[#475569]">
-                  {tile.items.map((item) => (
-                    <li key={item} className="flex items-start gap-2">
-                      <span className="mt-[3px] h-1.5 w-1.5 rounded-full bg-[#00594e]" aria-hidden="true" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() => handleScroll(tile.id)}
-                  className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-[#00594e] transition hover:text-[#004037]"
-                >
-                  {tile.action}
-                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m9 5 7 7-7 7" />
-                  </svg>
-                </button>
-              </article>
+                <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{card.value}</p>
+                <p className="mt-2 text-sm text-[#475569]">{card.description}</p>
+                {card.footnote ? <p className="mt-3 text-xs font-semibold text-[#00594e]">{card.footnote}</p> : null}
+              </button>
             ))}
           </div>
         </section>
 
-        <section id="users" className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
-          <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="qr" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <header className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#0f172a]">Escanear QR</h2>
+                  <p className="text-sm text-[#64748b]">Controla accesos inmediatos desde el lector.</p>
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#B5A160]">Operativo</span>
+              </header>
+              <div className="grid gap-4 md:grid-cols-3">
+                <article className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#f0fdf4] via-white to-white p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#16a34a]">Registros activos</p>
+                  <p className="mt-3 text-3xl font-bold text-[#14532d]">{formatCount(openSessionsCount)}</p>
+                  <p className="mt-1 text-xs text-[#166534]">Ingresos sin salida</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#fefce8] via-white to-white p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#ca8a04]">Alertas</p>
+                  <p className="mt-3 text-3xl font-bold text-[#92400e]">{formatCount(alertFeedItems.length)}</p>
+                  <p className="mt-1 text-xs text-[#a16207]">Registros pendientes de cierre</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#eff6ff] via-white to-white p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#2563eb]">Ingresos hoy</p>
+                  <p className="mt-3 text-3xl font-bold text-[#1d4ed8]">
+                    {formatMetricValue(entriesToday, entryStatsLoading, entryStatsError)}
+                  </p>
+                  <p className="mt-1 text-xs text-[#1d4ed8]/80">Validaciones realizadas</p>
+                </article>
+              </div>
+              <ul className="grid gap-2 text-sm text-[#475569]">
+                <li className="flex items-start gap-3">
+                  <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
+                  Mantén visible los registros activos para asegurar la salida.
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
+                  Usa el módulo de visitantes para reactivar tickets vencidos.
+                </li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/dashboard/qr')}
+                className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+              >
+                Abrir lector QR
+                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </article>
+            <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold text-[#0f172a]">Últimos movimientos validados</h3>
+                <p className="text-sm text-[#64748b]">Resumen express de lo registrado desde el escaner.</p>
+              </div>
+              <ul className="space-y-3">
+                {recentAccessPreview.length ? (
+                  recentAccessPreview.map((item) => (
+                    <li key={item.key} className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-sm font-semibold text-[#0f172a]">{item.name}</p>
+                      <p className="text-xs text-[#475569]">Documento: {item.id}</p>
+                      <p className="text-xs text-[#94a3b8]">
+                        {item.status} · {item.time} · {item.gate}
+                      </p>
+                    </li>
+                  ))
+                ) : (
+                  <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-[#94a3b8]">
+                    Sin registros recientes. Escanea un código para comenzar.
+                  </li>
+                )}
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+        <section id="enabled-users" className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <header className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#0f172a]">Usuarios habilitados</h2>
-                <p className="text-sm text-[#64748b]">Resumen general de perfiles y estado de acceso</p>
+                <p className="text-sm text-[#64748b]">Resumen de estados actuales en el directorio</p>
               </div>
-              <button className="text-sm font-semibold text-[#00594e] transition hover:text-[#004037]">Ver listado completo</button>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#B5A160]">Directorio</span>
             </header>
-            <div className="overflow-hidden">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Segmento</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Cantidad</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white text-sm text-[#334155]">
-                  {userBreakdownData.map((row) => (
-                    <tr key={row.segment}>
-                      <td className="px-6 py-4 font-semibold">{row.segment}</td>
-                      <td className="px-6 py-4">{row.count}</td>
-                      <td className="px-6 py-4 text-[#00594e]">{row.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#ecfeff] via-white to-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#0284c7]">Activos</p>
+                <p className="mt-3 text-3xl font-bold text-[#0f172a]">{formatCount(activeUsersCount)}</p>
+                <p className="mt-1 text-xs text-[#0369a1]">Con acceso vigente</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#fff7ed] via-white to-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#ea580c]">Inactivos</p>
+                <p className="mt-3 text-3xl font-bold text-[#0f172a]">{formatCount(inactiveUsersCount)}</p>
+                <p className="mt-1 text-xs text-[#c2410c]">Pendientes por reactivar</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-[#f0fdf4] via-white to-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#15803d]">Total</p>
+                <p className="mt-3 text-3xl font-bold text-[#0f172a]">{formatCount(totalUsersCount)}</p>
+                <p className="mt-1 text-xs text-[#166534]">Registros en el sistema</p>
+              </div>
             </div>
-          </article>
-
-          <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <h3 className="text-lg font-semibold text-[#0f172a]">Filtros rapidos</h3>
-              <p className="mt-1 text-sm text-[#64748b]">Optimiza la vista de usuarios segun tipo o estado.</p>
-            </div>
-            <ul className="space-y-3 text-sm text-[#475569]">
-              <li className="flex items-start gap-3">
-                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
-                Filtro por tipo: estudiantes, docentes, administrativos.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
-                Filtro por estado: activo, inactivo o acceso pendiente.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-slate-400" aria-hidden="true" />
-                Consulta el detalle completo de cada usuario y su historial.
-              </li>
-            </ul>
-            <button className="mt-auto inline-flex items-center gap-2 self-start rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10">
-              Configurar filtros
+            <p className="text-xs text-[#475569]">
+              Mantén actualizado el estado de cada usuario para evitar accesos no autorizados.
+            </p>
+            <button
+              type="button"
+              onClick={() => handleNavigate('/dashboard/users/directory')}
+              className="mt-auto inline-flex items-center gap-2 self-start rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+            >
+              Ir al directorio
               <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h6" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </article>
+
+          <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#0f172a]">Estados recientes</h3>
+            <p className="text-sm text-[#64748b]">Últimos cambios en el directorio</p>
+            <ul className="mt-4 space-y-3 text-sm text-[#475569]">
+              {usersSnapshot.slice(0, 4).map((user) => (
+                <li key={user._id || user.id || user.cedula} className="rounded-lg border border-slate-200 p-4">
+                  <p className="font-semibold text-[#0f172a]">{[user?.nombre, user?.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre'}</p>
+                  <p className="text-xs text-[#94a3b8]">{user?.email || user?.cedula || 'Sin identificador'}</p>
+                  <p className="text-xs font-semibold text-[#00594e]">Estado: {(user?.estado || 'desconocido').toUpperCase()}</p>
+                </li>
+              ))}
+              {usersSnapshot.length === 0 && (
+                <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#94a3b8]">
+                  No hay usuarios registrados aún.
+                </li>
+              )}
+            </ul>
+          </article>
         </section>
 
-        <section id="analytics" className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="statistics" className="space-y-6">
           <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <header className="flex items-center justify-between">
+            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-[#0f172a]">Estadisticas de asistencia</h2>
-                <p className="text-sm text-[#64748b]">Seguimiento de accesos validados por periodo</p>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Actividad por fecha</h2>
+                <p className="text-sm text-[#64748b]">
+                  Registros procesados en los últimos {ACTIVITY_CHART_DAYS} días.
+                </p>
               </div>
-              <span className="text-xs font-medium uppercase tracking-wider text-[#B5A160]">Actualizado</span>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/dashboard/records/history')}
+                className="inline-flex items-center gap-2 rounded-full border border-[#00594e]/40 px-4 py-1.5 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
+              >
+                Ver historial
+                <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </header>
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              {attendanceSummaryData.map((item) => (
-                <div key={item.period} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">{item.period}</p>
-                  <p className="mt-3 text-2xl font-semibold text-[#0f172a]">{item.value}</p>
-                  <p className="mt-2 text-xs text-[#475569]">{item.note}</p>
-                  <p className="mt-1 text-xs font-semibold text-[#00594e]">{item.delta}</p>
-                </div>
-              ))}
+
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#0f766e]/10 px-3 py-1 text-xs font-semibold text-[#0f766e]">
+              <span className="h-2 w-2 rounded-full bg-[#0f766e]" />
+              {formatCount(activityChartTotal)} registro{activityChartTotal === 1 ? '' : 's'} en el periodo
             </div>
-            <div className="mt-6 rounded-lg border border-dashed border-[#00594e]/30 bg-[#00594e]/5 p-6">
-              <p className="text-sm font-semibold text-[#00594e]">Tendencia de acceso</p>
-              <div className="mt-4 h-32 w-full rounded-md bg-gradient-to-r from-[#B5A160]/30 via-[#00594e]/40 to-[#0f172a]/20" />
-              <p className="mt-3 text-xs text-[#475569]">Proyeccion generada con datos de los ultimos 30 dias.</p>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">Periodo analizado</p>
+                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(activityChartTotal)}</p>
+                <p className="text-xs text-[#475569]">Ingresos registrados.</p>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">En campus</p>
+                <p className="mt-2 text-2xl font-semibold text-emerald-700">{formatCount(activityOpenCount)}</p>
+                <p className="text-xs text-emerald-700/80">Registros sin salida.</p>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Finalizados</p>
+                <p className="mt-2 text-2xl font-semibold text-amber-700">{formatCount(activityClosedCount)}</p>
+                <p className="text-xs text-amber-700/80">Con salida registrada.</p>
+              </div>
+            </div>
+
+            <div className="mt-6 h-64">
+              {activityChartHasData ? (
+                <Line data={activityChartData} options={activityChartOptions} />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm text-[#94a3b8]">
+                  Sin datos suficientes para los últimos {ACTIVITY_CHART_DAYS} días.
+                </div>
+              )}
             </div>
           </article>
 
-          <article id="faculties" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-[#0f172a]">Facultades y programas</h2>
-            <p className="text-sm text-[#64748b]">Distribucion de estudiantes y tendencia de asistencia</p>
-            <ul className="mt-6 space-y-4">
+          <div className="grid gap-6 md:grid-cols-2">
+            <article
+              id="access-trend"
+              className="mx-auto flex w-full max-w-[520px] flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:mx-0 md:max-w-none"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#0f172a]">Accesos ultimos 7 dias</h2>
+                  <p className="text-sm text-[#64748b]">Comparativa diaria de registros confirmados</p>
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
+                  Pico: {Math.max(...lastSevenDaysTrend.items.map((item) => item.value)).toLocaleString('es-CO')}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="flex min-h-[11rem] min-w-[460px] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 md:min-w-0">
+                  {lastSevenDaysTrend.items.map((item) => (
+                    <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="flex h-32 w-full items-end overflow-hidden rounded-md bg-[#0f172a]/5 sm:h-36">
+                        <div
+                          className="w-full rounded-t-md bg-[#00594e]"
+                          style={{ height: `${Math.max((item.value / lastSevenDaysTrend.max) * 100, 6)}%` }}
+                          title={item.tooltip}
+                        />
+                      </div>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b] sm:text-xs">{item.label}</span>
+                      <span className="text-[11px] text-[#0f172a] sm:text-xs">{item.value.toLocaleString('es-CO')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+
+            <article
+              id="hourly-distribution"
+              className="mx-auto flex w-full max-w-[520px] flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:mx-0 md:max-w-none"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#0f172a]">Distribucion por hora (hoy)</h2>
+                  <p className="text-sm text-[#64748b]">Registro de entradas agrupadas por hora del dia</p>
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
+                  Total: {hourlyDistributionData.items.reduce((acc, item) => acc + item.value, 0).toLocaleString('es-CO')}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="flex min-h-[11rem] min-w-[520px] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 md:min-w-0">
+                  {hourlyDistributionData.items.map((item) => (
+                    <div key={item.label} className="flex w-10 flex-col items-center gap-2 sm:w-12">
+                      <div className="flex h-28 w-full items-end overflow-hidden rounded-md bg-[#B5A160]/10 sm:h-32">
+                        <div
+                          className="w-full rounded-t-md bg-[#B5A160]"
+                          style={{ height: `${Math.max((item.value / hourlyDistributionData.max) * 100, 6)}%` }}
+                          title={item.tooltip}
+                        />
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[#64748b] sm:text-[11px]">{item.label}</span>
+                      <span className="text-[10px] text-[#0f172a] sm:text-[11px]">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <article id="faculties" className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Facultades y programas</h2>
+                <p className="text-sm text-[#64748b]">Distribucion de estudiantes y tendencia de asistencia</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div
+                  className="relative flex h-24 w-24 items-center justify-center rounded-full shadow-inner"
+                  style={{ backgroundImage: facultyDistributionPreview.gradient }}
+                  aria-label="Distribución por facultad"
+                  role="img"
+                >
+                  <span className="text-center text-[11px] font-semibold text-[#0f172a]">
+                    Top
+                    <br />
+                    {topFaculty?.faculty || 'Sin datos'}
+                  </span>
+                </div>
+                <ul className="space-y-1 text-xs text-[#475569]">
+                  {facultyDistributionPreview.segments.slice(0, 4).map((segment) => (
+                    <li key={segment.label} className="flex items-center gap-2">
+                      <span className="inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                      <span className="font-semibold text-[#0f172a]">{segment.label}</span>
+                      <span className="text-[#94a3b8]">{segment.value.toFixed(1)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <ul className="space-y-4">
               {facultyHighlightsData.map((item) => (
                 <li key={item.faculty} className="space-y-2">
                   <div className="flex items-center justify-between text-sm font-semibold text-[#0f172a]">
@@ -967,14 +1335,163 @@ const Content = () => {
           </article>
         </section>
 
-        <section id="access" className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="vehicles" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Vehiculos monitoreados</h2>
+                <p className="text-sm text-[#64748b]">Seguimiento de identificaciones detectadas en accesos.</p>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#0f172a]/60">Actualizado hoy</span>
+            </div>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Vehiculos identificados</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.total)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Basados en registros recientes</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">En campus</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.active)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Movimientos abiertos</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Sin asociar</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.missing)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Registros que requieren placa</p>
+              </div>
+            </dl>
+            <ul className="space-y-3 text-sm text-[#475569]">
+              <li className="flex items-start gap-3">
+                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
+                Verifica que cada ingreso vehicular tenga placa y tipo asignado.
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
+                Si un usuario cambia de vehiculo, actualiza sus datos antes de confirmar la salida.
+              </li>
+            </ul>
+            <div className="mt-auto flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => handleNavigate('/dashboard/vehicles?view=list')}
+                className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+              >
+                Ir a vehiculos
+                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/dashboard/vehicles?view=register')}
+                className="inline-flex items-center gap-2 rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10 focus:outline-none focus:ring-2 focus:ring-[#00594e]/40 focus:ring-offset-2"
+              >
+                Registrar nuevo
+              </button>
+            </div>
+          </article>
+          <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <h3 className="text-lg font-semibold text-[#0f172a]">Actividad vehicular</h3>
+              <p className="text-sm text-[#64748b]">Resumen rapido de los ultimos registros con placa.</p>
+            </div>
+            <ul className="space-y-3 text-sm text-[#475569]">
+              {vehicleActivityPreview.length ? (
+                vehicleActivityPreview.map((item) => (
+                  <li key={`${item.id}-${item.time}`} className="rounded-lg border border-slate-200 p-4">
+                    <p className="text-sm font-semibold text-[#0f172a]">{item.id}</p>
+                    <p className="text-xs text-[#64748b]">Usuario: {item.owner}</p>
+                    <p className="text-xs text-[#94a3b8]">
+                      {item.status} · {item.time}
+                    </p>
+                  </li>
+                ))
+              ) : (
+                <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#94a3b8]">
+                  Todavia no se han registrado vehiculos en los accesos recientes.
+                </li>
+              )}
+            </ul>
+          </article>
+        </section>
+
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="vehicle-register" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Registrar vehiculo</h2>
+              <p className="text-sm text-[#64748b]">Agrega nuevos vehiculos y asignalos al propietario correcto.</p>
+            </div>
+            <ol className="space-y-3 text-sm text-[#475569]">
+              <li className="flex items-start gap-3">
+                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#00594e] text-xs font-semibold text-white">
+                  1
+                </span>
+                Selecciona el usuario responsable del vehiculo antes de completar el formulario.
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#B5A160] text-xs font-semibold text-white">
+                  2
+                </span>
+                Registra tipo, placa, color y evidencia fotografica para facilitar la verificacion visual.
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#0f172a] text-xs font-semibold text-white">
+                  3
+                </span>
+                Confirma el estado (activo/inactivo) para evitar que vehiculos antiguos aparezcan disponibles.
+              </li>
+            </ol>
+            <p className="text-xs text-[#94a3b8]">
+              Estos datos alimentan al escaner de QR para bloquear el acceso cuando el vehiculo no coincide.
+            </p>
+            <button
+              type="button"
+              onClick={() => handleNavigate('/dashboard/vehicles?view=register')}
+              className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+            >
+              Abrir registro de vehiculos
+            </button>
+          </article>
+          <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#0f172a]">Pendientes por asociar</h3>
+            <p className="text-sm text-[#64748b]">
+              Registros abiertos sin vehiculo asignado. Revisalos y actualiza antes de cerrar la jornada.
+            </p>
+            <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 p-4 text-sm text-[#0f172a]">
+              {vehicleUsageSummary.missing
+                ? `${formatCount(vehicleUsageSummary.missing)} ingresos requieren asignación de vehiculo.`
+                : 'Todos los ingresos recientes cuentan con vehiculo definido.'}
+            </div>
+            <p className="text-xs text-[#94a3b8]">
+              Cuando confirmes la salida desde el escaner, verifica que la placa corresponda al activo registrado.
+            </p>
+          </article>
+        </section>
+
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="records-history" className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
           <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-[#0f172a]">Control de accesos</h2>
                 <p className="text-sm text-[#64748b]">Entradas y salidas en tiempo real</p>
               </div>
-              <button className="text-sm font-semibold text-[#00594e] transition hover:text-[#004037]">Ver log completo</button>
+              <div className="text-right">
+                <span className="block text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Vista resumida</span>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('/dashboard/records/history')}
+                  className="mt-1 inline-flex items-center gap-2 rounded-full border border-[#00594e]/40 px-3 py-1 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
+                >
+                  Ver historial
+                </button>
+              </div>
             </header>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
@@ -1034,12 +1551,7 @@ const Content = () => {
                 </li>
               )}
             </ul>
-            <button className="mt-auto inline-flex items-center gap-2 self-start rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10">
-              Configurar notificaciones
-              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Configura avisos desde el modulo de alertas.</p>
           </article>
         </section>
 
@@ -1070,7 +1582,7 @@ const Content = () => {
             </p>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <article id="visitors-frequent" className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-[#0f172a]">Visitantes frecuentes (30 dias)</h2>
@@ -1114,6 +1626,68 @@ const Content = () => {
           </article>
         </section>
 
+        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+        <section id="user-register" className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0f172a]">Registrar usuario</h2>
+                <p className="text-sm text-[#64748b]">Controla las nuevas altas antes de que ingresen a campus.</p>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#0f172a]/60">Directorio</span>
+            </div>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Nuevos 7 dias</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(newUsersLastWeek)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Altas recientes</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Activos</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(activeUsersCount)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Con acceso inmediato</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Inactivos</dt>
+                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(inactiveUsersCount)}</dd>
+                <p className="mt-1 text-xs text-[#475569]">Requieren aprobacion</p>
+              </div>
+            </dl>
+            <p className="text-sm text-[#475569]">
+              Mantén actualizada la informacion basica para generar credenciales y tickets temporales. Si un visitante se
+              vuelve recurrente, crea su registro definitivo desde este modulo.
+            </p>
+            <button
+              type="button"
+              onClick={() => handleNavigate('/dashboard/staff/register')}
+              className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+            >
+              Abrir registro de usuarios
+            </button>
+          </article>
+          <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#0f172a]">Checklist de alta</h3>
+            <ul className="space-y-3 text-sm text-[#475569]">
+              <li className="flex items-start gap-3">
+                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
+                Verifica cedula, correo y rol academico antes de guardar.
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
+                Asigna el permiso correcto (Administrador, Celador, Usuario).
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-[5px] inline-flex h-2 w-2 flex-none rounded-full bg-[#0f172a]" aria-hidden="true" />
+                Confirma el estado inicial como inactivo hasta validar el primer acceso.
+              </li>
+            </ul>
+            <p className="text-xs text-[#94a3b8]">
+              Los usuarios nuevos aparecen en el directorio y alimentan las estadisticas de asistencia inmediatamente.
+            </p>
+          </article>
+        </section>
+
         <section id="config" className="grid gap-6 lg:grid-cols-2">
           <article className="flex h-full flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
@@ -1131,12 +1705,7 @@ const Content = () => {
                 </li>
               ))}
             </ul>
-            <button className="mt-auto inline-flex items-center gap-2 self-start rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10">
-              Abrir configuracion
-              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.983 4.084a1 1 0 011.034 0l1.286.788 1.472-.215a1 1 0 01.966.474l.77 1.333 1.36.533a1 1 0 01.622.806l.158 1.488 1.128 1.026a1 1 0 01.252 1.024l-.455 1.42.684 1.36a1 1 0 01-.124 1.053l-.96 1.143.092 1.498a1 1 0 01-.63.948l-1.396.52-.772 1.334a1 1 0 01-.964.478l-1.486-.217-1.29.792a1 1 0 01-1.034 0l-1.29-.792-1.486.217a1 1 0 01-.964-.478l-.772-1.334-1.396-.52a1 1 0 01-.63-.948l.092-1.498-.96-1.143a1 1 0 01-.124-1.053l.684-1.36-.455-1.42a1 1 0 01.252-1.024l1.128-1.026.158-1.488a1 1 0 01.622-.806l1.36-.533.77-1.333a1 1 0 01.966-.474l1.472.215 1.286-.788z" />
-              </svg>
-            </button>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Los ajustes se administran desde el modulo de configuracion.</p>
           </article>
 
           <article id="reports" className="flex h-full flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1155,12 +1724,7 @@ const Content = () => {
                 </li>
               ))}
             </ul>
-            <button className="mt-auto inline-flex items-center gap-2 self-start rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2">
-              Generar descarga
-              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-              </svg>
-            </button>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Descarga los reportes desde el modulo correspondiente.</p>
           </article>
         </section>
       </div>

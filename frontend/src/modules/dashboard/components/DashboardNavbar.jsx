@@ -17,7 +17,6 @@ const ROLE_THEMES = {
     statusBg: 'bg-white/70',
     statusBorder: 'border-[#d1e6df]',
     statusText: 'text-[#475569]',
-    menuButton: 'text-[#0f172a] hover:bg-[#e2f3ef] focus:ring-2 focus:ring-[#9ad7c8]',
     quickActionBg: 'bg-[#00594e]',
     quickActionText: 'text-white',
     quickActionHover: 'hover:bg-[#004037]',
@@ -43,7 +42,6 @@ const ROLE_THEMES = {
     statusBg: 'bg-white/12',
     statusBorder: 'border-white/15',
     statusText: 'text-white/80',
-    menuButton: 'text-white hover:bg-white/10 focus:ring-2 focus:ring-white/30',
     quickActionBg: 'bg-[#f2c66d]',
     quickActionText: 'text-[#00594e]',
     quickActionHover: 'hover:bg-[#ddb056]',
@@ -69,7 +67,6 @@ const ROLE_THEMES = {
     statusBg: 'bg-[#f2c66d]/15',
     statusBorder: 'border-[#f2c66d]/30',
     statusText: 'text-[#fdf4d6]',
-    menuButton: 'text-white hover:bg-white/10 focus:ring-2 focus:ring-[#f2c66d]/40',
     quickActionBg: 'bg-white/10',
     quickActionText: 'text-[#fdf4d6]',
     quickActionHover: 'hover:bg-[#f2c66d]/25',
@@ -87,7 +84,9 @@ const ROLE_THEMES = {
   },
 };
 
-const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) => {
+const TRACKED_SESSION_ROLES = ['Administrador', 'Celador'];
+
+const DashboardNavbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -137,13 +136,9 @@ const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) 
   const theme = useMemo(() => ROLE_THEMES[role] ?? ROLE_THEMES.default, [role]);
 
   const logoSrc = role === 'Usuario' || !role ? escudoColor : escudoBlanco;
-  const avatarImage = role === 'Usuario' || !role ? escudoColor : user?.imagen || defaultProfile;
+  const avatarImage = user?.imagen || (role === 'Usuario' || !role ? escudoColor : defaultProfile);
 
   const navbarClasses = clsx('fixed top-0 z-40 w-full shadow-xl', 'transition-colors', 'duration-200', theme.shell);
-  const menuButtonClasses = clsx(
-    'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/0 sm:hidden transition focus:outline-none',
-    theme.menuButton
-  );
   const avatarButtonClasses = clsx(
     'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition focus:outline-none',
     theme.avatarBg,
@@ -154,18 +149,32 @@ const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) 
   const nameClasses = clsx('truncate text-sm font-semibold sm:text-base', theme.brandText);
   const subTextClasses = clsx('truncate text-xs sm:text-sm', theme.subText);
   const roleBadgeClasses = clsx(
-    'rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] shadow-sm',
+    'rounded-full px-3 py-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.18em] shadow-sm sm:px-4 sm:text-xs sm:tracking-[0.3em]',
     theme.badgeBg,
     theme.badgeText
   );
   const statusChipClasses = clsx(
-    'flex items-center gap-2 rounded-full border px-4 py-1 text-xs font-medium backdrop-blur-sm',
+    'flex items-center gap-2 rounded-full px-3 py-1 text-[0.6rem] font-medium backdrop-blur-sm sm:px-4 sm:text-xs',
     theme.statusBg,
-    theme.statusBorder,
     theme.statusText
   );
+  const statusGroupWrapperClasses = clsx(
+    'hidden sm:flex sm:flex-1 sm:items-center sm:justify-center lg:flex-[0_0_auto]'
+  );
+  const statusGroupClasses = clsx(
+    'flex flex-col items-center justify-center gap-2 px-3 py-2 text-[0.6rem] font-semibold uppercase tracking-[0.12em] sm:flex-row sm:px-4 sm:text-xs sm:tracking-[0.3em]',
+    'bg-transparent',
+    role === 'Usuario' || !role ? 'text-[#0f172a]' : 'text-white'
+  );
   const quickActionClasses = clsx(
-    'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2',
+    'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 sm:px-4 sm:py-2 sm:text-sm',
+    theme.quickActionBg,
+    theme.quickActionText,
+    theme.quickActionHover,
+    theme.quickActionRing
+  );
+  const quickActionMobileClasses = clsx(
+    'inline-flex items-center justify-center rounded-full p-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 sm:hidden',
     theme.quickActionBg,
     theme.quickActionText,
     theme.quickActionHover,
@@ -184,14 +193,36 @@ const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) 
   }, [role]);
 
   const quickAction = useMemo(() => {
-    if (role === 'Administrador') return { label: 'Ver estadisticas', to: '/dashboard/statistics' };
     if (role === 'Celador') return { label: 'Escanear QR', to: '/dashboard/qr' };
-    if (user) return { label: 'Mi perfil', to: '/dashboard/profile' };
     return null;
+  }, [role]);
+
+  const sessionStatus = useMemo(() => {
+    if (!user) {
+      return { label: 'Sin sesion', tone: 'muted' };
+    }
+
+    const normalizedEstado = (user.estado || '').toLowerCase();
+    const isActive = normalizedEstado === 'activo';
+
+    if (!TRACKED_SESSION_ROLES.includes(role)) {
+      return isActive
+        ? { label: 'Sesion activa', tone: 'active' }
+        : { label: 'Sesion inactiva', tone: 'idle' };
+    }
+
+    return isActive
+      ? { label: 'Sesion activa', tone: 'active' }
+      : { label: 'Sesion inactiva', tone: 'idle' };
   }, [role, user]);
 
-  const sessionLabel = user ? 'Sesion activa' : 'Sin sesion';
-  const statusIndicatorClasses = user ? 'bg-current' : 'bg-current opacity-40';
+  const sessionLabel = sessionStatus.label;
+  const statusIndicatorClasses = clsx(
+    'inline-flex h-2 w-2 rounded-full transition',
+    sessionStatus.tone === 'active' && 'bg-emerald-300 shadow-[0_0_6px_rgba(16,185,129,0.8)]',
+    sessionStatus.tone === 'idle' && 'bg-amber-300 shadow-[0_0_6px_rgba(251,191,36,0.8)]',
+    sessionStatus.tone === 'muted' && 'bg-white/40'
+  );
 
   return (
     <nav className={navbarClasses}>
@@ -199,56 +230,52 @@ const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) 
         <div className={clsx('absolute -top-24 -right-20 h-56 w-56 rounded-full blur-3xl opacity-70', theme.decorative)} />
         <div className={clsx('absolute -bottom-28 -left-16 h-44 w-44 rounded-full blur-2xl opacity-70', theme.decorative)} />
       </div>
-      <div className="relative z-10 px-4 py-4 sm:px-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-          <div className="flex items-center justify-between gap-3 lg:flex-1 lg:justify-start">
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              aria-controls="dashboard-sidebar"
-              aria-expanded={isSidebarOpen}
-              className={menuButtonClasses}
-              aria-label="Abrir menu lateral"
-            >
-              <svg className="w-6 h-6" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  clipRule="evenodd"
-                  fillRule="evenodd"
-                  d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75Zm0 10.5a.75.75 0 0 1 .75-.75h7.5a.75.75 0 1 1 0 1.5h-7.5A.75.75 0 0 1 2 15.25ZM2.75 9.25a.75.75 0 1 0 0 1.5h14.5a.75.75 0 0 0 0-1.5Z"
-                />
-              </svg>
-            </button>
-            <NavLink to="/dashboard" className="flex min-w-0 items-center gap-3" aria-label="Regresar al inicio del dashboard">
-              <img src={logoSrc} className="h-10 w-10 flex-shrink-0 object-contain" alt="Unitropico Logo" />
+      <div className="relative z-10 px-4 py-3 sm:px-8 sm:py-4">
+        <div className="flex flex-nowrap items-center justify-between gap-2 sm:gap-4 lg:gap-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <NavLink to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Regresar al inicio del dashboard">
+              <img src={logoSrc} className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10" alt="Unitropico Logo" />
               <div className="min-w-0">
-                <p className={clsx('truncate text-lg font-semibold sm:text-xl', theme.brandText)}>Unitropico</p>
-                <p className={clsx('truncate text-[0.65rem] font-semibold uppercase tracking-[0.35em] sm:text-xs', theme.subText)}>
+                <p className={clsx('truncate text-base font-semibold sm:text-xl', theme.brandText)}>Unitropico</p>
+                <p className={clsx('truncate text-[0.55rem] font-semibold uppercase tracking-[0.3em] sm:text-xs', theme.subText)}>
                   {secondaryLabel}
                 </p>
               </div>
             </NavLink>
           </div>
-
-          <div className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-white shadow-sm lg:flex-[0_0_auto]">
-            <span className={roleBadgeClasses}>{role || 'Invitado'}</span>
-            <div className={statusChipClasses}>
-              <span className={clsx('inline-flex h-2 w-2 rounded-full', statusIndicatorClasses)} />
-              <span>{sessionLabel}</span>
+          <div className={statusGroupWrapperClasses}>
+            <div className={statusGroupClasses}>
+              <span className={roleBadgeClasses}>{role || 'Invitado'}</span>
+              <div className={statusChipClasses}>
+                <span className={statusIndicatorClasses} />
+                <span>{sessionLabel}</span>
+              </div>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-3 lg:flex-1">
+          <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
             {quickAction && (
-              <button
-                type="button"
-                onClick={() => navigate(quickAction.to, { replace: false })}
-                className={quickActionClasses}
-              >
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M10.75 3a.75.75 0 0 0-1.5 0v6.25H3a.75.75 0 0 0 0 1.5h6.25V17a.75.75 0 0 0 1.5 0v-6.25H17a.75.75 0 0 0 0-1.5h-6.25V3Z" />
-                </svg>
-                {quickAction.label}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(quickAction.to, { replace: false })}
+                  className={quickActionMobileClasses}
+                  aria-label={quickAction.label}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10.75 3a.75.75 0 0 0-1.5 0v6.25H3a.75.75 0 0 0 0 1.5h6.25V17a.75.75 0 0 0 1.5 0v-6.25H17a.75.75 0 0 0 0-1.5h-6.25V3Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(quickAction.to, { replace: false })}
+                  className={clsx(quickActionClasses, 'hidden sm:inline-flex')}
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10.75 3a.75.75 0 0 0-1.5 0v6.25H3a.75.75 0 0 0 0 1.5h6.25V17a.75.75 0 0 0 1.5 0v-6.25H17a.75.75 0 0 0 0-1.5h-6.25V3Z" />
+                  </svg>
+                  {quickAction.label}
+                </button>
+              </>
             )}
             <div className="min-w-0 text-right">
               <p className={nameClasses}>{user?.nombre || 'Equipo de seguridad'}</p>
@@ -290,6 +317,7 @@ const DashboardNavbar = ({ onToggleSidebar = () => {}, isSidebarOpen = false }) 
               )}
             </div>
           </div>
+
         </div>
       </div>
     </nav>

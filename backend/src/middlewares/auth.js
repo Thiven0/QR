@@ -26,8 +26,9 @@ const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
     });
   }
 
+  let payload;
   try {
-    const payload = verifyToken(token);
+    payload = verifyToken(token);
 
     if (
       Array.isArray(requiredPermissions) &&
