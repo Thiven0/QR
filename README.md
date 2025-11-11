@@ -50,6 +50,10 @@ Plataforma web full‑stack para la gestión de accesos mediante códigos QR, di
    npm run dev
    ```
    - Acceso por defecto en `http://localhost:5173`.
+    - Variables soportadas:
+      - `VITE_API_URL`: URL completa (incluye `/api`) hacia la API. Sobrescribe cualquier otro cálculo.
+      - `VITE_API_PORT`: Puerto que usará el frontend para construir la URL por defecto cuando no se define `VITE_API_URL` (3000 por defecto).
+   - Sin `VITE_API_URL`, el cliente detecta el protocolo y hostname del navegador y arma `http(s)://<host>:<VITE_API_PORT>/api`, evitando errores CORS al acceder desde otro dispositivo de la red.
 
 ## Scripts útiles
 

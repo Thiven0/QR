@@ -18,8 +18,20 @@ const RegistroSchema = new Schema(
     cierreForzado: { type: Boolean, default: false },
     cierreMotivo: { type: String, trim: true },
     observaciones: { type: String, trim: true },
+    alertStatus: {
+      type: String,
+      enum: ["none", "pending", "acknowledged", "resolved"],
+      default: "none",
+    },
+    alertRaisedAt: { type: Date },
+    alertResolvedAt: { type: Date },
+    alertNotes: { type: String, trim: true },
   },
   { timestamps: true }
 );
 
+RegistroSchema.index({ usuario: 1, fechaEntrada: -1 });
+RegistroSchema.index({ fechaEntrada: -1 });
+RegistroSchema.index({ fechaSalida: -1 });
+RegistroSchema.index({ alertStatus: 1, fechaEntrada: -1 });
 module.exports = model("Registro", RegistroSchema, "registros");

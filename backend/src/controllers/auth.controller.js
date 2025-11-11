@@ -25,6 +25,7 @@ const createSessionToken = (payload = {}) => {
 };
 
 const SESSION_STATE_PERMISSIONS = ['Administrador', 'Celador'];
+const USER_BLOCKED_CODE = 'USER_BLOCKED';
 
 const shouldSyncSessionState = (userDoc) =>
   !!userDoc && SESSION_STATE_PERMISSIONS.includes(userDoc.permisoSistema);
@@ -36,6 +37,10 @@ const ensureUserEstado = async (userDoc, desiredEstado) => {
 
   const normalizedDesired = desiredEstado === 'activo' ? 'activo' : 'inactivo';
   const currentEstado = (userDoc.estado || 'inactivo').toLowerCase();
+
+  if (currentEstado === 'bloqueado') {
+    return false;
+  }
 
   if (currentEstado === normalizedDesired) {
     return false;
@@ -72,6 +77,14 @@ const login = async (req, res) => {
       return res.status(400).json({
         status: 'error',
         message: 'Credenciales invalidas',
+      });
+    }
+
+    if ((user.estado || '').toLowerCase() === 'bloqueado') {
+      return res.status(403).json({
+        status: 'error',
+        code: USER_BLOCKED_CODE,
+        message: 'Tu acceso ha sido bloqueado. Comunicate con el administrador.',
       });
     }
 

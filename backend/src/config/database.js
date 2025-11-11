@@ -41,6 +41,7 @@ const registerConnectionEvents = () => {
   connection.on("error", (error) => {
     logger.error("Error en la conexion con MongoDB", {
       error: error.message,
+      stack: error.stack,
     });
   });
 
@@ -70,6 +71,7 @@ const connectDatabase = async () => {
   } catch (error) {
     logger.error("No se pudo conectar a la base de datos", {
       error: error.message,
+      stack: error.stack,
     });
     throw new Error("no se pudo conectar a la base de datos");
   }

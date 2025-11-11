@@ -1654,7 +1654,7 @@ const DashboardStats = () => {
         <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Parque vehicular</h2>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Vehiculos parqueados</h2>
               <p className="text-sm text-[#64748b]">
                 {vehicleAnalytics.total.toLocaleString('es-CO')} vehiculos registrados • Promedio por propietario:{' '}
                 {vehicleAnalytics.averagePerOwner ? vehicleAnalytics.averagePerOwner.toFixed(2) : '0.00'}
@@ -1802,7 +1802,7 @@ const DashboardStats = () => {
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <header>
-            <h2 className="text-lg font-semibold text-[#0f172a]">Sesiones abiertas</h2>
+            <h2 className="text-lg font-semibold text-[#0f172a]">Entradas sin cierre</h2>
             <p className="text-sm text-[#64748b]">
               Usuarios que permanecen activos sin registrar salida (ultimos cinco casos).
             </p>

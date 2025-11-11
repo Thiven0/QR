@@ -55,8 +55,20 @@ const UserVehicles = () => {
   const [statusFilter, setStatusFilter] = useState('todos');
 
   const viewParam = searchParams.get('view');
+  const ownerFilter = searchParams.get('owner') || '';
   const editParam = searchParams.get('edit');
   const view = viewParam === 'register' && canEditVehicles ? 'register' : 'list';
+  const navigationIntent = location.state?.intent;
+  const ownerFilterUser = useMemo(() => {
+    if (!ownerFilter) return null;
+    return users.find((user) => user._id === ownerFilter) || null;
+  }, [ownerFilter, users]);
+
+  const clearOwnerFilter = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('owner');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const setViewMode = (mode, { edit, replace } = {}) => {
     const params = new URLSearchParams(searchParams);
@@ -179,6 +191,7 @@ const UserVehicles = () => {
 
   useEffect(() => {
     if (!canEditVehicles || consumedStateRef.current) return;
+    if (navigationIntent !== 'register') return;
     const userFromState = location.state?.user;
     if (userFromState?._id) {
       consumedStateRef.current = true;
@@ -189,7 +202,7 @@ const UserVehicles = () => {
       }));
       setUserQuery(formatOwnerName(userFromState));
     }
-  }, [location.state, canEditVehicles]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.state, canEditVehicles, navigationIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFormChange = (event) => {
     const { name, value } = event.target;
@@ -348,16 +361,17 @@ const UserVehicles = () => {
             return false;
           }
         }
-        if (!search) return true;
+
         const owner = normalizeVehicleOwner(vehicle);
+        if (ownerFilter && (!owner || owner._id !== ownerFilter)) {
+          return false;
+        }
+
+        if (!search) return true;
+
         const matchesOwner =
           owner &&
-          [
-            owner.nombre,
-            owner.apellido,
-            owner.email,
-            owner.cedula,
-          ]
+          [owner.nombre, owner.apellido, owner.email, owner.cedula]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(search));
         const matchesVehicle = [
@@ -377,7 +391,7 @@ const UserVehicles = () => {
         const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
         return dateB - dateA;
       });
-  }, [vehicles, vehicleSearch, statusFilter]);
+  }, [vehicles, vehicleSearch, statusFilter, ownerFilter]);
 
   if (!canViewVehicles) {
     return (
@@ -478,6 +492,21 @@ const UserVehicles = () => {
                 </select>
               </div>
             </header>
+            {ownerFilterUser && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#0f766e]/30 bg-[#0f766e]/5 px-3 py-2 text-xs text-[#0f172a]">
+                <p>
+                  Mostrando vehículos asociados a{' '}
+                  <span className="font-semibold text-[#0f766e]">{formatOwnerName(ownerFilterUser)}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={clearOwnerFilter}
+                  className="rounded-full border border-[#0f766e]/40 px-3 py-1 font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                >
+                  Ver todos
+                </button>
+              </div>
+            )}
             <div className="mt-4 space-y-3">
               {filteredVehicles.length > 0 ? (
                 <ul className="space-y-2 text-sm text-[#334155]">

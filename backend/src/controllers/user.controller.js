@@ -1,9 +1,13 @@
 ﻿const bcrypt = require("bcrypt");
 const crypto = require("crypto");
-const { User, PERMISOS_SISTEMA } = require("../models/user.model");
+const { User, PERMISOS_SISTEMA, USER_ESTADOS } = require("../models/user.model");
 const Registro = require("../models/entry-exit.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
 const { serializeVisitorTicket, getActiveVisitorTicketForUser } = require("../utils/visitorTicket");
+const USER_BLOCKED_CODE = 'USER_BLOCKED';
+const USERS_DEFAULT_PAGE_SIZE = Number(process.env.USERS_PAGE_SIZE || 25);
+const USERS_MAX_PAGE_SIZE = Number(process.env.USERS_PAGE_MAX_SIZE || 100);
+const USERS_SUMMARY_RECENT_LIMIT = Number(process.env.USERS_SUMMARY_RECENT_LIMIT || 6);
 
 const DEFAULT_ALLOWED_BY_ROLE = {
   Administrador: PERMISOS_SISTEMA,
@@ -32,13 +36,54 @@ const normalizePermiso = (permiso) => {
 const normalizeEstado = (estado) => {
   if (!estado) return undefined;
   const normalized = estado.toLowerCase();
-  return ["activo", "inactivo"].includes(normalized)
-    ? normalized
-    : undefined;
+  return USER_ESTADOS.includes(normalized) ? normalized : undefined;
 };
 
 const sanitizeNumeric = (value = '') => value.replace(/\D/g, '');
 const sanitizePhone = (value = '') => value.replace(/[^\d+]/g, '');
+const sanitizeSearchTerm = (value = '') => (typeof value === 'string' ? value.trim() : '');
+const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const buildSearchFilter = (term) => {
+  const normalized = sanitizeSearchTerm(term);
+  if (!normalized) return null;
+  const safeRegex = new RegExp(escapeRegExp(normalized), 'i');
+  return {
+    $or: [
+      { nombre: safeRegex },
+      { apellido: safeRegex },
+      { email: safeRegex },
+      { cedula: safeRegex },
+      { facultad: safeRegex },
+      { rolAcademico: safeRegex },
+      { telefono: safeRegex },
+    ],
+  };
+};
+const parsePositiveInt = (value, fallback, max = USERS_MAX_PAGE_SIZE) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.min(Math.floor(parsed), max);
+};
+const parseLimitParam = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  if (Number(value) === 0) {
+    return 0;
+  }
+  return parsePositiveInt(value, USERS_DEFAULT_PAGE_SIZE);
+};
+const toBoolean = (value, defaultValue = false) => {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return String(value).toLowerCase() === 'true';
+};
 
 const parseScannedText = (rawText) => {
   if (!rawText) return null;
@@ -190,35 +235,45 @@ const createUser = async (req, res) => {
 
 const listUsers = async (req, res) => {
   try {
-    const { permiso, estado } = req.query;
+    const normalizedPermiso = req.query.permiso ? normalizePermiso(req.query.permiso) : undefined;
+    const normalizedEstado = req.query.estado ? normalizeEstado(req.query.estado) : undefined;
+    const searchTerm = sanitizeSearchTerm(req.query.search);
+    const searchFilter = buildSearchFilter(searchTerm);
+    const includeVisitorTicket = toBoolean(req.query.includeVisitorTicket);
+
+    const page = parsePositiveInt(req.query.page, 1, Number.MAX_SAFE_INTEGER);
+    const rawLimit = parseLimitParam(req.query.limit);
+    const limit = rawLimit === 0 ? null : rawLimit;
+    const shouldPaginate = Number.isFinite(limit) && limit > 0;
+    const skip = shouldPaginate ? (page - 1) * limit : 0;
+
     const query = {};
-
-    if (permiso) {
-      query.permisoSistema = normalizePermiso(permiso);
+    if (normalizedPermiso) {
+      query.permisoSistema = normalizedPermiso;
+    }
+    if (normalizedEstado) {
+      query.estado = normalizedEstado;
+    }
+    if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
 
-    if (estado) {
-      const normalizedEstado = normalizeEstado(estado);
-      if (normalizedEstado) {
-        query.estado = normalizedEstado;
-      }
+    const listQuery = User.find(query).select('-password').sort({ created_at: -1 });
+    if (shouldPaginate) {
+      listQuery.skip(skip).limit(limit);
     }
 
-    const users = await User.find(query).select("-password").sort({ created_at: -1 });
+    const [usersDocs, total] = await Promise.all([listQuery.lean(), User.countDocuments(query)]);
 
-    let result = users;
+    let result = usersDocs;
 
-    if (req.query.includeVisitorTicket === "true") {
-      const now = new Date();
-      const visitorUsers = users.filter(
-        (user) => (user.rolAcademico || "").toLowerCase() === "visitante"
-      );
+    if (includeVisitorTicket && result.length) {
+      const visitorIds = result
+        .filter((user) => (user.rolAcademico || '').toLowerCase() === 'visitante')
+        .map((user) => user._id);
 
-      if (visitorUsers.length) {
-        const visitorIds = visitorUsers.map((user) => user._id);
-        const tickets = await VisitorTicket.find({
-          user: { $in: visitorIds },
-        })
+      if (visitorIds.length) {
+        const tickets = await VisitorTicket.find({ user: { $in: visitorIds } })
           .sort({ expiresAt: -1 })
           .lean();
 
@@ -230,29 +285,56 @@ const listUsers = async (req, res) => {
           return acc;
         }, new Map());
 
-        result = users.map((userDoc) => {
-          const user = userDoc.toObject();
+        result = result.map((user) => {
           const ticket = ticketMap.get(user._id.toString());
-          user.visitorTicket = serializeVisitorTicket(ticket);
-          return user;
+          return {
+            ...user,
+            visitorTicket: serializeVisitorTicket(ticket),
+          };
         });
       } else {
-        result = users.map((userDoc) => {
-          const user = userDoc.toObject();
-          user.visitorTicket = null;
-          return user;
-        });
+        result = result.map((user) => ({
+          ...user,
+          visitorTicket: null,
+        }));
       }
+    } else {
+      result = result.map((user) => ({
+        ...user,
+        visitorTicket: null,
+      }));
     }
 
+    const pagination = shouldPaginate
+      ? {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+          hasMore: skip + result.length < total,
+        }
+      : {
+          page: 1,
+          limit: result.length,
+          total,
+          totalPages: 1,
+          hasMore: false,
+        };
+
     return res.status(200).json({
-      status: "success",
+      status: 'success',
       data: result,
+      pagination,
+      filters: {
+        permiso: normalizedPermiso || null,
+        estado: normalizedEstado || null,
+        search: searchTerm || null,
+      },
     });
   } catch (error) {
     return res.status(500).json({
-      status: "error",
-      message: "Error al obtener los usuarios",
+      status: 'error',
+      message: 'Error al obtener los usuarios',
       error: error.message,
     });
   }
@@ -294,14 +376,19 @@ const toggleAccessByCedula = async (req, res) => {
       });
     }
 
-    user.estado = user.estado === "activo" ? "inactivo" : "activo";
+    const currentEstado = (user.estado || '').toLowerCase();
+    const nextEstado = currentEstado === 'bloqueado' ? 'inactivo' : 'bloqueado';
+    user.estado = nextEstado;
     await user.save();
 
     const { password, ...userWithoutPassword } = user.toObject();
 
     return res.status(200).json({
       status: "success",
-      message: "Estado actualizado correctamente",
+      message:
+        nextEstado === 'bloqueado'
+          ? 'Usuario bloqueado correctamente'
+          : 'Usuario desbloqueado correctamente',
       user: userWithoutPassword,
     });
   } catch (error) {
@@ -369,6 +456,14 @@ const validateScannedUser = async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: 'Usuario no encontrado',
+      });
+    }
+
+    if ((user.estado || '').toLowerCase() === 'bloqueado') {
+      return res.status(403).json({
+        status: 'error',
+        code: USER_BLOCKED_CODE,
+        message: 'El usuario esta bloqueado y no puede validar acceso con su codigo QR.',
       });
     }
 
@@ -562,9 +657,221 @@ const deleteUser = async (req, res) => {
     });
   }
 };
+
+const getUsersSummary = async (req, res) => {
+  try {
+    const now = new Date();
+    const last7Days = new Date(now);
+    last7Days.setDate(last7Days.getDate() - 6);
+    last7Days.setHours(0, 0, 0, 0);
+    const last30Days = new Date(now);
+    last30Days.setDate(last30Days.getDate() - 29);
+    last30Days.setHours(0, 0, 0, 0);
+
+    const estadoCountsPromise = User.aggregate([
+      {
+        $group: {
+          _id: {
+            $toLower: {
+              $ifNull: ['$estado', 'desconocido'],
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const permisoCountsPromise = User.aggregate([
+      {
+        $group: {
+          _id: {
+            $ifNull: ['$permisoSistema', 'Usuario'],
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const facultyStatsPromise = User.aggregate([
+      {
+        $group: {
+          _id: {
+            $toLower: {
+              $ifNull: ['$facultad', 'sin facultad'],
+            },
+          },
+          label: {
+            $first: {
+              $ifNull: ['$facultad', 'Sin facultad'],
+            },
+          },
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    {
+                      $toLower: {
+                        $ifNull: ['$estado', ''],
+                      },
+                    },
+                    'activo',
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    const roleStatsPromise = User.aggregate([
+      {
+        $group: {
+          _id: {
+            $toLower: {
+              $ifNull: ['$rolAcademico', 'sin rol'],
+            },
+          },
+          label: {
+            $first: {
+              $ifNull: ['$rolAcademico', 'Sin rol'],
+            },
+          },
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    {
+                      $toLower: {
+                        $ifNull: ['$estado', ''],
+                      },
+                    },
+                    'activo',
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    const latestUsersPromise = User.find()
+      .sort({ updated_at: -1 })
+      .limit(Math.max(1, USERS_SUMMARY_RECENT_LIMIT))
+      .select('nombre apellido email estado permisoSistema rolAcademico facultad created_at updated_at cedula telefono')
+      .lean();
+
+    const newUsersLastWeekPromise = User.countDocuments({ created_at: { $gte: last7Days } });
+    const newUsersLastMonthPromise = User.countDocuments({ created_at: { $gte: last30Days } });
+    const totalUsersPromise = User.estimatedDocumentCount();
+
+    const [
+      estadoCountsRaw,
+      permisoCountsRaw,
+      facultyStatsRaw,
+      roleStatsRaw,
+      latestUsers,
+      newUsersLastWeek,
+      newUsersLastMonth,
+      totalUsers,
+    ] = await Promise.all([
+      estadoCountsPromise,
+      permisoCountsPromise,
+      facultyStatsPromise,
+      roleStatsPromise,
+      latestUsersPromise,
+      newUsersLastWeekPromise,
+      newUsersLastMonthPromise,
+      totalUsersPromise,
+    ]);
+
+    const mapCounts = (entries = []) =>
+      entries.reduce((acc, entry) => {
+        const key = (entry?._id || '').toString().toLowerCase();
+        acc[key] = entry?.count || 0;
+        return acc;
+      }, {});
+
+    const estadoCountsMap = mapCounts(estadoCountsRaw);
+    const permisoCountsMap = permisoCountsRaw.reduce((acc, entry) => {
+      const key = entry?._id || 'Usuario';
+      acc[key] = entry?.count || 0;
+      return acc;
+    }, {});
+
+    const facultyStats = facultyStatsRaw.map((item) => ({
+      label: (item?.label || 'Sin facultad').trim(),
+      total: item?.total || 0,
+      active: item?.active || 0,
+    }));
+
+    const roleStats = roleStatsRaw.map((item) => ({
+      label: (item?.label || 'Sin rol').trim(),
+      total: item?.total || 0,
+      active: item?.active || 0,
+    }));
+
+    const permisoCounts = PERMISOS_SISTEMA.reduce((acc, label) => {
+      acc[label] = permisoCountsMap[label] || 0;
+      return acc;
+    }, {});
+
+    const otherPermisos = Object.entries(permisoCountsMap).reduce((sum, [key, count]) => {
+      if (!PERMISOS_SISTEMA.includes(key)) {
+        return sum + count;
+      }
+      return sum;
+    }, 0);
+
+    if (otherPermisos > 0) {
+      permisoCounts.Otros = otherPermisos;
+    }
+
+    const summary = {
+      totalUsers: totalUsers || 0,
+      estadoCounts: {
+        activo: estadoCountsMap.activo || 0,
+        inactivo: estadoCountsMap.inactivo || 0,
+        bloqueado: estadoCountsMap.bloqueado || 0,
+      },
+      permisoCounts,
+      facultyStats,
+      roleStats,
+      latestUsers: latestUsers || [],
+      newUsers: {
+        last7Days: newUsersLastWeek || 0,
+        last30Days: newUsersLastMonth || 0,
+      },
+      generatedAt: now.toISOString(),
+    };
+
+    return res.status(200).json({
+      status: 'success',
+      data: summary,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'No fue posible generar el resumen de usuarios',
+      error: error.message,
+    });
+  }
+};
 module.exports = {
   createUser,
   listUsers,
+  getUsersSummary,
   toggleAccessByCedula,
   parseScannedData,
   validateScannedUser,

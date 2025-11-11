@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../services/apiClient';
-import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import useAuth from '../../auth/hooks/useAuth';
 import {
   Chart as ChartJS,
@@ -14,54 +13,63 @@ import {
   Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { FiAlertTriangle, FiRefreshCcw } from 'react-icons/fi';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
 const STATS_COLORS = ['#00594e', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
 const ACTIVITY_CHART_DAYS = 10;
+const ALERT_THRESHOLD_MINUTES = 5;
+const ALERT_POLL_INTERVAL = 30000;
 
 const Content = () => {
   const navigate = useNavigate();
-  const { token } = useAuth();
-  const [usersSnapshot, setUsersSnapshot] = useState([]);
-  const [usersSnapshotLoading, setUsersSnapshotLoading] = useState(false);
-  const [usersSnapshotError, setUsersSnapshotError] = useState('');
+  const { token, hasPermission } = useAuth();
+  const [userSummary, setUserSummary] = useState(null);
+  const [userSummaryLoading, setUserSummaryLoading] = useState(false);
+  const [userSummaryError, setUserSummaryError] = useState('');
   const [entriesToday, setEntriesToday] = useState(0);
   const [entryStatsLoading, setEntryStatsLoading] = useState(false);
   const [entryStatsError, setEntryStatsError] = useState('');
   const [entryRecords, setEntryRecords] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState('');
+  const [alertToast, setAlertToast] = useState('');
+  const alertCountRef = useRef(0);
+  const canSeeAlerts = hasPermission(['Administrador', 'Celador']);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) return undefined;
 
     let isMounted = true;
 
-    const fetchUsersSnapshot = async () => {
+    const fetchUserSummary = async () => {
       try {
         if (isMounted) {
-          setUsersSnapshotLoading(true);
-          setUsersSnapshotError('');
+          setUserSummaryLoading(true);
+          setUserSummaryError('');
         }
 
-        const response = await apiRequest('/users', { token });
-        const data = Array.isArray(response) ? response : response?.data || [];
+        const response = await apiRequest('/users/summary', { token });
+        const data = response?.data || response || null;
 
         if (isMounted) {
-          setUsersSnapshot(data);
+          setUserSummary(data);
         }
       } catch (error) {
         if (isMounted) {
-          setUsersSnapshot([]);
-          setUsersSnapshotError(error.message || 'No fue posible cargar los usuarios.');
+          setUserSummary(null);
+          setUserSummaryError(error.message || 'No fue posible cargar el resumen de usuarios.');
         }
       } finally {
         if (isMounted) {
-          setUsersSnapshotLoading(false);
+          setUserSummaryLoading(false);
         }
       }
     };
 
-    fetchUsersSnapshot();
+    fetchUserSummary();
 
     return () => {
       isMounted = false;
@@ -80,7 +88,11 @@ const Content = () => {
           setEntryStatsError('');
         }
 
-        const response = await apiRequest('/exitEntry', { token });
+        const params = new URLSearchParams({
+          rangeDays: 30,
+          limit: 1500,
+        });;
+        const response = await apiRequest(`/exitEntry?${params.toString()}`, { token });
         const data = Array.isArray(response) ? response : response?.data || [];
 
         if (!isMounted) return;
@@ -121,21 +133,53 @@ const Content = () => {
     };
   }, [token]);
 
-  const updatedAt = new Date().toLocaleDateString('es-CO', {
+  const fetchAlerts = useCallback(async () => {
+    if (!token || !canSeeAlerts) return;
+    try {
+      setAlertsLoading(true);
+      setAlertsError('');
+      const response = await apiRequest(`/exitEntry/alerts?thresholdMinutes=${ALERT_THRESHOLD_MINUTES}`, { token });
+      const data = Array.isArray(response) ? response : response?.data || [];
+      setAlerts(data);
+      if (data.length > alertCountRef.current && data.length > 0) {
+        setAlertToast(`Hay ${data.length} alerta${data.length === 1 ? '' : 's'} de permanencia activa.`);
+      }
+      alertCountRef.current = data.length;
+    } catch (error) {
+      setAlertsError(error.message || 'No fue posible obtener las alertas.');
+      setAlerts([]);
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, [token, canSeeAlerts]);
+
+  useEffect(() => {
+    if (!canSeeAlerts) return undefined;
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, ALERT_POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchAlerts, canSeeAlerts]);
+
+  useEffect(() => {
+    if (!alertToast) return undefined;
+    const timer = setTimeout(() => setAlertToast(''), 5000);
+    return () => clearTimeout(timer);
+  }, [alertToast]);
+
+  const summaryGeneratedAt = userSummary?.generatedAt ? new Date(userSummary.generatedAt) : null;
+  const updatedAtSource = summaryGeneratedAt && !Number.isNaN(summaryGeneratedAt.getTime()) ? summaryGeneratedAt : new Date();
+  const updatedAt = updatedAtSource.toLocaleDateString('es-CO', {
     weekday: 'long',
     hour: '2-digit',
-    minute: '2-digit'
-  })
+    minute: '2-digit',
+  });
 
-  const activeUsersCount = usersSnapshot.reduce((count, user) => {
-    return (user?.estado || '').toLowerCase() === 'activo' ? count + 1 : count;
-  }, 0);
-
-  const inactiveUsersCount = usersSnapshot.reduce((count, user) => {
-    return (user?.estado || '').toLowerCase() === 'inactivo' ? count + 1 : count;
-  }, 0);
-
-  const totalUsersCount = usersSnapshot.length;
+  const estadoCounts = userSummary?.estadoCounts || {};
+  const activeUsersCount = estadoCounts.activo || 0;
+  const inactiveUsersCount = estadoCounts.inactivo || 0;
+  const blockedUsersCount = estadoCounts.bloqueado || 0;
+  const totalUsersCount = userSummary?.totalUsers ?? 0;
+  const latestUsers = Array.isArray(userSummary?.latestUsers) ? userSummary.latestUsers : [];
 
   const formatMetricValue = (value, loading, error) => {
     if (loading) return '...';
@@ -148,13 +192,23 @@ const Content = () => {
     return value.toLocaleString('es-CO');
   };
 
-  const formatPercentage = (value) => {
-    if (!Number.isFinite(value) || value <= 0) return '0%';
-    if (value >= 99.5) return '100%';
-    if (value < 1) return '<1%';
-    if (value < 10) return `${value.toFixed(1)}%`;
-    return `${Math.round(value)}%`;
-  };
+const formatPercentage = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return '0%';
+  if (value >= 99.5) return '100%';
+  if (value < 1) return '<1%';
+  if (value < 10) return `${value.toFixed(1)}%`;
+  return `${Math.round(value)}%`;
+};
+
+const formatElapsedMinutes = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return '<1 min';
+  const hours = Math.floor(value / 60);
+  const minutes = Math.round(value % 60);
+  if (hours <= 0) {
+    return `${minutes} min`;
+  }
+  return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+};
 
   const ensureDate = (value) => {
     if (!value) return null;
@@ -225,7 +279,8 @@ const Content = () => {
   }, [entryRecords, totalUsersCount]);
 
   const facultyHighlightsData = useMemo(() => {
-    if (!usersSnapshot.length) {
+    const faculties = Array.isArray(userSummary?.facultyStats) ? userSummary.facultyStats : [];
+    if (!faculties.length || !totalUsersCount) {
       return [
         {
           faculty: 'Sin datos',
@@ -236,42 +291,22 @@ const Content = () => {
       ];
     }
 
-    const facultyMap = new Map();
+    return faculties.slice(0, 4).map((item) => {
+      const total = item?.total || 0;
+      const active = item?.active || 0;
+      const distribution = totalUsersCount ? formatPercentage((total / totalUsersCount) * 100) : '0%';
+      const activeRate = total ? (active / total) * 100 : 0;
+      const status =
+        activeRate >= 75 ? 'Alta asistencia' : activeRate >= 50 ? 'Estable' : 'Requiere seguimiento';
 
-    usersSnapshot.forEach((user) => {
-      const labelRaw = String(user?.facultad || 'Sin facultad').trim();
-      const normalized = labelRaw.toLowerCase();
-      if (!facultyMap.has(normalized)) {
-        facultyMap.set(normalized, {
-          faculty: labelRaw || 'Sin facultad',
-          total: 0,
-          active: 0,
-        });
-      }
-      const entry = facultyMap.get(normalized);
-      entry.total += 1;
-      if ((user?.estado || '').toLowerCase() === 'activo') {
-        entry.active += 1;
-      }
+      return {
+        faculty: item?.label || 'Sin facultad',
+        distribution,
+        trend: `Activos ${formatPercentage(activeRate)}`,
+        status,
+      };
     });
-
-    return Array.from(facultyMap.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 4)
-      .map((item) => {
-        const distribution = totalUsersCount ? formatPercentage((item.total / totalUsersCount) * 100) : '0%';
-        const activeRate = item.total ? (item.active / item.total) * 100 : 0;
-        const status =
-          activeRate >= 75 ? 'Alta asistencia' : activeRate >= 50 ? 'Estable' : 'Requiere seguimiento';
-
-        return {
-          faculty: item.faculty,
-          distribution,
-          trend: `Activos ${formatPercentage(activeRate)}`,
-          status,
-        };
-      });
-  }, [usersSnapshot, totalUsersCount]);
+  }, [userSummary, totalUsersCount]);
 
   const accessFeedItems = useMemo(() => {
     if (!entryRecords.length) return [];
@@ -349,8 +384,11 @@ const Content = () => {
     return pending;
   }, [entryRecords]);
 
-  const configShortcutsData = useMemo(() => {
-    if (!usersSnapshot.length) {
+        const configShortcutsData = useMemo(() => {
+    const permissions = userSummary?.permisoCounts || null;
+    const roles = Array.isArray(userSummary?.roleStats) ? userSummary.roleStats : [];
+
+    if (!permissions && !roles.length) {
       return [
         { title: 'Permisos del sistema', detail: 'Sin usuarios registrados.' },
         { title: 'Estados', detail: 'Sin usuarios registrados.' },
@@ -358,51 +396,41 @@ const Content = () => {
       ];
     }
 
-    const permissionCounts = new Map();
-    const roleCounts = new Map();
+    const permissionEntries = permissions
+      ? Object.entries(permissions)
+          .filter(([, count]) => Number.isFinite(count) && count > 0)
+          .sort((a, b) => b[1] - a[1])
+          .map(([label, count]) => `${label}: ${count}`)
+      : [];
 
-    usersSnapshot.forEach((user) => {
-      const permiso = (user?.permisoSistema || 'Sin permiso').trim();
-      permissionCounts.set(permiso, (permissionCounts.get(permiso) || 0) + 1);
-
-      const roleLabel = (user?.rolAcademico || 'Sin rol').trim();
-      roleCounts.set(roleLabel, (roleCounts.get(roleLabel) || 0) + 1);
-    });
-
-    const formatEntries = (map) =>
-      Array.from(map.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([label, count]) => `${label}: ${count}`)
-        .join(' · ');
-
-    const topRoles = Array.from(roleCounts.entries())
-      .sort((a, b) => b[1] - a[1])
+    const topRoles = roles
+      .filter((item) => item?.total)
+      .sort((a, b) => (b?.total || 0) - (a?.total || 0))
       .slice(0, 4)
-      .map(([label, count]) => `${label}: ${count}`)
-      .join(' · ');
+      .map((item) => `${item?.label || 'Sin rol'}: ${item?.total ?? 0}`);
 
     return [
       {
         title: 'Permisos del sistema',
-        detail: formatEntries(permissionCounts),
+        detail: permissionEntries.length ? permissionEntries.join(' | ') : 'Sin usuarios registrados.',
       },
       {
         title: 'Estados',
-        detail: `Activos: ${activeUsersCount} · Inactivos: ${inactiveUsersCount}`,
+        detail: `Activos: ${activeUsersCount} | Inactivos: ${inactiveUsersCount} | Bloqueados: ${blockedUsersCount}`,
       },
       {
         title: 'Roles academicos',
-        detail: topRoles || 'Sin roles registrados.',
+        detail: topRoles.length ? topRoles.join(' | ') : 'Sin roles registrados.',
       },
     ];
-  }, [usersSnapshot, activeUsersCount, inactiveUsersCount]);
+  }, [userSummary, activeUsersCount, inactiveUsersCount, blockedUsersCount]);
 
   const reportOptionsData = useMemo(() => {
     const now = new Date();
     const ranges = [
       { label: 'Ultimas 24 horas', days: 1, badge: '24h' },
-      { label: 'Ultimos 7 dias', days: 7, badge: '7d' },
-      { label: 'Ultimos 30 dias', days: 30, badge: '30d' },
+      { label: 'Últimos 7 días', days: 7, badge: '7d' },
+      { label: 'Últimos 30 días', days: 30, badge: '30d' },
     ];
 
     return ranges.map(({ label, days, badge }) => {
@@ -435,7 +463,9 @@ const Content = () => {
   }, [entryRecords]);
 
   const userBreakdownData = useMemo(() => {
-    if (!usersSnapshot.length) {
+    const roles = Array.isArray(userSummary?.roleStats) ? userSummary.roleStats : [];
+
+    if (!roles.length) {
       return [
         {
           segment: 'Sin registros',
@@ -445,35 +475,20 @@ const Content = () => {
       ];
     }
 
-    const roleMap = new Map();
-
-    usersSnapshot.forEach((user) => {
-      const roleLabel = (user?.rolAcademico || 'Sin rol').trim();
-      const normalized = roleLabel.toLowerCase();
-
-      if (!roleMap.has(normalized)) {
-        roleMap.set(normalized, {
-          segment: roleLabel,
-          total: 0,
-          active: 0,
-        });
-      }
-
-      const entry = roleMap.get(normalized);
-      entry.total += 1;
-      if ((user?.estado || '').toLowerCase() === 'activo') {
-        entry.active += 1;
-      }
-    });
-
-    return Array.from(roleMap.values())
-      .sort((a, b) => b.total - a.total)
-      .map((item) => ({
-        segment: item.segment,
-        count: item.total.toLocaleString('es-CO'),
-        status: `Activos ${formatPercentage(item.total ? (item.active / item.total) * 100 : 0)}`,
-      }));
-  }, [usersSnapshot]);
+    return roles
+      .filter((item) => item?.total)
+      .sort((a, b) => (b?.total || 0) - (a?.total || 0))
+      .map((item) => {
+        const total = item?.total || 0;
+        const active = item?.active || 0;
+        const ratio = total ? (active / total) * 100 : 0;
+        return {
+          segment: item?.label || 'Sin rol',
+          count: total.toLocaleString('es-CO'),
+          status: `Activos ${formatPercentage(ratio)}`,
+        };
+      });
+  }, [userSummary]);
 
   const lastSevenDaysTrend = useMemo(() => {
     const days = [];
@@ -789,23 +804,8 @@ const Content = () => {
   }, [entryRecords]);
 
   const newUsersLastWeek = useMemo(() => {
-    if (!usersSnapshot.length) return 0;
-    const threshold = new Date();
-    threshold.setDate(threshold.getDate() - 7);
-
-    return usersSnapshot.reduce((count, user) => {
-      const created =
-        ensureDate(user?.created_at) ||
-        ensureDate(user?.createdAt) ||
-        ensureDate(user?.registroFecha) ||
-        ensureDate(user?.fechaRegistro);
-
-      if (created && created >= threshold) {
-        return count + 1;
-      }
-      return count;
-    }, 0);
-  }, [usersSnapshot]);
+    return userSummary?.newUsers?.last7Days ?? 0;
+  }, [userSummary]);
 
   const recentAccessPreview = useMemo(() => accessFeedItems.slice(0, 3), [accessFeedItems]);
 
@@ -823,7 +823,7 @@ const Content = () => {
           vehicle?.type ||
           vehicle?.tipo ||
           vehicle?._id ||
-          (typeof record?.vehiculo === 'string' ? record.vehiculo : 'Vehiculo sin dato');
+          (typeof record?.vehiculo === 'string' ? record.vehiculo : 'Vehículo sin dato');
         const userDoc = record?.usuario || {};
         const owner = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Sin propietario';
 
@@ -908,7 +908,7 @@ const Content = () => {
       footnote: alertFeedItems.length
         ? `${formatCount(alertFeedItems.length)} alertas activas`
         : lastAccessEvent
-          ? `Ultimo evento: ${lastAccessEvent.status} ${lastAccessEvent.time}`
+          ? `Último evento: ${lastAccessEvent.status} ${lastAccessEvent.time}`
           : 'Sin actividad reciente',
     },
     {
@@ -933,9 +933,9 @@ const Content = () => {
       id: 'vehicle-register',
       anchor: 'vehicle-register',
       badge: 'Registro',
-      title: 'Registrar vehiculo',
+      title: 'Registrar vehÃ­culo',
       value: formatCount(vehicleUsageSummary.missing),
-      description: 'Ingresos pendientes por asociar vehiculo',
+      description: 'Ingresos pendientes por asociar vehÃ­culo',
       footnote: vehicleUsageSummary.missing ? 'Prioriza actualizarlos hoy' : 'Sin pendientes',
     },
     {
@@ -953,7 +953,7 @@ const Content = () => {
       badge: 'Historial',
       title: 'Registros procesados',
       value: formatCount(entryRecords.length),
-      description: `Ultimos 7 dias: ${formatCount(lastSevenDaysTotals.total)}`,
+      description: `Últimos 7 días: ${formatCount(lastSevenDaysTotals.total)}`,
       footnote: lastAccessEvent ? `${lastAccessEvent.status} de ${lastAccessEvent.name}` : 'Sin eventos recientes',
     },
     {
@@ -964,6 +964,19 @@ const Content = () => {
       value: formatCount(newUsersLastWeek),
       description: 'Nuevos usuarios en los ultimos 7 dias',
       footnote: `Total directorio: ${formatCount(totalUsersCount)}`,
+    },
+    {
+      id: 'alerts-kpi',
+      anchor: 'alerts-preview',
+      badge: 'Alertas',
+      title: 'Alertas activas',
+      value: formatMetricValue(alerts.length, alertsLoading, alertsError),
+      description: 'Usuarios con permanencia extendida',
+      footnote: alertsError
+        ? 'Error al sincronizar'
+        : alerts.length
+          ? 'Atiende las alertas pendientes'
+          : 'Sin alertas activas',
     },
   ];
 
@@ -993,6 +1006,12 @@ const Content = () => {
           </div>
         </header>
 
+        {canSeeAlerts && alertToast && (
+          <div className="rounded-xl border border-[#f97316]/40 bg-[#fff7ed] px-4 py-3 text-sm font-semibold text-[#b45309]">
+            {alertToast}
+          </div>
+        )}
+
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[#0f172a]">Resumen por seccion</h2>
@@ -1021,6 +1040,103 @@ const Content = () => {
             ))}
           </div>
         </section>
+
+        {canSeeAlerts && (
+          <section
+            id="alerts-preview"
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
+            <header className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-[#0f172a]">
+                  <FiAlertTriangle className="h-5 w-5 text-[#f97316]" />
+                  Alertas activas
+                </h2>
+                <p className="text-sm text-[#475569]">
+                  Vista previa de los usuarios pendientes de revisión.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={fetchAlerts}
+                  disabled={alertsLoading}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <FiRefreshCcw className="h-3.5 w-3.5" />
+                  {alertsLoading ? 'Actualizando' : 'Refrescar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('/dashboard/alerts')}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#f97316]/10 px-3 py-1.5 text-xs font-semibold text-[#b45309] transition hover:bg-[#f97316]/15"
+                >
+                  Abrir módulo
+                </button>
+              </div>
+            </header>
+            {alertsError && (
+              <div className="mt-3 rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#b91c1c]">
+                {alertsError}
+              </div>
+            )}
+            <div className="mt-4 space-y-3">
+              {alertsLoading ? (
+                <p className="text-sm text-[#475569]">Verificando alertas...</p>
+              ) : alerts.length ? (
+                alerts.slice(0, 3).map((alert) => {
+                  const userDoc = alert?.usuario || {};
+                  const adminDoc = alert?.administrador || {};
+                  const name =
+                    [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') ||
+                    userDoc?.email ||
+                    'Usuario sin nombre';
+                  const adminName =
+                    [adminDoc?.nombre, adminDoc?.apellido].filter(Boolean).join(' ') ||
+                    adminDoc?.email ||
+                    'Sin asignar';
+                  const elapsed = Number(alert?.alertElapsedMinutes ?? 0);
+                  const status = (alert?.alertStatus || 'pending').toLowerCase();
+                  const statusLabel =
+                    status === 'resolved'
+                      ? 'Resuelta'
+                      : status === 'acknowledged'
+                        ? 'En revisión'
+                        : 'Pendiente';
+
+                  return (
+                    <article
+                      key={alert?._id || alert?.id}
+                      className="rounded-xl border border-slate-200 bg-[#fffaf0] p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[#0f172a]">{name}</p>
+                          <p className="text-xs text-[#92561a]">Supervisor: {adminName}</p>
+                          <p className="text-xs text-[#92561a]">
+                            Entrada: {formatDateTime(alert?.fechaEntrada)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#fef3c7] px-3 py-1 text-xs font-semibold text-[#b45309]">
+                            {formatElapsedMinutes(elapsed)}
+                          </span>
+                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#b45309]">
+                            {statusLabel}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="text-sm font-semibold text-[#0f172a]">
+                  Sin alertas activas. Todo en orden.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
@@ -1077,7 +1193,7 @@ const Content = () => {
             <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div>
                 <h3 className="text-lg font-semibold text-[#0f172a]">Últimos movimientos validados</h3>
-                <p className="text-sm text-[#64748b]">Resumen express de lo registrado desde el escaner.</p>
+                <p className="text-sm text-[#64748b]">Resumen express de lo registrado desde el escáner.</p>
               </div>
               <ul className="space-y-3">
                 {recentAccessPreview.length ? (
@@ -1146,14 +1262,14 @@ const Content = () => {
             <h3 className="text-lg font-semibold text-[#0f172a]">Estados recientes</h3>
             <p className="text-sm text-[#64748b]">Últimos cambios en el directorio</p>
             <ul className="mt-4 space-y-3 text-sm text-[#475569]">
-              {usersSnapshot.slice(0, 4).map((user) => (
+              {latestUsers.slice(0, 4).map((user) => (
                 <li key={user._id || user.id || user.cedula} className="rounded-lg border border-slate-200 p-4">
                   <p className="font-semibold text-[#0f172a]">{[user?.nombre, user?.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre'}</p>
                   <p className="text-xs text-[#94a3b8]">{user?.email || user?.cedula || 'Sin identificador'}</p>
                   <p className="text-xs font-semibold text-[#00594e]">Estado: {(user?.estado || 'desconocido').toUpperCase()}</p>
                 </li>
               ))}
-              {usersSnapshot.length === 0 && (
+              {latestUsers.length === 0 && (
                 <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#94a3b8]">
                   No hay usuarios registrados aún.
                 </li>
@@ -1289,7 +1405,7 @@ const Content = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#0f172a]">Facultades y programas</h2>
-                <p className="text-sm text-[#64748b]">Distribucion de estudiantes y tendencia de asistencia</p>
+                <p className="text-sm text-[#64748b]">Distribución de estudiantes y tendencia de asistencia</p>
               </div>
               <div className="flex items-center gap-4">
                 <div
@@ -1370,7 +1486,7 @@ const Content = () => {
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
-                Si un usuario cambia de vehiculo, actualiza sus datos antes de confirmar la salida.
+                Si un usuario cambia de vehículo, actualiza sus datos antes de confirmar la salida.
               </li>
             </ul>
             <div className="mt-auto flex flex-wrap gap-3">
@@ -1379,7 +1495,7 @@ const Content = () => {
                 onClick={() => handleNavigate('/dashboard/vehicles?view=list')}
                 className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
               >
-                Ir a vehiculos
+                Ir a vehículos
                 <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -1411,7 +1527,7 @@ const Content = () => {
                 ))
               ) : (
                 <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#94a3b8]">
-                  Todavia no se han registrado vehiculos en los accesos recientes.
+                  Todavía no se han registrado vehículos en los accesos recientes.
                 </li>
               )}
             </ul>
@@ -1423,15 +1539,15 @@ const Content = () => {
         <section id="vehicle-register" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Registrar vehiculo</h2>
-              <p className="text-sm text-[#64748b]">Agrega nuevos vehiculos y asignalos al propietario correcto.</p>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Registrar vehículo</h2>
+              <p className="text-sm text-[#64748b]">Agrega nuevos vehículos y asígnalos al propietario correcto.</p>
             </div>
             <ol className="space-y-3 text-sm text-[#475569]">
               <li className="flex items-start gap-3">
                 <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#00594e] text-xs font-semibold text-white">
                   1
                 </span>
-                Selecciona el usuario responsable del vehiculo antes de completar el formulario.
+                Selecciona el usuario responsable del vehículo antes de completar el formulario.
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#B5A160] text-xs font-semibold text-white">
@@ -1443,32 +1559,32 @@ const Content = () => {
                 <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#0f172a] text-xs font-semibold text-white">
                   3
                 </span>
-                Confirma el estado (activo/inactivo) para evitar que vehiculos antiguos aparezcan disponibles.
+                Confirma el estado (activo/inactivo) para evitar que vehículos antiguos aparezcan disponibles.
               </li>
             </ol>
             <p className="text-xs text-[#94a3b8]">
-              Estos datos alimentan al escaner de QR para bloquear el acceso cuando el vehiculo no coincide.
+              Estos datos alimentan al escáner de QR para bloquear el acceso cuando el vehículo no coincide.
             </p>
             <button
               type="button"
               onClick={() => handleNavigate('/dashboard/vehicles?view=register')}
               className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
             >
-              Abrir registro de vehiculos
+              Abrir registro de vehículos
             </button>
           </article>
           <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-[#0f172a]">Pendientes por asociar</h3>
             <p className="text-sm text-[#64748b]">
-              Registros abiertos sin vehiculo asignado. Revisalos y actualiza antes de cerrar la jornada.
+              Registros abiertos sin vehículo asignado. Revísalos y actualiza antes de cerrar la jornada.
             </p>
             <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 p-4 text-sm text-[#0f172a]">
               {vehicleUsageSummary.missing
-                ? `${formatCount(vehicleUsageSummary.missing)} ingresos requieren asignación de vehiculo.`
-                : 'Todos los ingresos recientes cuentan con vehiculo definido.'}
+                ? `${formatCount(vehicleUsageSummary.missing)} ingresos requieren asignación de vehículo.`
+                : 'Todos los ingresos recientes cuentan con vehículo definido.'}
             </div>
             <p className="text-xs text-[#94a3b8]">
-              Cuando confirmes la salida desde el escaner, verifica que la placa corresponda al activo registrado.
+              Cuando confirmes la salida desde el escáner, verifica que la placa corresponda al activo registrado.
             </p>
           </article>
         </section>
@@ -1551,14 +1667,14 @@ const Content = () => {
                 </li>
               )}
             </ul>
-            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Configura avisos desde el modulo de alertas.</p>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Configura avisos desde el módulo de alertas.</p>
           </article>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Duracion de permanencia</h2>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Duración de permanencia</h2>
               <p className="text-sm text-[#64748b]">Sesiones con entrada y salida registradas</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -1655,8 +1771,8 @@ const Content = () => {
               </div>
             </dl>
             <p className="text-sm text-[#475569]">
-              Mantén actualizada la informacion basica para generar credenciales y tickets temporales. Si un visitante se
-              vuelve recurrente, crea su registro definitivo desde este modulo.
+              Mantén actualizada la información básica para generar credenciales y tickets temporales. Si un visitante se
+              vuelve recurrente, crea su registro definitivo desde este módulo.
             </p>
             <button
               type="button"
@@ -1705,13 +1821,13 @@ const Content = () => {
                 </li>
               ))}
             </ul>
-            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Los ajustes se administran desde el modulo de configuracion.</p>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Los ajustes se administran desde el módulo de configuración.</p>
           </article>
 
           <article id="reports" className="flex h-full flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
               <h2 className="text-lg font-semibold text-[#0f172a]">Exportar y reportes</h2>
-              <p className="text-sm text-[#64748b]">Descarga datos para auditoria y seguimiento historico.</p>
+              <p className="text-sm text-[#64748b]">Descarga datos para auditoría y seguimiento histórico.</p>
             </div>
             <ul className="space-y-4 text-sm text-[#475569]">
               {reportOptionsData.map((item) => (
@@ -1724,7 +1840,7 @@ const Content = () => {
                 </li>
               ))}
             </ul>
-            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Descarga los reportes desde el modulo correspondiente.</p>
+            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Descarga los reportes desde el módulo correspondiente.</p>
           </article>
         </section>
       </div>
@@ -1733,3 +1849,9 @@ const Content = () => {
 }
 
 export default Content
+
+
+
+
+
+

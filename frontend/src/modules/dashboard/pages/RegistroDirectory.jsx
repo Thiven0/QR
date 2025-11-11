@@ -13,6 +13,7 @@ import { Line } from 'react-chartjs-2';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
+import { FiEdit2, FiTrash2, FiPlusCircle, FiAlertTriangle } from 'react-icons/fi';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -60,6 +61,58 @@ const getRegistroTimestamp = (registro, candidates = []) => {
   return undefined;
 };
 
+const toDateTimeLocalValue = (value) => {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (num) => String(num).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const getNowDateTimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  return toDateTimeLocalValue(now);
+};
+
+const parseDateTimeInput = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const extractTimeFromInput = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  const [, timePart] = value.split('T');
+  if (!timePart) return null;
+  return timePart.length === 5 ? `${timePart}:00` : timePart;
+};
+
+const formatTimeForPayload = (date) =>
+  date
+    ? date.toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+    : undefined;
+
+const formatMinutesLabel = (minutes) => {
+  if (!Number.isFinite(minutes) || minutes <= 0) return '<1 min';
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  if (hours <= 0) {
+    return `${minutes} min`;
+  }
+  return `${hours}h ${String(Math.round(remaining)).padStart(2, '0')}m`;
+};
+
 const RegistroDirectory = () => {
   const { token } = useAuth();
   const [registros, setRegistros] = useState([]);
@@ -70,6 +123,45 @@ const RegistroDirectory = () => {
   const [statusFilter, setStatusFilter] = useState('todos');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    cedula: '',
+    fechaEntrada: getNowDateTimeLocal(),
+    fechaSalida: '',
+    observaciones: '',
+  });
+  const [createErrors, setCreateErrors] = useState({});
+  const [createSaving, setCreateSaving] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({
+    fechaEntrada: '',
+    fechaSalida: '',
+    observaciones: '',
+    cierreMotivo: '',
+    cierreForzado: false,
+  });
+  const [editErrors, setEditErrors] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const resetCreateForm = useCallback(() => {
+    setCreateForm({
+      cedula: '',
+      fechaEntrada: getNowDateTimeLocal(),
+      fechaSalida: '',
+      observaciones: '',
+    });
+    setCreateErrors({});
+  }, []);
+
+  const handleCreateFormChange = useCallback((field, value) => {
+    setCreateForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleEditFormChange = useCallback((field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
   const fetchRegistros = useCallback(async () => {
     if (!token) return;
@@ -91,6 +183,45 @@ const RegistroDirectory = () => {
   useEffect(() => {
     fetchRegistros();
   }, [fetchRegistros]);
+
+  const openCreateModal = () => {
+    resetCreateForm();
+    setShowCreateModal(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setCreateErrors({});
+    resetCreateForm();
+  };
+
+  const openEditModal = (registro) => {
+    setEditTarget(registro);
+    setEditErrors({});
+    setEditForm({
+      fechaEntrada: toDateTimeLocalValue(registro.fechaEntrada),
+      fechaSalida: toDateTimeLocalValue(registro.fechaSalida),
+      observaciones: registro.observaciones || '',
+      cierreMotivo: registro.cierreMotivo || '',
+      cierreForzado: Boolean(registro.cierreForzado),
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditTarget(null);
+    setEditErrors({});
+  };
+
+  const openDeleteModal = (registro, event) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    setDeleteTarget(registro);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+  };
 
   const sortedRegistros = useMemo(() => {
     return [...registros].sort((a, b) => {
@@ -213,7 +344,7 @@ const RegistroDirectory = () => {
 
   const renderStatusBadge = (registro) => {
     const isOpen = !registro?.fechaSalida;
-    const baseClasses = 'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold';
+    const baseClasses = 'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold w-fit';
 
     const mainBadge = isOpen ? (
       <span className={`${baseClasses} bg-[#dcfce7] text-[#166534]`}>
@@ -228,7 +359,7 @@ const RegistroDirectory = () => {
     );
 
     const forcedBadge = registro?.cierreForzado ? (
-      <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#b91c1c]">
+      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#fee2e2] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#b91c1c]">
         <span className="h-2 w-2 rounded-full bg-[#b91c1c]" />
         Cierre por ticket
       </span>
@@ -359,6 +490,124 @@ const RegistroDirectory = () => {
     setSelected(null);
   };
 
+  const handleCreateSubmit = async (event) => {
+    event.preventDefault();
+    const nextErrors = {};
+    const cedula = createForm.cedula.trim();
+    if (!cedula) {
+      nextErrors.cedula = 'Ingresa la cédula del usuario';
+    }
+    const entryDate = parseDateTimeInput(createForm.fechaEntrada);
+    if (!entryDate) {
+      nextErrors.fechaEntrada = 'Selecciona la fecha y hora de entrada';
+    }
+    const exitDate = parseDateTimeInput(createForm.fechaSalida);
+    if (entryDate && exitDate && exitDate < entryDate) {
+      nextErrors.fechaSalida = 'La salida no puede ser anterior a la entrada';
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setCreateErrors(nextErrors);
+      return;
+    }
+
+    try {
+      setCreateSaving(true);
+      setCreateErrors({});
+      const payload = {
+        cedula,
+        fechaEntrada: entryDate.toISOString(),
+        horaEntrada: extractTimeFromInput(createForm.fechaEntrada) || formatTimeForPayload(entryDate),
+        observaciones: createForm.observaciones?.trim() || undefined,
+      };
+
+      if (exitDate) {
+        payload.fechaSalida = exitDate.toISOString();
+        payload.horaSalida = extractTimeFromInput(createForm.fechaSalida) || formatTimeForPayload(exitDate);
+      }
+
+      await apiRequest('/exitEntry', {
+        method: 'POST',
+        token,
+        data: payload,
+      });
+      closeCreateModal();
+      fetchRegistros();
+    } catch (err) {
+      setCreateErrors({ api: err.message || 'No fue posible crear el registro' });
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  const handleEditSubmit = async (event) => {
+    event.preventDefault();
+    if (!editTarget) return;
+    const nextErrors = {};
+    const entryDate = parseDateTimeInput(editForm.fechaEntrada);
+    if (!entryDate) {
+      nextErrors.fechaEntrada = 'Selecciona la fecha y hora de entrada';
+    }
+    const exitDate = parseDateTimeInput(editForm.fechaSalida);
+    if (entryDate && exitDate && exitDate < entryDate) {
+      nextErrors.fechaSalida = 'La salida no puede ser anterior a la entrada';
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setEditErrors(nextErrors);
+      return;
+    }
+
+    try {
+      setEditSaving(true);
+      setEditErrors({});
+      const payload = {
+        fechaEntrada: entryDate ? entryDate.toISOString() : undefined,
+        horaEntrada: extractTimeFromInput(editForm.fechaEntrada) || formatTimeForPayload(entryDate),
+        observaciones: editForm.observaciones?.trim() || undefined,
+        cierreMotivo: editForm.cierreMotivo?.trim() || undefined,
+        cierreForzado: Boolean(editForm.cierreForzado),
+      };
+
+      if (exitDate) {
+        payload.fechaSalida = exitDate.toISOString();
+        payload.horaSalida = extractTimeFromInput(editForm.fechaSalida) || formatTimeForPayload(exitDate);
+      } else if (editForm.fechaSalida === '') {
+        payload.fechaSalida = '';
+        payload.horaSalida = '';
+      }
+
+      await apiRequest(`/exitEntry/${editTarget._id}`, {
+        method: 'PUT',
+        token,
+        data: payload,
+      });
+      closeEditModal();
+      fetchRegistros();
+    } catch (err) {
+      setEditErrors({ api: err.message || 'No fue posible actualizar el registro' });
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDeleteRegistro = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleting(true);
+      await apiRequest(`/exitEntry/${deleteTarget._id}`, {
+        method: 'DELETE',
+        token,
+      });
+      closeDeleteModal();
+      fetchRegistros();
+    } catch (err) {
+      setError(err.message || 'No fue posible eliminar el registro');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f8fafc] py-8 px-4">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -430,6 +679,14 @@ const RegistroDirectory = () => {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 rounded-lg border border-dashed border-[#0f766e]/60 px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+              >
+                <FiPlusCircle className="h-4 w-4" />
+                Nuevo registro
+              </button>
+              <button
+                type="button"
                 onClick={fetchRegistros}
                 disabled={refreshDisabled}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5b55] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
@@ -495,15 +752,15 @@ const RegistroDirectory = () => {
             <table className="min-w-[1100px] divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                  Usuario
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                  Vehiculo
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                  Porteria
-                </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                    Usuario
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                    Vehiculo
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                    Porteria
+                  </th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Estado
                   </th>
@@ -516,12 +773,15 @@ const RegistroDirectory = () => {
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Duracion
                   </th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={8} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       Cargando registros...
                     </td>
                   </tr>
@@ -531,6 +791,8 @@ const RegistroDirectory = () => {
                     const administrador = registro.administrador || {};
                     const rowKey = resolveRegistroKey(registro, index);
                     const isSelected = selectedKey !== null && rowKey === selectedKey;
+                    const alertStatus = (registro.alertStatus || 'none').toLowerCase();
+                    const isAlerting = alertStatus === 'pending' || alertStatus === 'acknowledged';
 
                     return (
                       <tr
@@ -542,7 +804,9 @@ const RegistroDirectory = () => {
                             return currentKey === rowKey ? null : registro;
                           })
                         }
-                        className={`cursor-pointer transition hover:bg-[#f0fdfa] ${isSelected ? 'bg-[#ecfeff]' : ''}`}
+                        className={`cursor-pointer transition hover:bg-[#f0fdfa] ${isSelected ? 'bg-[#ecfeff]' : ''} ${
+                          isAlerting ? 'bg-[#fff7ed]' : ''
+                        }`}
                       >
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="font-semibold text-[#0f172a]">
@@ -552,6 +816,18 @@ const RegistroDirectory = () => {
                           {(usuario.rolAcademico || '').toLowerCase() === 'visitante' && (
                             <span className="mt-1 inline-flex w-fit items-center rounded-full bg-[#0f172a]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f172a]">
                               Visitante
+                            </span>
+                          )}
+                          {isAlerting && (
+                            <span
+                              className={`mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                alertStatus === 'pending'
+                                  ? 'bg-[#fef3c7] text-[#b45309]'
+                                  : 'bg-[#fffbeb] text-[#92400e]'
+                              }`}
+                            >
+                              <FiAlertTriangle className="h-3.5 w-3.5" />
+                              {alertStatus === 'pending' ? 'Alerta' : 'En revisión'}
                             </span>
                           )}
                         </td>
@@ -590,12 +866,35 @@ const RegistroDirectory = () => {
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="font-semibold text-[#0f172a]">{formatDurationValue(registro.duracionSesion)}</div>
                         </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditModal(registro);
+                              }}
+                              className="rounded-full border border-slate-200 p-1 text-[#0f172a] transition hover:bg-slate-100"
+                            >
+                              <span className="sr-only">Editar registro</span>
+                              <FiEdit2 className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => openDeleteModal(registro, event)}
+                              className="rounded-full border border-slate-200 p-1 text-[#b91c1c] transition hover:bg-[#fee2e2]"
+                            >
+                              <span className="sr-only">Eliminar registro</span>
+                              <FiTrash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={8} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       No se encontraron registros con los filtros seleccionados.
                     </td>
                   </tr>
@@ -605,6 +904,236 @@ const RegistroDirectory = () => {
           </div>
         </section>
       </div>
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={closeCreateModal}>
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-[#0f172a]">Nuevo registro manual</h3>
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                className="rounded-full bg-slate-100 p-2 text-[#0f172a] transition hover:bg-slate-200"
+              >
+                <span className="sr-only">Cerrar</span>
+                ×
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-[#475569]">
+              Ingresa la cédula del usuario y la hora de ingreso/salida para documentar el movimiento.
+            </p>
+            <form className="mt-4 space-y-4" onSubmit={handleCreateSubmit}>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Cédula del usuario</span>
+                <input
+                  type="text"
+                  value={createForm.cedula}
+                  onChange={(event) => handleCreateFormChange('cedula', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                  placeholder="Documento completo"
+                />
+                {createErrors.cedula && (
+                  <span className="text-xs font-semibold text-[#b91c1c]">{createErrors.cedula}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Fecha y hora de entrada</span>
+                <input
+                  type="datetime-local"
+                  value={createForm.fechaEntrada}
+                  onChange={(event) => handleCreateFormChange('fechaEntrada', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                />
+                {createErrors.fechaEntrada && (
+                  <span className="text-xs font-semibold text-[#b91c1c]">{createErrors.fechaEntrada}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">
+                  Fecha y hora de salida (opcional)
+                </span>
+                <input
+                  type="datetime-local"
+                  value={createForm.fechaSalida}
+                  onChange={(event) => handleCreateFormChange('fechaSalida', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                />
+                {createErrors.fechaSalida && (
+                  <span className="text-xs font-semibold text-[#b91c1c]">{createErrors.fechaSalida}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Observaciones</span>
+                <textarea
+                  value={createForm.observaciones}
+                  onChange={(event) => handleCreateFormChange('observaciones', event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                  placeholder="Notas adicionales del movimiento"
+                />
+              </label>
+              {createErrors.api && (
+                <div className="rounded-lg border border-[#b91c1c]/50 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#b91c1c]">
+                  {createErrors.api}
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                  disabled={createSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={createSaving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5b55] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {createSaving ? 'Guardando...' : 'Registrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={closeEditModal}>
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-[#0f172a]">Editar registro</h3>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="rounded-full bg-slate-100 p-2 text-[#0f172a] transition hover:bg-slate-200"
+              >
+                <span className="sr-only">Cerrar</span>
+                ×
+              </button>
+            </div>
+            <form className="mt-4 space-y-4" onSubmit={handleEditSubmit}>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Fecha y hora de entrada</span>
+                <input
+                  type="datetime-local"
+                  value={editForm.fechaEntrada}
+                  onChange={(event) => handleEditFormChange('fechaEntrada', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                />
+                {editErrors.fechaEntrada && (
+                  <span className="text-xs font-semibold text-[#b91c1c]">{editErrors.fechaEntrada}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Fecha y hora de salida</span>
+                <input
+                  type="datetime-local"
+                  value={editForm.fechaSalida}
+                  onChange={(event) => handleEditFormChange('fechaSalida', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                />
+                {editErrors.fechaSalida && (
+                  <span className="text-xs font-semibold text-[#b91c1c]">{editErrors.fechaSalida}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Observaciones</span>
+                <textarea
+                  value={editForm.observaciones}
+                  onChange={(event) => handleEditFormChange('observaciones', event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Motivo de cierre</span>
+                <input
+                  type="text"
+                  value={editForm.cierreMotivo}
+                  onChange={(event) => handleEditFormChange('cierreMotivo', event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                  placeholder="Opcional"
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
+                <input
+                  type="checkbox"
+                  checked={editForm.cierreForzado}
+                  onChange={(event) => handleEditFormChange('cierreForzado', event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-[#0f766e] focus:ring-[#0f766e]"
+                />
+                Cierre forzado
+              </label>
+              {editErrors.api && (
+                <div className="rounded-lg border border-[#b91c1c]/50 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#b91c1c]">
+                  {editErrors.api}
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                  disabled={editSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5b55] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {editSaving ? 'Guardando...' : 'Actualizar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={closeDeleteModal}>
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-[#b91c1c]">Eliminar registro</h3>
+            <p className="mt-2 text-sm text-[#475569]">
+              Confirmas que deseas eliminar el movimiento de{' '}
+              <span className="font-semibold text-[#0f172a]">
+                {`${deleteTarget.usuario?.nombre || ''} ${deleteTarget.usuario?.apellido || ''}`.trim() || 'Usuario'}
+              </span>
+              ? Esta acción no se puede deshacer.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteRegistro}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#b91c1c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991b1b] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <div
@@ -621,6 +1150,22 @@ const RegistroDirectory = () => {
                 <p className="mt-1 text-sm text-[#475569]">
                   Consulta la informacion completa del movimiento seleccionado.
                 </p>
+                {(() => {
+                  const currentStatus = (selected.alertStatus || 'none').toLowerCase();
+                  if (currentStatus === 'none') return null;
+                  const labelMap = {
+                    pending: { text: 'Alerta por permanencia', color: 'text-[#b45309]', bg: 'bg-[#fef3c7]' },
+                    acknowledged: { text: 'Alerta en revisión', color: 'text-[#b45309]', bg: 'bg-[#fffbeb]' },
+                    resolved: { text: 'Alerta resuelta', color: 'text-[#0f766e]', bg: 'bg-[#ecfdf5]' },
+                  };
+                  const styles = labelMap[currentStatus] || labelMap.pending;
+                  return (
+                    <div className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${styles.bg} ${styles.color}`}>
+                      <FiAlertTriangle className="h-4 w-4" />
+                      {styles.text}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-3">
                 {renderStatusBadge(selected)}

@@ -78,6 +78,8 @@ const closeActiveRegistroForVisitor = async (userId, motivo = "ticket_expirado")
   registro.duracionSesion = formatDuration(registro.fechaEntrada, now);
   registro.cierreForzado = true;
   registro.cierreMotivo = motivo;
+  registro.alertStatus = 'resolved';
+  registro.alertResolvedAt = now;
 
   await registro.save();
 
@@ -206,7 +208,8 @@ const expireVisitorSession = async (req, res) => {
       await latestTicket.save();
     }
 
-    if (user.estado !== 'inactivo') {
+    const currentEstado = (user.estado || '').toLowerCase();
+    if (currentEstado !== 'bloqueado' && currentEstado !== 'inactivo') {
       user.estado = 'inactivo';
       await user.save();
     }

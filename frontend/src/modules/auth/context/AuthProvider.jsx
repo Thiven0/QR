@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../../../services/apiClient';
+import { FORCE_LOGOUT_EVENT } from '../utils/sessionEvents';
 
 const STORAGE_KEYS = {
   token: 'qr_token',
@@ -179,6 +180,15 @@ const AuthProvider = ({ children }) => {
       clearVisitorTimer();
     }
   }, [user, ticket, scheduleVisitorAutoLogout, performVisitorAutoLogout, clearVisitorTimer]);
+
+  useEffect(() => {
+    const handleForceLogout = () => {
+      performLocalLogout();
+    };
+
+    window.addEventListener(FORCE_LOGOUT_EVENT, handleForceLogout);
+    return () => window.removeEventListener(FORCE_LOGOUT_EVENT, handleForceLogout);
+  }, [performLocalLogout]);
 
   const establishSession = useCallback(({ user: sessionUser, token: sessionToken, ticket: sessionTicket }) => {
     setUser(sessionUser);

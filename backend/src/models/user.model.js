@@ -1,6 +1,7 @@
 const { Schema, model } = require("mongoose");
 
 const PERMISOS_SISTEMA = ["Administrador", "Celador", "Usuario"];
+const USER_ESTADOS = ["activo", "inactivo", "bloqueado"];
 
 const userSchema = new Schema(
   {
@@ -23,7 +24,7 @@ const userSchema = new Schema(
     },
     estado: {
       type: String,
-      enum: ["activo", "inactivo"],
+      enum: USER_ESTADOS,
       default: "inactivo",
     },
   },
@@ -32,9 +33,13 @@ const userSchema = new Schema(
   }
 );
 
-
-
+userSchema.index({ cedula: 1 }, { unique: true, sparse: true });
+userSchema.index({ permisoSistema: 1, estado: 1 });
+userSchema.index({ rolAcademico: 1 });
+userSchema.index({ facultad: 1 });
+userSchema.index({ created_at: -1 });
 module.exports = {
   PERMISOS_SISTEMA,
+  USER_ESTADOS,
   User: model("Users", userSchema, "users"),
 };

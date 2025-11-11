@@ -1,4 +1,7 @@
-﻿const { verifyToken } = require('../services/token.service');
+const { verifyToken } = require('../services/token.service');
+const { User } = require('../models/user.model');
+
+const USER_BLOCKED_CODE = 'USER_BLOCKED';
 
 const extractToken = (rawHeader = '') =>
   rawHeader
@@ -7,7 +10,7 @@ const extractToken = (rawHeader = '') =>
     .replace(/^Bearer\s+/i, '')
     .trim();
 
-const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
+const authMiddleware = (requiredPermissions = []) => async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -26,14 +29,38 @@ const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
     });
   }
 
-  let payload;
   try {
-    payload = verifyToken(token);
+    const payload = verifyToken(token);
+    const userId = payload.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Token invalido',
+      });
+    }
+
+    const user = await User.findById(userId).select('permisoSistema estado');
+
+    if (!user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Usuario no encontrado para este token',
+      });
+    }
+
+    if ((user.estado || '').toLowerCase() === 'bloqueado') {
+      return res.status(403).json({
+        status: 'error',
+        code: USER_BLOCKED_CODE,
+        message: 'Tu acceso ha sido bloqueado. Comunicate con el administrador.',
+      });
+    }
 
     if (
       Array.isArray(requiredPermissions) &&
       requiredPermissions.length > 0 &&
-      !requiredPermissions.includes(payload.permisoSistema)
+      !requiredPermissions.includes(user.permisoSistema)
     ) {
       return res.status(403).json({
         status: 'error',
@@ -41,7 +68,13 @@ const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
       });
     }
 
-    req.user = payload;
+    req.user = {
+      ...payload,
+      id: user._id.toString(),
+      userId: user._id.toString(),
+      permisoSistema: user.permisoSistema,
+      estado: user.estado,
+    };
     return next();
   } catch (error) {
     if (error.code === 'TOKEN_EXPIRED') {
@@ -54,7 +87,6 @@ const authMiddleware = (requiredPermissions = []) => (req, res, next) => {
 
     return res.status(401).json({
       token,
-      payload,
       status: 'error',
       message: 'Token invalido',
     });

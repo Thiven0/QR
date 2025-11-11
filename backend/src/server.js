@@ -27,11 +27,13 @@ const startServer = async () => {
     server.on("error", (error) => {
       logger.error("Error en la capa HTTP del servidor", {
         error: error.message,
+        stack: error.stack,
       });
     });
   } catch (error) {
     logger.error("No se pudo iniciar el servidor", {
       error: error.message,
+      stack: error.stack,
     });
     process.exit(1);
   }

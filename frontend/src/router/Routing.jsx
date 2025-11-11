@@ -13,6 +13,7 @@ import UserDirectory from '../modules/dashboard/pages/UserDirectory';
 import RegistroDirectory from '../modules/dashboard/pages/RegistroDirectory';
 import SectionsGuide from '../modules/dashboard/pages/SectionsGuide';
 import ProfileUser from '../modules/dashboard/pages/ProfileUser';
+import AlertsCenter from '../modules/dashboard/pages/AlertsCenter';
 import PublicLayout from '../modules/public/layouts/PublicLayout';
 import RegisterVisitor from '../modules/public/pages/RegisterVisitor';
 import NotFound from '../pages/NotFound';
@@ -90,6 +91,14 @@ export const Routing = () => {
               element={
                 <ProtectedRoute allowed={['Administrador', 'Celador']}>
                   <RegistroDirectory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="alerts"
+              element={
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <AlertsCenter />
                 </ProtectedRoute>
               }
             />
