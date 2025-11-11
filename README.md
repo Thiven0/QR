@@ -1,23 +1,25 @@
 # QR Access Control Platform
 
-Plataforma web full‑stack para la gestión de accesos mediante códigos QR, diseñada para instituciones universitarias. Permite a administradores y celadores registrar ingresos y salidas de usuarios y vehículos, monitorear estadísticas en tiempo real y mantener un historial detallado de movimientos.
+Plataforma web full-stack para controlar accesos mediante códigos QR. Incluye autenticación de usuarios, bloqueo/desbloqueo remoto, administración de vehículos, descarga de carnets en PDF y tableros de métricas para administradores y celadores.
+
+## Demo
+- Producción: https://proyectounitropicoqr.vercel.app/
 
 ## Arquitectura
 
 | Carpeta   | Descripción                                                                           |
 |-----------|---------------------------------------------------------------------------------------|
-| `backend` | API REST construida con Node.js/Express, MongoDB/Mongoose y controladores modularizados |
-| `frontend`| Aplicación React + Vite que consume la API y ofrece paneles para distintos perfiles    |
+| `backend` | API REST en Node.js/Express con MongoDB/Mongoose y controladores modularizados         |
+| `frontend`| Aplicación React + Vite con contextos de sesión, dashboard protegido y flujos públicos |
 
-## Características
+## Principales características
 
-- Registro y autenticación de usuarios (Administrador, Celador, Usuario/Visitante).
-- Escaneo de QR con doble flujo: usuarios y vehículos.
-- Historial de registros con filtros avanzados y exportación a Excel.
-- Tableros con métricas (asistencia, tickets vigentes/expirados, actividad diaria).
-- Gestión de tickets temporales (creación, expiración automática, reactivación).
-- Estadísticas descargables en PDF desde el módulo de analítica.
-- Integración con Chart.js para visualizaciones y `xlsx`/`jspdf` para reportes.
+- **Gestión de usuarios**: registro, edición, bloqueo/desbloqueo, reactivación de tickets temporales y descarga de carnets en PDF (con conversión automática de colores para html2canvas).
+- **Escaneo de QR**: flujo doble (usuarios y vehículos), avisos sonoros y control de cierres forzados.
+- **Vehículos**: filtros por propietario desde el directorio, registro rápido y estado activo/inactivo visible.
+- **Historial de registros**: filtros por fecha/estado, badges compactos y exportación a Excel (`xlsx`).
+- **Dashboard rediseñado**: accesos rápidos con íconos de `react-icons`, sidebar ampliado y estados visuales consistentes.
+- **Cliente API resiliente**: si `VITE_API_URL` no está definido, el frontend calcula la URL usando la ubicación del navegador para evitar errores CORS.
 
 ## Requisitos
 
@@ -36,48 +38,51 @@ Plataforma web full‑stack para la gestión de accesos mediante códigos QR, di
    ```bash
    cd backend
    npm install
-   cp .env.example .env   # ajusta credenciales de MongoDB, JWT, etc.
+   cp .env.example .env   # ajusta MongoDB, JWT, etc.
    npm run dev
    ```
-   - La API expone rutas bajo `http://localhost:3000/api`.
-   - Rutas principales: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/vehicles`.
+   - API base: `http://localhost:3000/api`
+   - Rutas destacadas: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/vehicles`
 
 3. **Frontend**
    ```bash
    cd frontend
    npm install
-   cp .env.example .env   # define VITE_API_URL, etc.
+   cp .env.example .env   # define VITE_API_URL si necesitas forzar la URL
    npm run dev
    ```
-   - Acceso por defecto en `http://localhost:5173`.
-    - Variables soportadas:
-      - `VITE_API_URL`: URL completa (incluye `/api`) hacia la API. Sobrescribe cualquier otro cálculo.
-      - `VITE_API_PORT`: Puerto que usará el frontend para construir la URL por defecto cuando no se define `VITE_API_URL` (3000 por defecto).
-   - Sin `VITE_API_URL`, el cliente detecta el protocolo y hostname del navegador y arma `http(s)://<host>:<VITE_API_PORT>/api`, evitando errores CORS al acceder desde otro dispositivo de la red.
+   - Dev server: `http://localhost:5173`
+   - Variables soportadas:
+     - `VITE_API_URL`: URL completa (incluye `/api`). Tiene prioridad.
+     - `VITE_API_PORT`: Puerto para el cálculo automático cuando `VITE_API_URL` está vacío (3000 por defecto).
+   - Sin `VITE_API_URL`, el cliente genera `http(s)://<host>:<VITE_API_PORT>/api`, útil para pruebas en LAN.
 
 ## Scripts útiles
 
-| Ubicación | Script        | Acción                                |
-|-----------|---------------|----------------------------------------|
-| backend   | `npm run dev` | Ejecuta API con nodemon               |
-| backend   | `npm test`    | (si aplica) pruebas/linters           |
-| frontend  | `npm run dev` | Dev server Vite                       |
-| frontend  | `npm run build` | Compila artefactos de producción    |
-| frontend  | `npm run preview` | Previsualiza build estático       |
+| Ubicación | Script            | Acción                                |
+|-----------|-------------------|----------------------------------------|
+| backend   | `npm run dev`     | Levanta la API con nodemon             |
+| backend   | `npm test`        | (si aplica) pruebas/linters            |
+| frontend  | `npm run dev`     | Servidor de desarrollo Vite            |
+| frontend  | `npm run build`   | Compila artefactos de producción       |
+| frontend  | `npm run preview` | Previsualiza el build estático         |
 
-## Tecnologías clave
+## Tecnologías
 
 - **Backend:** Node.js, Express, Mongoose, JWT, bcrypt.
-- **Frontend:** React 18, Vite, React Router, Tailwind CSS.
-- **Visualización:** Chart.js / react-chartjs-2.
-- **Reportes:** `html2canvas`, `jspdf`, `xlsx`.
+- **Frontend:** React 18, Vite, React Router, Tailwind CSS, react-icons.
+- **Reportes/visualizaciones:** Chart.js, react-chartjs-2, `html2canvas`, `jspdf`, `xlsx`.
 
-## Estructura de datos destacada
+## Datos principales
 
-- `users`: información del personal/visitantes; soporta `rolAcademico`, `permisoSistema` y estado activo/inactivo.
-- `registros` (entry-exit): entradas/salidas con vínculos a usuario, administrador y vehículo.
-- `visitor_tickets`: tickets temporales con expiración automática (TTL).
-- `vehicles`: catálogo por usuario, con seguimiento de estado activo/inactivo.
+- `users`: incluye `rolAcademico`, `permisoSistema`, estado (`activo`, `inactivo`, `bloqueado`) y ticket temporal.
+- `entry-exit`: historial con referencias a usuario, vehículo, motivo de cierre y badges compactos (`En progreso`, `Finalizado`).
+- `visitor_tickets`: tickets temporales con expiración automática y reactivación desde el panel.
+- `vehicles`: catálogo asociado a usuarios con filtros por propietario.
+
+## Documentación
+
+Consulta la carpeta [`docs/`](docs) para la arquitectura detallada, colecciones de Postman y ejemplos de `.env` actualizados.
 
 ## Licencia
 

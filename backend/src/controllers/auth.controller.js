@@ -129,12 +129,6 @@ const login = async (req, res) => {
       userData.visitorTicket = serializedTicket;
     }
 
-    // TODO(TEST) Remover log despues de validar los servicios.
-    console.log('[AUTH][LOGIN][TEST]', {
-      userId: user._id.toString(),
-      permisoSistema: user.permisoSistema,
-      tokenPreview: token.slice(0, 12),
-    });
 
     return res.status(200).json({
       status: 'success',
@@ -261,8 +255,6 @@ const issueToken = (req, res) => {
 
     const payload = verifyToken(token);
 
-    // TODO(TEST) Remover log despues de validar los servicios.
-    console.log('[AUTH][ISSUE_TOKEN][TEST]', { payload });
 
     return res.status(200).json({
       status: 'success',

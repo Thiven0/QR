@@ -118,7 +118,6 @@ const UserVehicles = () => {
       const data = Array.isArray(response) ? response : response?.data || [];
       setUsers(data);
     } catch (err) {
-      console.warn('No fue posible obtener el listado de usuarios.', err);
       setUsers([]);
     } finally {
       setLoadingUsers(false);

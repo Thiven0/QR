@@ -48,7 +48,6 @@ const readPersistedSession = () => {
     const ticket = ticketRaw ? JSON.parse(ticketRaw) : null;
     return { token, user, ticket };
   } catch (error) {
-    console.warn('No se pudo leer la sesión almacenada', error);
     return { token: null, user: null, ticket: null };
   }
 };
@@ -87,7 +86,6 @@ const AuthProvider = ({ children }) => {
         });
       }
     } catch (error) {
-      console.warn('No fue posible expirar el ticket temporal', error);
     } finally {
       performLocalLogout();
     }
@@ -123,7 +121,6 @@ const AuthProvider = ({ children }) => {
         token: tokenRef.current,
       });
     } catch (error) {
-      console.warn('No se pudo notificar el cierre de sesion', error);
     }
   }, []);
 
@@ -157,7 +154,6 @@ const AuthProvider = ({ children }) => {
         tokenRef.current = storedToken;
         persistSession(storedToken, profileUser, profileTicket);
       } catch (error) {
-        console.warn('No se pudo restaurar la sesión', error);
         performLocalLogout();
       } finally {
         setLoading(false);

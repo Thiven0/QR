@@ -197,7 +197,6 @@ const QRScannerPage = () => {
       oscillator.start(context.currentTime);
       oscillator.stop(context.currentTime + duration);
     } catch (error) {
-      console.error('No se pudo reproducir el aviso sonoro del escaneo.', error);
     }
   }, [audioContextRef]);
 
@@ -301,7 +300,6 @@ const QRScannerPage = () => {
       setExitWithoutVehicleAcknowledged(false);
       setExitWithoutVehicleNote('');
     } catch (error) {
-      console.error(error);
       const message =
         error.details?.message ||
         error.message ||
@@ -411,7 +409,6 @@ const QRScannerPage = () => {
       });
       setShowVehicleConfirmation(true);
     } catch (error) {
-      console.error(error);
       const message =
         error.details?.message ||
         error.message ||
@@ -433,7 +430,6 @@ const QRScannerPage = () => {
   };
 
   const handleError = (error) => {
-    console.error(error);
     if (activeTab === TAB_USER) {
       setUserError('No fue posible acceder a la camara.');
     } else {
@@ -471,7 +467,6 @@ const QRScannerPage = () => {
         message,
       });
     } catch (error) {
-      console.error(error);
       const message =
         error.details?.message ||
         error.message ||
@@ -575,7 +570,6 @@ const QRScannerPage = () => {
       setExitWithoutVehicleAcknowledged(false);
       setExitWithoutVehicleNote('');
     } catch (error) {
-      console.error(error);
       const message =
         error.details?.message ||
         error.message ||
@@ -640,7 +634,6 @@ const QRScannerPage = () => {
       });
       setShowVehicleConfirmation(false);
     } catch (error) {
-      console.error(error);
       const message =
         error.details?.message ||
         error.message ||

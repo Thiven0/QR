@@ -460,7 +460,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         [name]: dataUrl,
       }));
     } catch (err) {
-      console.error('No fue posible leer el archivo', err);
     }
   };
 
@@ -744,7 +743,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       pdf.save(filename);
       setFeedback('Carnet descargado correctamente.');
     } catch (error) {
-      console.error('No se pudo descargar el carnet', error);
       setFeedback('No fue posible descargar el carnet. Intentalo nuevamente.');
     } finally {
       restoreSnapshotStyles();

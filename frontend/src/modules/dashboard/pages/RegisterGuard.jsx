@@ -80,7 +80,6 @@ const RegisterGuard = () => {
       const dataUrl = await readFileAsDataUrl(files[0]);
       setFieldValue(name, dataUrl);
     } catch (error) {
-      console.error('No fue posible leer el archivo', error);
     }
   };
 
@@ -130,7 +129,6 @@ const RegisterGuard = () => {
       });
       setFieldValue('imagenQR', dataUrl);
     } catch (error) {
-      console.error('No fue posible generar el codigo QR', error);
       setQrError('No fue posible generar el codigo QR. Intenta nuevamente.');
     } finally {
       setQrGenerating(false);
