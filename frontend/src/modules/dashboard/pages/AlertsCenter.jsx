@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiAlertTriangle, FiCheck, FiRefreshCcw, FiClock } from 'react-icons/fi';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
@@ -47,6 +48,7 @@ const formatElapsedMinutes = (minutes) => {
 const AlertsCenter = () => {
   const { token, hasPermission } = useAuth();
   const canAccess = hasPermission(['Administrador', 'Celador']);
+  const navigate = useNavigate();
 
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,7 +75,8 @@ const AlertsCenter = () => {
   }, [token, canAccess]);
 
   const handleAlertUpdate = useCallback(
-    async (alertId, status) => {
+    async (alert, status, { autoNavigate = false } = {}) => {
+      const alertId = alert?._id || alert?.id || alert;
       if (!token || !alertId) return;
       setUpdatingId(alertId);
       setError('');
@@ -83,6 +86,18 @@ const AlertsCenter = () => {
           token,
           data: { status },
         });
+        if (status === 'acknowledged' && autoNavigate) {
+          const searchTerm =
+            alert?.usuario?.cedula ||
+            alert?.usuario?.email ||
+            [alert?.usuario?.nombre, alert?.usuario?.apellido].filter(Boolean).join(' ') ||
+            '';
+          setTimeout(() => {
+            navigate('/dashboard/records/history', {
+              state: { registroId: alertId, searchTerm },
+            });
+          }, 5000);
+        }
         fetchAlerts();
       } catch (err) {
         setError(err.message || 'No fue posible actualizar la alerta.');
@@ -90,8 +105,14 @@ const AlertsCenter = () => {
         setUpdatingId(null);
       }
     },
-    [token, fetchAlerts],
+    [token, fetchAlerts, navigate],
   );
+
+  const handleAlertClick = (alert) => {
+    const statusKey = (alert?.alertStatus || 'pending').toLowerCase();
+    const targetStatus = statusKey === 'resolved' ? 'resolved' : 'acknowledged';
+    handleAlertUpdate(alert, targetStatus, { autoNavigate: true });
+  };
 
   useEffect(() => {
     fetchAlerts();
@@ -216,7 +237,11 @@ const AlertsCenter = () => {
                     const statusStyle = STATUS_STYLES[statusKey] || STATUS_STYLES.pending;
 
                     return (
-                      <tr key={id} className="hover:bg-[#f8fafc]">
+                      <tr
+                        key={id}
+                        className="hover:bg-[#f8fafc] cursor-pointer"
+                        onClick={() => handleAlertClick(alert)}
+                      >
                         <td className="px-4 py-4">
                           <p className="font-semibold text-[#0f172a]">
                             {[userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || userDoc?.email || 'Sin nombre'}
@@ -248,7 +273,10 @@ const AlertsCenter = () => {
                             {statusKey !== 'acknowledged' && statusKey !== 'resolved' && (
                               <button
                                 type="button"
-                                onClick={() => handleAlertUpdate(id, 'acknowledged')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleAlertUpdate(alert, 'acknowledged', { autoNavigate: true });
+                                }}
                                 disabled={updatingId === id}
                                 className="rounded-full border border-[#f97316]/40 px-3 py-1 text-xs font-semibold text-[#b45309] transition hover:bg-[#fff7ed] disabled:cursor-not-allowed disabled:opacity-60"
                               >
@@ -258,7 +286,10 @@ const AlertsCenter = () => {
                             {statusKey !== 'resolved' && (
                               <button
                                 type="button"
-                                onClick={() => handleAlertUpdate(id, 'resolved')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleAlertUpdate(alert, 'resolved');
+                                }}
                                 disabled={updatingId === id}
                                 className="inline-flex items-center gap-1 rounded-full border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#ecfdf5] disabled:cursor-not-allowed disabled:opacity-60"
                               >

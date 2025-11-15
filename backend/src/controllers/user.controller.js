@@ -127,6 +127,8 @@ const buildUserPayload = (payload) => {
     rolAcademico: payload.rolAcademico || payload.rol,
     permisoSistema: normalizePermiso(payload.permisoSistema || payload.permiso_sistema),
     estado: normalizeEstado(payload.estado),
+    documentIdentity: payload.documentIdentity,
+    dataConsent: payload.dataConsent,
   };
 };
 

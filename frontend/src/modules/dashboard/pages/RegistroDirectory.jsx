@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -115,6 +116,8 @@ const formatMinutesLabel = (minutes) => {
 
 const RegistroDirectory = () => {
   const { token } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [registros, setRegistros] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -130,6 +133,10 @@ const RegistroDirectory = () => {
     fechaSalida: '',
     observaciones: '',
   });
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userQuery, setUserQuery] = useState('');
+  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
   const [createErrors, setCreateErrors] = useState({});
   const [createSaving, setCreateSaving] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -144,6 +151,8 @@ const RegistroDirectory = () => {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const pendingRegistroIdRef = useRef(location.state?.registroId || null);
+  const pendingSearchTermRef = useRef(location.state?.searchTerm || null);
 
   const resetCreateForm = useCallback(() => {
     setCreateForm({
@@ -153,6 +162,8 @@ const RegistroDirectory = () => {
       observaciones: '',
     });
     setCreateErrors({});
+    setUserQuery('');
+    setShowUserSuggestions(false);
   }, []);
 
   const handleCreateFormChange = useCallback((field, value) => {
@@ -162,6 +173,20 @@ const RegistroDirectory = () => {
   const handleEditFormChange = useCallback((field, value) => {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  const loadUsers = useCallback(async () => {
+    if (!token) return;
+    setLoadingUsers(true);
+    try {
+      const response = await apiRequest('/users', { token });
+      const data = Array.isArray(response) ? response : response?.data || [];
+      setUsers(data);
+    } catch {
+      setUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [token]);
 
   const fetchRegistros = useCallback(async () => {
     if (!token) return;
@@ -183,6 +208,18 @@ const RegistroDirectory = () => {
   useEffect(() => {
     fetchRegistros();
   }, [fetchRegistros]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
+    if (location.state?.registroId) {
+      pendingRegistroIdRef.current = location.state.registroId;
+      pendingSearchTermRef.current = location.state.searchTerm || null;
+      navigate('.', { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
 
   const openCreateModal = () => {
     resetCreateForm();
@@ -272,6 +309,54 @@ const RegistroDirectory = () => {
       return matchesSearch && matchesStart && matchesEnd && matchesStatus;
     });
   }, [sortedRegistros, searchTerm, statusFilter, startDate, endDate]);
+
+  useEffect(() => {
+    const targetId = pendingRegistroIdRef.current;
+    if (!targetId) return;
+    if (pendingSearchTermRef.current && !searchTerm) {
+      setSearchTerm(pendingSearchTermRef.current);
+    }
+    const match = filteredRegistros.find(
+      (registro) =>
+        resolveRegistroKey(registro, '') === targetId ||
+        registro._id === targetId ||
+        registro.id === targetId
+    );
+    if (match) {
+      setSelected(match);
+      pendingRegistroIdRef.current = null;
+      pendingSearchTermRef.current = null;
+    }
+  }, [filteredRegistros, searchTerm]);
+
+  const filteredUsers = useMemo(() => {
+    const search = userQuery.trim().toLowerCase();
+    if (!search) {
+      return users.slice(0, 8);
+    }
+    return users
+      .filter((user) =>
+        [user.nombre, user.apellido, user.email, user.cedula]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search))
+      )
+      .slice(0, 8);
+  }, [users, userQuery]);
+
+  const handleUserQueryChange = (value) => {
+    setUserQuery(value);
+    const numericCedula = value.replace(/\D/g, '');
+    handleCreateFormChange('cedula', numericCedula);
+    setShowUserSuggestions(true);
+  };
+
+  const handleSelectUserSuggestion = (user) => {
+    const displayName =
+      [user.nombre, user.apellido].filter(Boolean).join(' ').trim() || user.email || user.cedula || '';
+    setUserQuery(displayName);
+    handleCreateFormChange('cedula', user.cedula || '');
+    setShowUserSuggestions(false);
+  };
 
   const lineChartData = useMemo(() => {
     if (!filteredRegistros.length) {
@@ -392,6 +477,7 @@ const RegistroDirectory = () => {
       'Hora salida',
       'Duracion',
       'Cierre forzado',
+      'Observaciones',
     ];
     const rows = filteredRegistros.map((registro) => {
       const usuario = registro.usuario || {};
@@ -410,6 +496,7 @@ const RegistroDirectory = () => {
         formatTime(registro.horaSalida),
         formatDurationValue(registro.duracionSesion),
         registro.cierreForzado ? `Si (${registro.cierreMotivo || 'ticket'})` : 'No',
+        registro.observaciones || '',
       ];
     });
 
@@ -773,6 +860,9 @@ const RegistroDirectory = () => {
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Duracion
                   </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
+                    Observaciones
+                  </th>
                   <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Acciones
                   </th>
@@ -781,7 +871,7 @@ const RegistroDirectory = () => {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={9} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       Cargando registros...
                     </td>
                   </tr>
@@ -867,6 +957,11 @@ const RegistroDirectory = () => {
                           <div className="font-semibold text-[#0f172a]">{formatDurationValue(registro.duracionSesion)}</div>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
+                          <div className="max-w-xs truncate text-xs text-[#475569]">
+                            {registro.observaciones || 'Sin observaciones'}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
@@ -894,7 +989,7 @@ const RegistroDirectory = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
+                    <td colSpan={9} className="px-4 py-6 text-center text-sm font-semibold text-[#475569]">
                       No se encontraron registros con los filtros seleccionados.
                     </td>
                   </tr>
@@ -927,14 +1022,39 @@ const RegistroDirectory = () => {
             </p>
             <form className="mt-4 space-y-4" onSubmit={handleCreateSubmit}>
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Cédula del usuario</span>
-                <input
-                  type="text"
-                  value={createForm.cedula}
-                  onChange={(event) => handleCreateFormChange('cedula', event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
-                  placeholder="Documento completo"
-                />
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Usuario</span>
+                <div className="relative mt-1">
+                  <input
+                    type="text"
+                    value={userQuery}
+                    onChange={(event) => handleUserQueryChange(event.target.value)}
+                    onFocus={() => setShowUserSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowUserSuggestions(false), 150)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                    placeholder={loadingUsers ? 'Cargando usuarios...' : 'Buscar por nombre, correo o cédula'}
+                  />
+                  {showUserSuggestions && filteredUsers.length > 0 && (
+                    <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {filteredUsers.map((user) => {
+                        const displayName =
+                          [user.nombre, user.apellido].filter(Boolean).join(' ').trim() ||
+                          user.email ||
+                          user.cedula;
+                        return (
+                          <li
+                            key={user._id || user.cedula || displayName}
+                            className="cursor-pointer px-3 py-2 text-sm text-[#0f172a] hover:bg-[#ecfdf5]"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSelectUserSuggestion(user)}
+                          >
+                            <p className="font-semibold">{displayName || 'Sin nombre'}</p>
+                            <p className="text-xs text-[#64748b]">CC: {user.cedula || 'N/D'}</p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
                 {createErrors.cedula && (
                   <span className="text-xs font-semibold text-[#b91c1c]">{createErrors.cedula}</span>
                 )}
@@ -1164,16 +1284,28 @@ const RegistroDirectory = () => {
                       <FiAlertTriangle className="h-4 w-4" />
                       {styles.text}
                     </div>
-                  );
-                })()}
-              </div>
-              <div className="flex items-center gap-3">
-                {renderStatusBadge(selected)}
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
-                >
+              );
+            })()}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {renderStatusBadge(selected)}
+            {selected && (
+              <button
+                type="button"
+                onClick={() => {
+                  openEditModal(selected);
+                  setSelected(null);
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-[#0f766e]/40 bg-white px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#ecfdf5]"
+              >
+                Editar
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
+            >
                   Cerrar
                 </button>
               </div>

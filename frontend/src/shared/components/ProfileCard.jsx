@@ -1,4 +1,4 @@
-const ProfileCard = ({ user, variant = 'default' }) => {
+const ProfileCard = ({ user, variant = 'default', onImageClick, onQrClick }) => {
   if (!user) return <p className="text-center text-gray-500">No hay datos de usuario.</p>;
 
   const isExpanded = variant === 'expanded';
@@ -33,11 +33,12 @@ const ProfileCard = ({ user, variant = 'default' }) => {
     <div className={containerClasses}>
       <div className={contentClasses}>
         <div className="flex flex-col items-center md:items-start text-center md:text-left">
-          <div className={avatarWrapperClasses}>
+          <div className={`${avatarWrapperClasses} ${onImageClick ? 'cursor-zoom-in' : ''}`}>
             <img
               src={user.imagen || 'https://ui-avatars.com/api/?name=User'}
               alt={avatarAlt}
               className="object-cover w-full h-full"
+              onClick={onImageClick ? () => onImageClick(user.imagen, avatarAlt) : undefined}
             />
           </div>
           <h2 className="text-xl font-bold text-green-700 mb-1">
@@ -61,13 +62,14 @@ const ProfileCard = ({ user, variant = 'default' }) => {
         </div>
 
         {user.imagenQR && (
-          <div className={qrSectionClasses}>
+          <div className={`${qrSectionClasses} ${onQrClick ? 'cursor-zoom-in' : ''}`}>
             <h3 className="text-sm font-semibold text-green-700 uppercase tracking-wide">Mi codigo QR</h3>
             <div className="mt-4 flex h-40 w-full items-center justify-center">
               <img
                 src={user.imagenQR}
                 alt="Codigo QR del usuario"
                 className="h-full max-h-40 w-auto max-w-[10rem] object-contain"
+                onClick={onQrClick ? () => onQrClick(user.imagenQR, 'Codigo QR del usuario') : undefined}
               />
             </div>
             <p className="mt-3 text-xs text-green-900/70 text-center">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
 const carreras = [
@@ -16,6 +16,7 @@ const carreras = [
   "Ingenieria Civil",
   "Medicina Veterinaria y Zootecnia",
   "Visitante externo",
+  "Otro",
 ];
 
 const tiposSangre = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -40,6 +41,9 @@ const RegisterForm = ({
   isSubmitting = false,
   showRoleField = true,
   showQrField = true,
+  showBirthDateField = false,
+  externalValues = null,
+  children = null,
 }) => {
   const defaultState = {
     cedula: "",
@@ -54,6 +58,7 @@ const RegisterForm = ({
     imagen: "",
     imagenQR: "",
     password: "",
+    fechaNacimiento: "",
   };
 
   const [formData, setFormData] = useState({
@@ -63,6 +68,27 @@ const RegisterForm = ({
 
   const [submitted, setSubmitted] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState({});
+
+  useEffect(() => {
+    if (!externalValues || typeof externalValues !== "object") return;
+    setFormData((prev) => {
+      const updates = Object.entries(externalValues).reduce((acc, [key, value]) => {
+        if (value !== undefined && value !== null && prev[key] !== value) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+
+      if (!Object.keys(updates).length) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        ...updates,
+      };
+    });
+  }, [externalValues]);
 
   const isDisabled = (field) => disabledFields.includes(field);
 
@@ -242,6 +268,25 @@ const RegisterForm = ({
             </div>
           );
         })}
+
+        {showBirthDateField && (
+          <div className="sm:col-span-1">
+            <label className="text-sm font-medium text-[#00594e]" htmlFor="fechaNacimiento">
+              Fecha de nacimiento
+            </label>
+            <input
+              id="fechaNacimiento"
+              type="date"
+              value={formData.fechaNacimiento}
+              onChange={handleChange}
+              className={`mt-2 w-full rounded-lg border ${inputBorder("fechaNacimiento")} bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm placeholder:text-slate-400 focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70`}
+              disabled={isDisabled("fechaNacimiento")}
+            />
+            {errors.fechaNacimiento && (
+              <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.fechaNacimiento}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
@@ -285,6 +330,8 @@ const RegisterForm = ({
           </div>
         )}
       </div>
+
+      {children}
 
       <button
         type="submit"

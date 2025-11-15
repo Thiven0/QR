@@ -6,15 +6,134 @@ const { createToken } = require("../services/token.service");
 const { serializeVisitorTicket } = require("../utils/visitorTicket");
 const Registro = require("../models/entry-exit.model");
 const { Vehicle } = require("../models/vehicle.model");
+const { extractDocumentDataFromImage } = require("../services/ocr.service");
 
 const VISITOR_ROLE = "Visitante";
 const VISITOR_PERMISSION = "Usuario";
 const VISITOR_SESSION_DAYS = Number(process.env.VISITOR_SESSION_DAYS || 1);
+const DEFAULT_DATA_TREATMENT_URL =
+  process.env.DATA_TREATMENT_URL ||
+  "https://drive.google.com/file/d/1JtSP0Fa19TKU0kzNwhDqC6BQIe2c_JK8/view";
+
+const cleanObject = (object = {}) => {
+  return Object.entries(object).reduce((acc, [key, value]) => {
+    if (value === undefined || value === null) {
+      return acc;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        acc[key] = trimmed;
+      }
+      return acc;
+    }
+    if (Array.isArray(value)) {
+      if (value.length) {
+        acc[key] = value;
+      }
+      return acc;
+    }
+    acc[key] = value;
+    return acc;
+  }, {});
+};
 
 const sanitizeUser = (userDoc) => {
   const userObject = userDoc.toObject();
   delete userObject.password;
   return userObject;
+};
+
+const parseConsentValue = (candidate) => {
+  if (candidate === undefined || candidate === null) {
+    return { accepted: false };
+  }
+  if (typeof candidate === "boolean") {
+    return { accepted: candidate };
+  }
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim().toLowerCase();
+    return {
+      accepted: ["1", "true", "si", "sí", "acepto"].includes(normalized),
+    };
+  }
+  if (typeof candidate === "object") {
+    return {
+      accepted: Boolean(
+        candidate.accepted ?? candidate.isAccepted ?? candidate.value ?? candidate.status
+      ),
+      documentUrl: candidate.documentUrl || candidate.url || candidate.link,
+    };
+  }
+  return { accepted: false };
+};
+
+const resolveDataConsent = (body = {}) => {
+  const candidates = [
+    body.dataConsent,
+    body.dataTreatment,
+    body.dataTreatmentConsent,
+    body.dataTreatmentAccepted,
+    body.dataConsentAccepted,
+    body.acceptsDataTreatment,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseConsentValue(candidate);
+    if (parsed.accepted) {
+      return {
+        accepted: true,
+        documentUrl: parsed.documentUrl || DEFAULT_DATA_TREATMENT_URL,
+      };
+    }
+  }
+
+  return {
+    accepted: false,
+    documentUrl: DEFAULT_DATA_TREATMENT_URL,
+  };
+};
+
+const sanitizeDocumentMetadata = (metadata = {}, defaults = {}) => {
+  if (!metadata || typeof metadata !== "object") {
+    metadata = {};
+  }
+
+  const normalized = {
+    cedula: metadata.cedula || metadata.numero || defaults.cedula,
+    nombres: metadata.nombres || metadata.nombre || defaults.nombres || defaults.nombre,
+    apellidos: metadata.apellidos || metadata.apellido || defaults.apellidos || defaults.apellido,
+    fechaNacimiento:
+      metadata.fechaNacimiento ||
+      metadata.fecha_nacimiento ||
+      metadata.birthDate ||
+      defaults.fechaNacimiento,
+    rawText: metadata.rawText || metadata.raw_text || metadata.texto,
+    confidence:
+      typeof metadata.confidence === "number" ? metadata.confidence : undefined,
+    fieldsDetected: Array.isArray(metadata.fieldsDetected)
+      ? metadata.fieldsDetected.map((field) => String(field)).filter(Boolean).slice(0, 10)
+      : undefined,
+  };
+
+  return cleanObject(normalized);
+};
+
+const buildDocumentIdentityPayload = (
+  photo,
+  metadata,
+  defaults = {}
+) => {
+  if (!photo) return undefined;
+  const payload = {
+    photo,
+    updatedAt: new Date(),
+  };
+  const sanitizedMetadata = sanitizeDocumentMetadata(metadata, defaults);
+  if (Object.keys(sanitizedMetadata).length) {
+    payload.extractedData = sanitizedMetadata;
+  }
+  return payload;
 };
 
 const buildTicketPayload = (userId) => {
@@ -103,12 +222,30 @@ const registerVisitor = async (req, res) => {
       telefono,
       imagen,
       imagenQR,
+      documentImage,
     } = req.body || {};
+    const metadataPayload =
+      req.body?.documentMetadata || req.body?.documentData || req.body?.documentInfo;
 
     if (!nombre || !email || !password) {
       return res.status(400).json({
         status: "error",
         message: "Nombre, email y contrasena son obligatorios",
+      });
+    }
+
+    if (!documentImage || typeof documentImage !== "string") {
+      return res.status(400).json({
+        status: "error",
+        message: "La fotografia de la cedula es obligatoria",
+      });
+    }
+
+    const resolvedConsent = resolveDataConsent(req.body || {});
+    if (!resolvedConsent.accepted) {
+      return res.status(400).json({
+        status: "error",
+        message: "Debes aceptar el tratamiento de datos personales para continuar",
       });
     }
 
@@ -128,6 +265,18 @@ const registerVisitor = async (req, res) => {
       });
     }
 
+    const documentIdentity = buildDocumentIdentityPayload(documentImage, metadataPayload, {
+      cedula,
+      nombres: nombre,
+      apellidos: apellido,
+    });
+
+    const dataConsentPayload = {
+      accepted: true,
+      acceptedAt: new Date(),
+      documentUrl: resolvedConsent.documentUrl || DEFAULT_DATA_TREATMENT_URL,
+    };
+
     const visitorUser = new User({
       cedula,
       nombre,
@@ -143,6 +292,11 @@ const registerVisitor = async (req, res) => {
       permisoSistema: VISITOR_PERMISSION,
       estado: "inactivo",
     });
+
+    if (documentIdentity) {
+      visitorUser.documentIdentity = documentIdentity;
+    }
+    visitorUser.dataConsent = dataConsentPayload;
 
     const savedVisitor = await visitorUser.save();
 
@@ -329,9 +483,51 @@ const listVisitorTickets = async (_req, res) => {
   }
 };
 
+const extractVisitorDocumentData = async (req, res) => {
+  try {
+    const image = req.body?.image || req.body?.documentImage;
+
+    if (!image) {
+      return res.status(400).json({
+        status: "error",
+        message: "La imagen de la cedula es obligatoria",
+      });
+    }
+
+    const data = await extractDocumentDataFromImage(image);
+
+    if (!data.cedula && !data.nombres && !data.apellidos) {
+      return res.status(422).json({
+        status: "error",
+        message: "No fue posible extraer los datos del documento. Intenta con una foto mas clara.",
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      data,
+    });
+  } catch (error) {
+    const normalizedMessage = (error.message || "").toLowerCase();
+    const isClientError =
+      normalizedMessage.includes("obligatoria") ||
+      normalizedMessage.includes("limite") ||
+      normalizedMessage.includes("leer la imagen");
+
+    return res.status(isClientError ? 400 : 500).json({
+      status: "error",
+      message: isClientError
+        ? error.message
+        : "No fue posible procesar el documento. Intenta nuevamente.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   registerVisitor,
   expireVisitorSession,
   reactivateVisitorTicket,
   listVisitorTickets,
+  extractVisitorDocumentData,
 };

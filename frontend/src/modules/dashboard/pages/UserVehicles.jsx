@@ -49,6 +49,7 @@ const UserVehicles = () => {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [userQuery, setUserQuery] = useState('');
   const [showUserSuggestions, setShowUserSuggestions] = useState(false);
@@ -332,6 +333,7 @@ const UserVehicles = () => {
       setFeedback(err.message || 'No fue posible eliminar el vehiculo.');
     } finally {
       setDeletingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -568,7 +570,7 @@ const UserVehicles = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteVehicle(vehicle._id)}
+                              onClick={() => setDeleteTarget(vehicle)}
                               disabled={deletingId === vehicle._id}
                               className="inline-flex items-center rounded-md border border-[#b91c1c]/40 px-3 py-1 text-xs font-semibold text-[#b91c1c] transition hover:bg-[#b91c1c]/10 disabled:cursor-not-allowed disabled:opacity-70"
                             >
@@ -803,8 +805,46 @@ const UserVehicles = () => {
               No cuentas con permisos para registrar vehiculos.
             </section>
           )
-        )}
+      )}
       </div>
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[#b91c1c]/40 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-[#b91c1c]">Eliminar vehiculo</h3>
+            <p className="mt-2 text-sm text-[#475569]">
+              Estas seguro de eliminar el vehiculo{' '}
+              <span className="font-semibold text-[#0f172a]">
+                {deleteTarget.plate || deleteTarget.type || 'seleccionado'}
+              </span>
+              ? Esta accion no se puede deshacer.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletingId === deleteTarget._id}
+                onClick={() => handleDeleteVehicle(deleteTarget._id)}
+                className="rounded-lg bg-[#b91c1c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991b1b] focus:outline-none focus:ring-2 focus:ring-[#b91c1c] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deletingId === deleteTarget._id ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

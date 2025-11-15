@@ -933,9 +933,9 @@ const formatElapsedMinutes = (value) => {
       id: 'vehicle-register',
       anchor: 'vehicle-register',
       badge: 'Registro',
-      title: 'Registrar vehÃ­culo',
+      title: 'Registrar vehículo',
       value: formatCount(vehicleUsageSummary.missing),
-      description: 'Ingresos pendientes por asociar vehÃ­culo',
+      description: 'Ingresos pendientes por asociar vehículo',
       footnote: vehicleUsageSummary.missing ? 'Prioriza actualizarlos hoy' : 'Sin pendientes',
     },
     {
@@ -1645,29 +1645,6 @@ const formatElapsedMinutes = (value) => {
                 </tbody>
               </table>
             </div>
-          </article>
-
-          <article id="alerts" className="flex h-full flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Alertas y notificaciones</h2>
-              <p className="text-sm text-[#64748b]">Seguimiento de eventos relevantes</p>
-            </div>
-            <ul className="space-y-4 text-sm text-[#475569]">
-              {alertFeedItems.length > 0 ? (
-                alertFeedItems.map((alert) => (
-                  <li key={alert.title} className="rounded-lg border border-[#00594e]/20 bg-[#00594e]/5 p-4">
-                    <p className="text-sm font-semibold text-[#0f172a]">{alert.title}</p>
-                    <p className="mt-1 text-xs text-[#475569]">{alert.context}</p>
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#00594e]">{alert.severity}</p>
-                  </li>
-                ))
-              ) : (
-                <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#64748b]">
-                  No hay alertas activas en este momento.
-                </li>
-              )}
-            </ul>
-            <p className="mt-auto text-xs font-medium uppercase tracking-wider text-[#94a3b8]">Configura avisos desde el módulo de alertas.</p>
           </article>
         </section>
 

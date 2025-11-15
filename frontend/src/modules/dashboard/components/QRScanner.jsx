@@ -38,10 +38,29 @@ const MOVEMENT_OPTIONS = [
   },
 ];
 
+const formatDocumentDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 const renderUserDetails = (user) => {
   if (!user || typeof user !== 'object') return null;
 
-  const entries = Object.entries(user).filter(([key]) => key !== 'imagen' && key !== 'imagenQR' && key !== 'password');
+  const entries = Object.entries(user).filter(
+    ([key]) => key !== 'imagen' && key !== 'imagenQR' && key !== 'password' && key !== 'documentIdentity' && key !== 'dataConsent'
+  );
+  const documentIdentity = user.documentIdentity;
+  const documentData = documentIdentity?.extractedData || {};
+  const birthDate = documentData.fechaNacimiento ? formatDocumentDate(documentData.fechaNacimiento) : null;
+  const consentAcceptedAt = user.dataConsent?.acceptedAt ? formatDocumentDate(user.dataConsent.acceptedAt) : null;
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-[#0f172a]/10 bg-[#f1f5f9] p-4">
@@ -57,6 +76,33 @@ const renderUserDetails = (user) => {
               {user.nombre} {user.apellido}
             </p>
             {user.email && <p className="text-xs text-[#475569]">{user.email}</p>}
+          </div>
+        </div>
+      )}
+
+      {documentIdentity?.photo && (
+        <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:flex-row">
+          <img
+            src={documentIdentity.photo}
+            alt={user.nombre ? `Documento de ${user.nombre}` : 'Documento escaneado'}
+            className="h-24 w-36 rounded-lg border border-slate-200 object-cover"
+          />
+          <div className="flex-1 text-sm text-[#0f172a]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Documento capturado</p>
+            {documentData.cedula && (
+              <p className="font-semibold text-[#0f172a]">CC {documentData.cedula}</p>
+            )}
+            {(documentData.nombres || documentData.apellidos) && (
+              <p className="text-xs text-[#475569]">
+                {[documentData.nombres, documentData.apellidos].filter(Boolean).join(' ')}
+              </p>
+            )}
+            {birthDate && (
+              <p className="text-xs text-[#475569]">Nacimiento: {birthDate}</p>
+            )}
+            {consentAcceptedAt && (
+              <p className="text-[11px] text-[#94a3b8]">Consentimiento: {consentAcceptedAt}</p>
+            )}
           </div>
         </div>
       )}

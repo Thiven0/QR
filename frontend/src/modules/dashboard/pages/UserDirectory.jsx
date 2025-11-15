@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FiEye, FiEyeOff, FiTruck } from 'react-icons/fi';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
+import { FaCarAlt, FaRegAddressCard } from 'react-icons/fa';
+import { FaMotorcycle } from 'react-icons/fa6';
+import { GrBike } from 'react-icons/gr';
+import { LuTicketCheck, LuTicketX } from 'react-icons/lu';
 import { Link, useNavigate } from 'react-router-dom';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
@@ -8,6 +12,7 @@ import useAuth from '../../auth/hooks/useAuth';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 
 const convertOklchToSRGB = (value) => {
   if (typeof value !== 'string') return null;
@@ -119,6 +124,50 @@ const convertOklabToSRGB = (value) => {
 const PERMISOS_SISTEMA = ['Administrador', 'Celador', 'Usuario'];
 const ESTADOS = ['activo', 'inactivo', 'bloqueado'];
 
+const FACULTADES = [
+  'Administracion de Empresas',
+  'Contaduria Publica',
+  'Derecho',
+  'Economia',
+  'Finanza y Negocios Internacionales',
+  'Arquitectura',
+  'Biologia',
+  'Ingenieria Agroforestal',
+  'Ingenieria Agroindustrial',
+  'Ingenieria de Sistemas',
+  'Ingenieria en Energias',
+  'Ingenieria Civil',
+  'Medicina Veterinaria y Zootecnia',
+  'Visitante externo',
+  'Otro',
+];
+
+const TIPOS_SANGRE = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const ROLES_ACADEMICOS = [
+  'Estudiante',
+  'Profesor',
+  'Egresado',
+  'Visitante',
+  'Usuario',
+  'Funcionario',
+  'Contratista',
+  'Otro',
+];
+
+const formatShortDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 const EMPTY_FORM = {
   cedula: '',
   nombre: '',
@@ -223,6 +272,7 @@ const UserDirectory = () => {
   const [editErrors, setEditErrors] = useState({});
   const [editPasswordVisible, setEditPasswordVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regeneratingQr, setRegeneratingQr] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -232,10 +282,11 @@ const UserDirectory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [permisoFilter, setPermisoFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [userVehicleCounts, setUserVehicleCounts] = useState({});
+  const [userVehicleData, setUserVehicleData] = useState({});
   const [loadingVehicleCountFor, setLoadingVehicleCountFor] = useState(null);
   const profileCardRef = useRef(null);
   const colorNormalizerRef = useRef(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const loadUsers = async () => {
     if (!token) return;
@@ -247,7 +298,7 @@ const UserDirectory = () => {
       const response = await apiRequest('/users?includeVisitorTicket=true', { token });
       const data = Array.isArray(response) ? response : response?.data || [];
       setUsers(data);
-      setUserVehicleCounts((prev) => {
+      setUserVehicleData((prev) => {
         if (!prev || Object.keys(prev).length === 0) return prev;
         const next = {};
         data.forEach((user) => {
@@ -300,12 +351,34 @@ const UserDirectory = () => {
   const viewUserToggleId = viewUser?._id || viewUser?.id || viewUser?.cedula || null;
   const isViewUserBlocked = viewUserEstado === 'bloqueado';
   const isViewToggling = viewUserToggleId ? togglingAccessId === viewUserToggleId : false;
+  const viewDocumentData = viewUser?.documentIdentity?.extractedData || {};
+  const viewDocumentPhoto = viewUser?.documentIdentity?.photo || '';
+  const viewDocumentBirthDate = viewDocumentData.fechaNacimiento
+    ? formatShortDate(viewDocumentData.fechaNacimiento) || viewDocumentData.fechaNacimiento
+    : null;
+  const viewDocumentConsentAt = viewUser?.dataConsent?.acceptedAt
+    ? formatShortDate(viewUser.dataConsent.acceptedAt)
+    : null;
+  const hasViewDocumentInfo =
+    Boolean(viewDocumentPhoto) ||
+    Boolean(viewDocumentData.cedula) ||
+    Boolean(viewDocumentData.nombres) ||
+    Boolean(viewDocumentData.apellidos) ||
+    Boolean(viewDocumentBirthDate) ||
+    Boolean(viewDocumentConsentAt);
 
   const clearFilters = () => {
     setSearchTerm('');
     setPermisoFilter('');
     setEstadoFilter('');
   };
+
+  const openImagePreview = (src, alt = 'Imagen seleccionada') => {
+    if (!src) return;
+    setImagePreview({ src, alt });
+  };
+
+  const closeImagePreview = () => setImagePreview(null);
 
   const handleExportUsers = () => {
     if (!users.length) {
@@ -336,7 +409,7 @@ const UserDirectory = () => {
       user.rolAcademico || '',
       user.telefono || '',
       user.facultad || '',
-      typeof userVehicleCounts[user._id] === 'number' ? userVehicleCounts[user._id] : '',
+      typeof userVehicleData[user._id]?.count === 'number' ? userVehicleData[user._id].count : '',
     ]);
 
     const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
@@ -346,19 +419,26 @@ const UserDirectory = () => {
     setFeedback('Archivo de usuarios exportado correctamente.');
   };
 
-  const fetchVehicleCount = async (userId) => {
-    if (!token || !userId) return 0;
-    if (loadingVehicleCountFor === userId) return userVehicleCounts[userId] ?? 0;
+  const fetchVehicleData = async (userId) => {
+    if (!token || !userId) return { count: 0, types: [] };
+    if (loadingVehicleCountFor === userId) return userVehicleData[userId] ?? { count: 0, types: [] };
 
     setLoadingVehicleCountFor(userId);
     try {
       const response = await apiRequest(`/users/${userId}/vehicles`, { token });
       const data = Array.isArray(response) ? response : response?.data || [];
-      setUserVehicleCounts((prev) => ({ ...prev, [userId]: data.length }));
-      return data.length;
+      const info = {
+        count: data.length,
+        types: data
+          .map((vehicle) => (vehicle.type || vehicle.tipo || '').toLowerCase())
+          .filter(Boolean),
+      };
+      setUserVehicleData((prev) => ({ ...prev, [userId]: info }));
+      return info;
     } catch (err) {
-      setUserVehicleCounts((prev) => ({ ...prev, [userId]: 0 }));
-      return 0;
+      const fallback = { count: 0, types: [] };
+      setUserVehicleData((prev) => ({ ...prev, [userId]: fallback }));
+      return fallback;
     } finally {
       setLoadingVehicleCountFor(null);
     }
@@ -366,14 +446,14 @@ const UserDirectory = () => {
 
   const handleViewUser = (user) => {
     setViewUser(user);
-    if (user?._id && userVehicleCounts[user._id] === undefined) {
-      fetchVehicleCount(user._id);
+    if (user?._id && userVehicleData[user._id] === undefined) {
+      fetchVehicleData(user._id);
     }
   };
 
-  const getVehicleCount = (userId) => {
+  const getVehicleInfo = (userId) => {
     if (!userId) return null;
-    return userVehicleCounts[userId] ?? null;
+    return userVehicleData[userId] ?? null;
   };
 
   useEffect(() => {
@@ -381,28 +461,40 @@ const UserDirectory = () => {
 
     const missingUserIds = filteredUsers
       .map((user) => user._id)
-      .filter((id) => id && userVehicleCounts[id] === undefined);
+      .filter((id) => id && userVehicleData[id] === undefined);
 
     if (!missingUserIds.length) return undefined;
 
     const timers = missingUserIds.map((userId, index) =>
       setTimeout(() => {
-        fetchVehicleCount(userId);
+        fetchVehicleData(userId);
       }, index * 120)
     );
 
     return () => {
       timers.forEach((timerId) => clearTimeout(timerId));
     };
-  }, [filteredUsers, canAccessVehicles, userVehicleCounts, fetchVehicleCount]);
+  }, [filteredUsers, canAccessVehicles, userVehicleData, fetchVehicleData]);
 
   const handleVehicleNavigation = async (user) => {
     if (!user?._id) return;
-    let count = userVehicleCounts[user._id];
-    if (count === undefined) {
-      count = await fetchVehicleCount(user._id);
+    let info = userVehicleData[user._id];
+    if (info === undefined) {
+      info = await fetchVehicleData(user._id);
     }
-    openVehiclesPage(user, (count || 0) > 0, 'list');
+    openVehiclesPage(user, (info?.count || 0) > 0, 'list');
+  };
+
+  const getVehicleIconByType = (type) => {
+    const normalized = (type || '').toLowerCase();
+    const commonClasses = 'h-5 w-5';
+    if (normalized.includes('moto')) {
+      return <FaMotorcycle className={`${commonClasses} text-[#0f766e]`} />;
+    }
+    if (normalized.includes('bicicleta') || normalized.includes('bici')) {
+      return <GrBike className={`${commonClasses} text-[#0f766e]`} />;
+    }
+    return <FaCarAlt className={`${commonClasses} text-[#0f766e]`} />;
   };
 
 const openVehiclesPage = (user, hasVehicles, view = 'list') => {
@@ -431,6 +523,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     setEditErrors({});
     setFeedback('');
     setEditPasswordVisible(false);
+    setRegeneratingQr(false);
   };
 
   const closeEditModal = () => {
@@ -439,14 +532,28 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     setEditErrors({});
     setSaving(false);
     setEditPasswordVisible(false);
+    setRegeneratingQr(false);
   };
 
   const handleEditChange = (event) => {
     const { name, value } = event.target;
+    let nextValue = value;
+
+    if (name === 'cedula' || name === 'telefono') {
+      nextValue = value.replace(/\D/g, '');
+    }
+
     setEditForm((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: nextValue,
     }));
+
+    setEditErrors((prev) => {
+      if (!prev[name]) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
   };
 
   const handleEditFileChange = async (event) => {
@@ -459,6 +566,12 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         ...prev,
         [name]: dataUrl,
       }));
+      setEditErrors((prev) => {
+        if (!prev[name]) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     } catch (err) {
     }
   };
@@ -468,6 +581,56 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       ...prev,
       [field]: '',
     }));
+    setEditErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const buildQrRawText = (data) => {
+    const fullName = [data.nombre, data.apellido].filter(Boolean).join(' ').trim();
+    const lines = [fullName, data.cedula, data.facultad, data.RH, data.telefono];
+    return lines.filter(Boolean).join('\n\n');
+  };
+
+  const regenerateQrImage = async () => {
+    if (!editForm.nombre.trim() || !editForm.cedula.trim()) {
+      setEditErrors((prev) => ({
+        ...prev,
+        imagenQR: 'Completa el nombre y la cedula antes de regenerar el QR.',
+      }));
+      return;
+    }
+
+    try {
+      setRegeneratingQr(true);
+      setEditErrors((prev) => {
+        if (!prev.imagenQR) return prev;
+        const next = { ...prev };
+        delete next.imagenQR;
+        return next;
+      });
+      const rawText = buildQrRawText(editForm);
+      const qrDataUrl = await QRCode.toDataURL(rawText, {
+        width: 512,
+        errorCorrectionLevel: 'M',
+        margin: 1,
+      });
+      setEditForm((prev) => ({
+        ...prev,
+        imagenQR: qrDataUrl,
+      }));
+      setFeedback('QR regenerado correctamente.');
+    } catch (err) {
+      setEditErrors((prev) => ({
+        ...prev,
+        imagenQR: 'No fue posible regenerar el QR. Intenta nuevamente.',
+      }));
+    } finally {
+      setRegeneratingQr(false);
+    }
   };
 
   const validateEditForm = () => {
@@ -760,14 +923,25 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
               Consulta, edita y administra la informacion de los usuarios registrados en el sistema.
             </p>
           </div>
-          {isAdmin && (
-            <Link
-              to="/dashboard/staff/register"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
-            >
-              Registrar usuario
-            </Link>
-          )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {isAdmin && (
+              <Link
+                to="/dashboard/staff/register"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
+              >
+                Registrar usuario
+              </Link>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleExportUsers}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#B5A160]/50 bg-white px-4 py-2 text-sm font-semibold text-[#8c7030] shadow-sm transition hover:bg-[#B5A160]/10 focus:outline-none focus:ring-2 focus:ring-[#B5A160] focus:ring-offset-2"
+              >
+                Exportar Excel
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-12">
@@ -826,17 +1000,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
           </div>
         </div>
 
-        {isAdmin && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleExportUsers}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#B5A160] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9a8952] focus:outline-none focus:ring-2 focus:ring-[#B5A160] focus:ring-offset-2"
-            >
-              Exportar Excel
-            </button>
-          </div>
-        )}
 
         <UserStatsCharts
           className="mt-6"
@@ -868,8 +1031,10 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
               const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
               const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
               const canReactivateTicket = visitorTicketInfo.status !== 'active';
-              const vehicleCount = getVehicleCount(user._id);
-              const hasVehicles = typeof vehicleCount === 'number' && vehicleCount > 0;
+              const vehicleInfo = getVehicleInfo(user._id);
+              const vehicleCount = vehicleInfo?.count ?? 0;
+              const vehicleTypes = vehicleInfo?.types ?? [];
+              const hasVehicles = vehicleCount > 0;
               const estado = (user.estado || '').toLowerCase() || 'desconocido';
               const isBlocked = estado === 'bloqueado';
               const estadoBadgeClasses =
@@ -880,11 +1045,78 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                     : 'border-slate-200 bg-slate-100 text-[#475569]';
               const toggleTargetId = user._id || user.id || user.cedula;
               const isToggling = togglingAccessId === toggleTargetId;
+              const documentPhoto = user.documentIdentity?.photo;
+              const documentData = user.documentIdentity?.extractedData || {};
+              const birthDate = documentData.fechaNacimiento
+                ? formatShortDate(documentData.fechaNacimiento) || documentData.fechaNacimiento
+                : null;
+              const consentAcceptedAt = user.dataConsent?.acceptedAt
+                ? formatShortDate(user.dataConsent.acceptedAt)
+                : null;
+              const hasDocumentCapture =
+                Boolean(documentPhoto) ||
+                Boolean(documentData.cedula) ||
+                Boolean(documentData.nombres) ||
+                Boolean(documentData.apellidos) ||
+                Boolean(birthDate) ||
+                Boolean(consentAcceptedAt);
+              const iconBadges = [];
+
+              if (hasVehicles) {
+                const primaryType = vehicleTypes[0] || 'carro';
+                iconBadges.push(
+                  <div
+                    key={`${user._id}-vehicle`}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0f172a]"
+                    title={
+                      vehicleCount === 1
+                        ? 'Vehiculo registrado'
+                        : `${vehicleCount} vehiculos registrados`
+                    }
+                  >
+                    {getVehicleIconByType(primaryType)}
+                    {vehicleCount > 1 && (
+                      <span className="ml-1 text-[10px] font-semibold text-[#0f172a]">
+                        +{vehicleCount - 1}
+                      </span>
+                    )}
+                  </div>
+                );
+              }
+
+              if (isVisitor) {
+                const isTicketActive = visitorTicketInfo.status === 'active';
+                const TicketIcon = isTicketActive ? LuTicketCheck : LuTicketX;
+                const ticketTitle = isTicketActive ? 'Ticket activo' : 'Ticket expirado';
+                iconBadges.push(
+                  <div
+                    key={`${user._id}-ticket`}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-2"
+                    title={ticketTitle}
+                  >
+                    <TicketIcon
+                      className={`h-5 w-5 ${isTicketActive ? 'text-[#0f766e]' : 'text-[#b91c1c]'}`}
+                    />
+                  </div>
+                );
+              }
+
+              if (hasDocumentCapture) {
+                iconBadges.push(
+                  <div
+                    key={`${user._id}-document`}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-2"
+                    title="Documento capturado"
+                  >
+                    <FaRegAddressCard className="h-5 w-5 text-[#0f172a]" />
+                  </div>
+                );
+              }
 
               return (
                 <div
                   key={user._id}
-                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:shadow-md"
+                  className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:shadow-md"
                 >
                 <div className="flex items-center gap-4">
                   <img
@@ -897,14 +1129,10 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                       <span className="text-base font-semibold text-[#0f172a]">
                         {user.nombre} {user.apellido}
                       </span>
-                      {hasVehicles && (
-                        <span
-                          title={`${vehicleCount} vehículo${vehicleCount === 1 ? '' : 's'} registrados`}
-                          className="inline-flex items-center gap-1 rounded-full border border-[#0f766e]/30 bg-[#0f766e]/5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#0f766e]"
-                        >
-                          <FiTruck className="h-3.5 w-3.5" aria-hidden="true" />
-                          {vehicleCount}
-                        </span>
+                      {iconBadges.length > 0 && (
+                        <div className="ml-auto flex flex-wrap items-center gap-1">
+                          {iconBadges}
+                        </div>
                       )}
                     </div>
                     <span className="text-sm text-[#475569]">{user.email}</span>
@@ -915,31 +1143,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                   </div>
                 </div>
 
-                  {isVisitor && (
-                    <div className="mt-3 rounded-lg border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
-                      <p className="mt-1 text-xs text-[#0f172a]">
-                        {visitorTicketInfo.description || 'Sin ticket activo'}
-                      </p>
-                      {visitorTicketInfo.token && (
-                        <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">
-                          Token: {visitorTicketInfo.token}
-                        </p>
-                      )}
-                      {canReactivateTicket && (
-                        <button
-                          type="button"
-                          onClick={() => handleReactivateTicket(user._id)}
-                          disabled={reactivatingId === user._id}
-                          className="mt-2 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-[11px] font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {reactivatingId === user._id ? 'Reactivando...' : 'Reactivar ticket'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-auto flex flex-wrap gap-2 pt-4">
                   <button
                     type="button"
                     onClick={() => handleViewUser(user)}
@@ -1005,7 +1209,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
           onClick={() => setViewUser(null)}
         >
           <div
-            className="relative w-full max-w-2xl"
+            className="relative w-full max-w-4xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
@@ -1043,11 +1247,16 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                   </button>
                 </div>
               </div>
-              <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1fr]">
+              <div className="mt-4 grid gap-6 lg:grid-cols-[1.25fr_0.85fr]">
                 <div className="space-y-4">
                   <div ref={profileCardRef}>
-                    <ProfileCard user={viewUser} variant="expanded" />
-                  </div>
+                    <ProfileCard
+                      user={viewUser}
+                      variant="expanded"
+                      onImageClick={(src, alt) => openImagePreview(src || viewUser?.imagen, alt)}
+                      onQrClick={(src, alt) => openImagePreview(src, alt)}
+                    />
+                </div>
                   <button
                     type="button"
                     onClick={handleDownloadCard}
@@ -1081,9 +1290,56 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                       </div>
                     );
                   })()}
+                  {hasViewDocumentInfo && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-[#0f172a]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Documento capturado</p>
+                      {viewDocumentPhoto ? (
+                        <img
+                          src={viewDocumentPhoto}
+                          alt={viewUser?.nombre ? `Documento de ${viewUser.nombre}` : 'Documento capturado'}
+                          className="mt-3 h-44 w-full rounded-xl border border-slate-200 object-cover shadow-sm cursor-zoom-in"
+                          onClick={() =>
+                            openImagePreview(
+                              viewDocumentPhoto,
+                              viewUser?.nombre ? `Documento de ${viewUser.nombre}` : 'Documento capturado'
+                            )
+                          }
+                        />
+                      ) : (
+                        <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-[#475569]">
+                          Sin fotografia registrada
+                        </div>
+                      )}
+                      <dl className="mt-4 space-y-2 text-xs text-[#475569]">
+                        <div className="flex justify-between gap-3">
+                          <dt className="font-semibold uppercase tracking-wide text-[#0f766e]">Cedula</dt>
+                          <dd className="text-right text-[#0f172a]">{viewDocumentData.cedula || 'No registrada'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="font-semibold uppercase tracking-wide text-[#0f766e]">Nombres</dt>
+                          <dd className="text-right text-[#0f172a]">{viewDocumentData.nombres || 'No registrado'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="font-semibold uppercase tracking-wide text-[#0f766e]">Apellidos</dt>
+                          <dd className="text-right text-[#0f172a]">{viewDocumentData.apellidos || 'No registrado'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="font-semibold uppercase tracking-wide text-[#0f766e]">Nacimiento</dt>
+                          <dd className="text-right text-[#0f172a]">{viewDocumentBirthDate || 'No registrado'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="font-semibold uppercase tracking-wide text-[#0f766e]">Consentimiento</dt>
+                          <dd className="text-right text-[#0f172a]">
+                            {viewDocumentConsentAt || 'Sin registro'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
                   {canAccessVehicles && viewUser?._id && (() => {
-                    const vehicleCount = getVehicleCount(viewUser._id);
-                    const hasVehicles = (vehicleCount || 0) > 0;
+                    const vehicleInfo = getVehicleInfo(viewUser._id);
+                    const vehicleCount = vehicleInfo?.count || 0;
+                    const hasVehicles = vehicleCount > 0;
                     const isLoadingVehicles = loadingVehicleCountFor === viewUser._id;
                     return (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#0f172a]">
@@ -1123,9 +1379,9 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+      </div>
+    </div>
+  )}
 
       {editUserId && (
         <div
@@ -1154,9 +1410,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                   { name: 'apellido', label: 'Apellido', type: 'text' },
                   { name: 'email', label: 'Correo', type: 'email', required: true },
                   { name: 'telefono', label: 'Telefono', type: 'text' },
-                  { name: 'RH', label: 'RH', type: 'text' },
-                  { name: 'facultad', label: 'Facultad', type: 'text' },
-                  { name: 'rolAcademico', label: 'Rol academico', type: 'text' },
                   { name: 'password', label: 'Password (opcional)', type: 'password' },
                 ].map((field) => {
                   const isPasswordField = field.type === 'password';
@@ -1195,6 +1448,66 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                     </label>
                   );
                 })}
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Facultad</span>
+                  <select
+                    name="facultad"
+                    value={editForm.facultad}
+                    onChange={handleEditChange}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                  >
+                    <option value="">Seleccione una facultad</option>
+                    {FACULTADES.map((facultad) => (
+                      <option key={facultad} value={facultad}>
+                        {facultad}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.facultad && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.facultad}</span>
+                  )}
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">RH</span>
+                  <select
+                    name="RH"
+                    value={editForm.RH}
+                    onChange={handleEditChange}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                  >
+                    <option value="">Selecciona el tipo de sangre</option>
+                    {TIPOS_SANGRE.map((tipo) => (
+                      <option key={tipo} value={tipo}>
+                        {tipo}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.RH && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.RH}</span>
+                  )}
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Rol academico</span>
+                  <select
+                    name="rolAcademico"
+                    value={editForm.rolAcademico}
+                    onChange={handleEditChange}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
+                  >
+                    <option value="">Selecciona un rol</option>
+                    {ROLES_ACADEMICOS.map((rol) => (
+                      <option key={rol} value={rol}>
+                        {rol}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.rolAcademico && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.rolAcademico}</span>
+                  )}
+                </label>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1274,13 +1587,21 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
 
                 <div className="space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[#00594e]">Imagen QR</span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <label
                       htmlFor="edit-imagenQR"
                       className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#B5A160]/40 bg-[#B5A160]/10 px-4 py-2 text-xs font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/20"
                     >
                       Seleccionar archivo
                     </label>
+                    <button
+                      type="button"
+                      onClick={regenerateQrImage}
+                      disabled={regeneratingQr}
+                      className="inline-flex items-center justify-center rounded-lg border border-[#00594e] px-4 py-2 text-xs font-semibold text-[#00594e] shadow-sm transition hover:bg-[#00594e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {regeneratingQr ? 'Regenerando...' : 'Regenerar QR'}
+                    </button>
                     {editForm.imagenQR && (
                       <>
                         <img src={editForm.imagenQR} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
@@ -1302,6 +1623,9 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                     onChange={handleEditFileChange}
                     className="hidden"
                   />
+                  {editErrors.imagenQR && (
+                    <span className="text-xs font-medium text-[#b45309]">{editErrors.imagenQR}</span>
+                  )}
                 </div>
               </div>
 
@@ -1356,6 +1680,31 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 {deleting ? 'Eliminando...' : 'Eliminar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4"
+          onClick={closeImagePreview}
+        >
+          <div
+            className="relative w-full max-w-3xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeImagePreview}
+              className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white transition hover:bg-black/80"
+            >
+              Cerrar
+            </button>
+            <img
+              src={imagePreview.src}
+              alt={imagePreview.alt || 'Imagen seleccionada'}
+              className="max-h-[85vh] w-full rounded-2xl object-contain shadow-2xl"
+            />
           </div>
         </div>
       )}

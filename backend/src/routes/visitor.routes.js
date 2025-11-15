@@ -5,6 +5,7 @@ const authMiddleware = require("../middlewares/auth");
 const router = express.Router();
 
 router.post("/register", visitorController.registerVisitor);
+router.post("/ocr", visitorController.extractVisitorDocumentData);
 router.post("/expire", authMiddleware(), visitorController.expireVisitorSession);
 router.post(
   "/reactivate",

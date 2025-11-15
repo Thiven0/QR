@@ -805,6 +805,13 @@ exports.updateAlertStatus = async (req, res) => {
       });
     }
 
+    if (normalizedStatus === ALERT_STATUSES.RESOLVED && !registro.fechaSalida) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'No puedes resolver la alerta mientras el registro siga abierto. Registra la salida primero.',
+      });
+    }
+
     registro.alertStatus = normalizedStatus;
 
     if (normalizedStatus === ALERT_STATUSES.RESOLVED) {
