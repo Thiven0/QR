@@ -380,6 +380,19 @@ const UserDirectory = () => {
 
   const closeImagePreview = () => setImagePreview(null);
 
+  const handleDownloadPreview = () => {
+    if (!imagePreview?.src) return;
+
+    const anchor = document.createElement('a');
+    anchor.href = imagePreview.src;
+    const safeName = viewUser?.cedula || viewUser?.nombre || 'documento';
+    const isSvg = imagePreview.src.includes('image/svg+xml');
+    anchor.download = `${safeName}-documento.${isSvg ? 'svg' : 'png'}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  };
+
   const handleExportUsers = () => {
     if (!users.length) {
       setFeedback('No hay usuarios para exportar.');
@@ -1699,6 +1712,13 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
               className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white transition hover:bg-black/80"
             >
               Cerrar
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadPreview}
+              className="absolute right-3 top-12 rounded-full bg-[#0f766e] px-3 py-1 text-xs font-semibold text-white shadow transition hover:bg-[#0d5d56]"
+            >
+              Descargar
             </button>
             <img
               src={imagePreview.src}

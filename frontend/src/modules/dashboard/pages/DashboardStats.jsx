@@ -1172,12 +1172,6 @@ const DashboardStats = () => {
             >
               {downloadingReport ? 'Generando...' : 'Descargar reporte'}
             </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
-            >
-              Comparar con periodo anterior
-            </button>
           </div>
         </header>
 
