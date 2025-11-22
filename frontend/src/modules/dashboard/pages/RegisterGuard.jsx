@@ -228,11 +228,15 @@ const RegisterGuard = () => {
 
   const mapParsedQrData = (data = {}) => {
     const fullName = data.nombre || data.nombres || '';
-    const nameParts = splitNameParts(fullName);
+    const providedNombre = data.nombre || '';
+    const providedApellido = data.apellido || '';
+    const shouldSplit = !providedApellido && fullName && !data.nombres;
+    const nameParts = shouldSplit ? splitNameParts(fullName) : { nombre: providedNombre, apellido: providedApellido };
+
     return {
       cedula: data.cedula || '',
-      nombre: nameParts.nombre || data.nombre || '',
-      apellido: nameParts.apellido || data.apellido || '',
+      nombre: nameParts.nombre || providedNombre || '',
+      apellido: nameParts.apellido || providedApellido || '',
       rolAcademico: data.rolAcademico || data.rol || '',
       facultad: resolveFacultad(data.programa || data.facultad || ''),
       RH: (data.tipo_sangre || data.RH || data.rh || '').toUpperCase(),

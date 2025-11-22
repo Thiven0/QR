@@ -85,6 +85,12 @@ const toBoolean = (value, defaultValue = false) => {
   return String(value).toLowerCase() === 'true';
 };
 
+const RH_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const normalizeRh = (value = '') => {
+  const candidate = value.toUpperCase().replace(/\s+/g, '');
+  return RH_TYPES.includes(candidate) ? candidate : '';
+};
+
 const parseScannedText = (rawText) => {
   if (!rawText) return null;
 
@@ -97,14 +103,76 @@ const parseScannedText = (rawText) => {
     return null;
   }
 
-  const [nombre = '', cedulaRaw = '', programa = '', tipoSangre = '', telefonoRaw = ''] = lines;
+  const extractCedula = (text = '') => {
+    const match = text.match(/(\d[\d.\s]{5,}\d)/);
+    return match ? sanitizeNumeric(match[1]) : sanitizeNumeric(text);
+  };
+
+  const extractRh = (text = '') => {
+    const match = text.match(/(A|B|AB|O)[+-]/i);
+    if (match) {
+      const normalized = normalizeRh(match[0]);
+      if (normalized) return normalized;
+    }
+    return normalizeRh(text);
+  };
+
+  const splitName = (text = '') => {
+    const parts = text
+      .split(/\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (!parts.length) return { nombre: '', apellido: '' };
+    if (parts.length === 1) return { nombre: parts[0], apellido: '' };
+    if (parts.length === 2) return { nombre: parts[0], apellido: parts[1] };
+    const apellido = parts.slice(-2).join(' ');
+    const nombre = parts.slice(0, -2).join(' ');
+    return { nombre, apellido };
+  };
+
+  let nombreCompleto = lines[0] || '';
+  let cedula = '';
+  let programa = '';
+  let tipoSangre = '';
+  let telefono = '';
+
+  for (const line of lines.slice(1)) {
+    const lower = line.toLowerCase();
+    if (!cedula && (lower.includes('cc') || lower.includes('c.c') || /\d/.test(line))) {
+      cedula = extractCedula(line);
+      continue;
+    }
+    if (!tipoSangre && lower.includes('rh')) {
+      tipoSangre = extractRh(line);
+      continue;
+    }
+    if (!telefono && /tel|cel|phone/i.test(line)) {
+      telefono = sanitizePhone(line);
+      continue;
+    }
+    // Assume any remaining text can be programa/facultad if not assigned
+    if (!programa) {
+      programa = line;
+    }
+  }
+
+  if (!programa && lines.length >= 2) {
+    programa = lines[lines.length - 1];
+  }
+
+  if (!tipoSangre) {
+    tipoSangre = extractRh(rawText);
+  }
+
+  const { nombre, apellido } = splitName(nombreCompleto);
 
   return {
     nombre,
-    cedula: sanitizeNumeric(cedulaRaw),
+    apellido,
+    cedula,
     programa,
     tipo_sangre: tipoSangre,
-    telefono: sanitizePhone(telefonoRaw),
+    telefono,
   };
 };
 
