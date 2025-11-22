@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import QRCode from 'qrcode';
+import QrScanner from 'react-qr-scanner';
 import Input from '../../../shared/components/Input';
 import { useForm } from '../../../shared/hooks/useForm';
 import { apiRequest } from '../../../services/apiClient';
@@ -53,13 +54,27 @@ const readFileAsDataUrl = (file) =>
 const RegisterGuard = () => {
   const { form, handleChange, reset, setForm } = useForm(INITIAL_FORM);
   const { token } = useAuth();
+  const audioContextRef = useRef(null);
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState({});
   const [qrGenerating, setQrGenerating] = useState(false);
   const [qrError, setQrError] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerKey, setScannerKey] = useState(0);
+  const [isScanning, setIsScanning] = useState(false);
 
   const isSubmitting = status === 'loading';
+  useEffect(() => {
+    return () => {
+      const ctx = audioContextRef.current;
+      if (ctx?.close) {
+        ctx.close().catch(() => {});
+      }
+      audioContextRef.current = null;
+    };
+  }, []);
 
   const setFieldValue = (name, value) => {
     if (name === 'imagenQR') {
@@ -175,6 +190,123 @@ const RegisterGuard = () => {
       } else {
         setMessage(error.message || 'No fue posible completar el registro');
       }
+    }
+  };
+
+  const normalizeString = (value = '') =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  const splitNameParts = (fullName = '') => {
+    const parts = fullName
+      .split(/\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (!parts.length) {
+      return { nombre: '', apellido: '' };
+    }
+    if (parts.length === 1) {
+      return { nombre: parts[0], apellido: '' };
+    }
+    if (parts.length === 2) {
+      return { nombre: parts[0], apellido: parts[1] };
+    }
+    const apellido = parts.slice(-2).join(' ');
+    const nombre = parts.slice(0, -2).join(' ');
+    return { nombre, apellido };
+  };
+
+  const resolveFacultad = (value = '') => {
+    if (!value) return '';
+    const target = normalizeString(value);
+    const match = FACULTADES.find((fac) => normalizeString(fac) === target);
+    return match || value;
+  };
+
+  const mapParsedQrData = (data = {}) => {
+    const fullName = data.nombre || data.nombres || '';
+    const nameParts = splitNameParts(fullName);
+    return {
+      cedula: data.cedula || '',
+      nombre: nameParts.nombre || data.nombre || '',
+      apellido: nameParts.apellido || data.apellido || '',
+      rolAcademico: data.rolAcademico || data.rol || '',
+      facultad: resolveFacultad(data.programa || data.facultad || ''),
+      RH: (data.tipo_sangre || data.RH || data.rh || '').toUpperCase(),
+      telefono: data.telefono || '',
+      email: data.email || data.correo || '',
+    };
+  };
+
+  const handleScan = async (scanData) => {
+    const text = scanData?.text?.trim();
+    if (!text || isScanning) return;
+
+    setIsScanning(true);
+    setScannerError('');
+
+    try {
+      const response = await apiRequest('/users/parse-qr', {
+        method: 'POST',
+        token,
+        data: { qrData: text },
+      });
+
+      const data = response?.data || response;
+      const mapped = mapParsedQrData(data);
+
+      setForm((prev) => ({
+        ...prev,
+        ...mapped,
+      }));
+
+      playBeep();
+      setMessage('Datos precargados desde el QR. Verifica y completa antes de guardar.');
+      setStatus('success');
+      setShowScanner(false);
+      setScannerKey((prev) => prev + 1);
+    } catch (error) {
+      const message =
+        error.details?.message ||
+        error.message ||
+        'No fue posible interpretar el QR.';
+      setScannerError(message);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const playBeep = () => {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const duration = 0.15;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + duration);
+    } catch (_error) {
     }
   };
 
@@ -407,14 +539,6 @@ const RegisterGuard = () => {
                     >
                       Seleccionar archivo
                     </label>
-                    <button
-                      type="button"
-                      onClick={generateQrFromForm}
-                      disabled={qrGenerating}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {qrGenerating ? 'Generando QR...' : 'Generar QR con datos del formulario'}
-                    </button>
                     <input
                       id="imagenQR"
                       name="imagenQR"
@@ -447,6 +571,41 @@ const RegisterGuard = () => {
           </article>
 
           <aside className="flex flex-col gap-6 rounded-2xl border border-[#00594e]/20 bg-white p-8 shadow-sm">
+            <div className="space-y-3 rounded-xl border border-dashed border-[#00594e]/30 bg-[#f8fafc] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#00594e]">
+                Escanear QR y precargar
+              </p>
+              <p className="text-sm text-[#475569]">
+                Usa la camara para leer el QR y completar el formulario automaticamente.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={generateQrFromForm}
+                  disabled={qrGenerating}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {qrGenerating ? 'Generando QR...' : 'Generar QR con datos del formulario'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowScanner(true);
+                    setScannerError('');
+                    setMessage('');
+                    setScannerKey((prev) => prev + 1);
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
+                >
+                  Abrir escaner QR
+                </button>
+              </div>
+              {scannerError && (
+                <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
+                  {scannerError}
+                </div>
+              )}
+            </div>
             <div>
               <h2 className="text-xl font-semibold text-[#0f172a]">Recomendaciones</h2>
               <p className="mt-2 text-sm text-[#475569]">
@@ -473,6 +632,74 @@ const RegisterGuard = () => {
           </aside>
         </div>
       </div>
+
+      {showScanner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => {
+              setShowScanner(false);
+              setScannerError('');
+              setIsScanning(false);
+              setScannerKey((prev) => prev + 1);
+            }}
+          />
+          <div className="relative z-10 w-full max-w-2xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#00594e]">Escanear QR</p>
+                <h3 className="text-2xl font-bold text-[#0f172a]">Precargar datos del usuario</h3>
+                <p className="text-sm text-[#475569]">
+                  Apunta la camara al codigo QR del usuario para completar automaticamente los campos del formulario.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScanner(false);
+                  setScannerError('');
+                  setIsScanning(false);
+                  setScannerKey((prev) => prev + 1);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-[#475569] transition hover:bg-slate-200"
+              >
+                &times;
+              </button>
+            </div>
+
+            {scannerError && (
+              <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
+                {scannerError}
+              </div>
+            )}
+
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-black/80">
+              <QrScanner
+                key={scannerKey}
+                delay={500}
+                style={{ width: '100%' }}
+                onError={() => setScannerError('No fue posible acceder a la camara. Revisa los permisos.')}
+                onScan={handleScan}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScanner(false);
+                  setScannerError('');
+                  setIsScanning(false);
+                  setScannerKey((prev) => prev + 1);
+                }}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

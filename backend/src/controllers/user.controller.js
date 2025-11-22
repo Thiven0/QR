@@ -440,6 +440,60 @@ const parseScannedData = (req, res) => {
   }
 };
 
+const parseQrData = (req, res) => {
+  try {
+    const qrContent =
+      (req.body?.qrData || req.body?.qr || req.body?.data || '').toString().trim();
+
+    if (!qrContent) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'El contenido del QR es obligatorio',
+      });
+    }
+
+    let parsed = null;
+
+    if (qrContent.startsWith('{') || qrContent.startsWith('[')) {
+      try {
+        const qrJson = JSON.parse(qrContent);
+        const embeddedRaw =
+          (qrJson.rawText || qrJson.text || qrJson.data || qrJson.content || '').toString().trim();
+        if (embeddedRaw) {
+          parsed = parseScannedText(embeddedRaw);
+        }
+      } catch (_) {
+        parsed = null;
+      }
+    }
+
+    if (!parsed) {
+      parsed = parseScannedText(qrContent);
+    }
+
+    if (!parsed || !parsed.nombre || !parsed.cedula) {
+      return res.status(422).json({
+        status: 'error',
+        message: 'No fue posible interpretar el contenido del QR',
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        rawText: qrContent,
+        ...parsed,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al interpretar el QR',
+      error: error.message,
+    });
+  }
+};
+
 const validateScannedUser = async (req, res) => {
   try {
     const payload = req.body?.data || req.body || {};
@@ -876,6 +930,7 @@ module.exports = {
   getUsersSummary,
   toggleAccessByCedula,
   parseScannedData,
+  parseQrData,
   validateScannedUser,
   updateUser,
   deleteUser,
