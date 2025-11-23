@@ -403,7 +403,13 @@ const DashboardStats = () => {
     const totals = new Map();
     filteredRecords.forEach((record) => {
       const user = userMap[record.userId];
-      const role = user?.permisoSistema || 'Sin rol';
+      const roleFromRecord =
+        record?.rolAcademico ||
+        record?.usuario?.rolAcademico ||
+        record?.usuario?.rol_academico ||
+        record?.user?.rolAcademico ||
+        record?.user?.rol_academico;
+      const role = (user?.rolAcademico || roleFromRecord || 'Sin rol academico').toString().trim() || 'Sin rol academico';
       totals.set(role, (totals.get(role) || 0) + 1);
     });
 
@@ -693,12 +699,7 @@ const DashboardStats = () => {
     const activeVisitorUsers = visitorUsers.filter(
       (user) => String(user?.estado || '').toLowerCase() === 'activo'
     );
-    const derivedExpiredUsers =
-      !visitorTickets.length && visitorUsers.length
-        ? visitorUsers.filter((user) => !user.visitorTicket)
-        : [];
-
-    if (!ticketSource.length && !derivedExpiredUsers.length) {
+    if (!ticketSource.length && !visitorUsers.length) {
       return {
         total: 0,
         active: 0,
@@ -722,6 +723,8 @@ const DashboardStats = () => {
     const ticketPerUser = new Map();
     const dailyMap = new Map();
 
+    const ticketUserIds = new Set();
+
     ticketSource.forEach((ticket) => {
       const userRef = ticket?.user;
       const userId =
@@ -731,6 +734,7 @@ const DashboardStats = () => {
 
       if (userId) {
         const key = userId.toString();
+        ticketUserIds.add(key);
         ticketPerUser.set(key, (ticketPerUser.get(key) || 0) + 1);
       }
 
@@ -763,7 +767,13 @@ const DashboardStats = () => {
       }
     });
 
-    derivedExpiredUsers.forEach((user) => {
+    const visitorsWithoutTicket = visitorUsers.filter((user) => {
+      const userId = user?._id || user?.id || null;
+      if (!userId) return false;
+      return !ticketUserIds.has(userId.toString());
+    });
+
+    visitorsWithoutTicket.forEach((user) => {
       const userId = user?._id || user?.id || null;
       if (!userId) return;
       const key = userId.toString();
@@ -772,8 +782,8 @@ const DashboardStats = () => {
       }
     });
 
-    expired += derivedExpiredUsers.length;
-    const total = ticketSource.length + derivedExpiredUsers.length;
+    expired += visitorsWithoutTicket.length;
+    const total = ticketSource.length + visitorsWithoutTicket.length;
 
     const reference = new Date();
     reference.setHours(0, 0, 0, 0);
@@ -1024,7 +1034,11 @@ const DashboardStats = () => {
       return {
         average: 'Sin datos',
         median: 'Sin datos',
+        min: 'Sin datos',
+        max: 'Sin datos',
+        p90: 'Sin datos',
         count: 0,
+        total: 'Sin datos',
       };
     }
 
@@ -1036,10 +1050,24 @@ const DashboardStats = () => {
     const medianMinutes =
       sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 
+    const percentileValue = (p) => {
+      if (!sorted.length) return null;
+      const index = Math.min(sorted.length - 1, Math.floor(((p / 100) * sorted.length) - 1e-9));
+      return sorted[index];
+    };
+
+    const minMinutes = sorted[0];
+    const maxMinutes = sorted[sorted.length - 1];
+    const p90Minutes = percentileValue(90);
+
     return {
       average: formatMinutesToHuman(averageMinutes),
       median: formatMinutesToHuman(medianMinutes),
       count: durations.length,
+      min: formatMinutesToHuman(minMinutes),
+      max: formatMinutesToHuman(maxMinutes),
+      p90: formatMinutesToHuman(p90Minutes),
+      total: formatMinutesToHuman(sum),
     };
   }, [filteredRecords]);
 
@@ -1469,9 +1497,9 @@ const DashboardStats = () => {
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Entradas por rol</h2>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Entradas por rol académico</h2>
               <p className="text-sm text-[#64748b]">
-                Distribución de accesos según el permiso del usuario ({entriesByRole.total.toLocaleString('es-CO')} registros).
+                Distribucion de accesos segun el rol academico del usuario ({entriesByRole.total.toLocaleString('es-CO')} registros).
               </p>
             </header>
             {entriesByRole.items.length > 0 ? (
@@ -1500,13 +1528,13 @@ const DashboardStats = () => {
               </div>
             ) : (
               <p className="text-sm text-[#64748b]">
-                Filtra por un rango con datos para visualizar la distribución de entradas por rol.
+                Filtra por un rango con datos para visualizar la distribucion de entradas por rol academico.
               </p>
             )}
           </article>
           <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Top administradores</h2>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Top operadores de registro</h2>
               <p className="text-sm text-[#64748b]">
                 Administradores asociados a registros durante el periodo seleccionado.
               </p>
@@ -1842,7 +1870,7 @@ const DashboardStats = () => {
                 <p className="text-sm text-[#64748b]">Comparativa de entradas por semana.</p>
               </div>
             </div>
-            <div className="flex h-48 items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
+            <div className="flex min-h-[12rem] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
               {weeklyBars.items.map((item) => (
                 <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
                   <div className="flex h-36 w-full items-end overflow-hidden rounded-md bg-[#00594e]/10">
@@ -1866,10 +1894,10 @@ const DashboardStats = () => {
                 <p className="text-sm text-[#64748b]">Resumen comparativo de los ultimos meses.</p>
               </div>
             </div>
-            <div className="flex h-48 items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
+            <div className="flex min-h-[12rem] items-end gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
               {monthlyBars.items.map((item) => (
-                <div key={item.label} className="flex flex-col items-center gap-2">
-                  <div className="flex h-36 w-12 items-end overflow-hidden rounded-md bg-[#B5A160]/10">
+                <div key={item.label} className="flex flex-1 min-w-[2.75rem] flex-col items-center gap-2">
+                  <div className="flex h-36 w-full items-end overflow-hidden rounded-md bg-[#B5A160]/10">
                     <div
                       className="w-full rounded-t-md bg-[#B5A160]"
                       style={{ height: `${Math.max((item.value / monthlyBars.max) * 100, 6)}%` }}
@@ -1936,7 +1964,7 @@ const DashboardStats = () => {
                 <p className="text-sm text-[#64748b]">Facultades con mayor numero de ingresos.</p>
               </div>
             </header>
-            <div className="overflow-x-auto">
+            <div className="mt-4 max-h-[24rem] overflow-y-auto rounded-lg border border-slate-200 bg-white">
               <table className="min-w-full divide-y divide-slate-200 text-sm text-[#334155]">
                 <thead className="bg-slate-50">
                   <tr>
@@ -1973,7 +2001,7 @@ const DashboardStats = () => {
               <h2 className="text-lg font-semibold text-[#0f172a]">Duracion de permanencia</h2>
               <p className="text-sm text-[#64748b]">Resumen de sesiones registradas en el periodo.</p>
             </div>
-            <div className="space-y-3 text-sm text-[#475569]">
+            <div className="grid gap-3 text-sm text-[#475569] sm:grid-cols-2">
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <span className="font-semibold text-[#0f172a]">Promedio por sesion</span>
                 <span className="text-[#00594e]">{sessionDurationSummary.average}</span>
@@ -1981,6 +2009,20 @@ const DashboardStats = () => {
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <span className="font-semibold text-[#0f172a]">Mediana</span>
                 <span className="text-[#00594e]">{sessionDurationSummary.median}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <span className="font-semibold text-[#0f172a]">Percentil 90</span>
+                <span className="text-[#00594e]">{sessionDurationSummary.p90}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <span className="font-semibold text-[#0f172a]">Min - Max</span>
+                <span className="text-[#00594e]">
+                  {sessionDurationSummary.min} / {sessionDurationSummary.max}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <span className="font-semibold text-[#0f172a]">Tiempo total</span>
+                <span className="text-[#00594e]">{sessionDurationSummary.total}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
                 <span className="font-semibold text-[#0f172a]">Sesiones contabilizadas</span>
