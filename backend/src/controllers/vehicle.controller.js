@@ -1,6 +1,18 @@
 const { Vehicle, VEHICLE_TYPES } = require("../models/vehicle.model");
 const { User } = require("../models/user.model");
 
+const DEFAULT_VEHICLE_LIMIT = Number(process.env.VEHICLES_PAGE_SIZE || 10);
+const MAX_VEHICLES_LIMIT = Number(process.env.VEHICLES_MAX_PAGE_SIZE || 100);
+const parsePositiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.min(fallback, max);
+  }
+  return Math.min(Math.floor(parsed), max);
+};
+const parseVehicleLimit = (value) =>
+  parsePositiveInt(value, DEFAULT_VEHICLE_LIMIT, MAX_VEHICLES_LIMIT);
+
 const normalizeType = (type) => {
   if (!type) return null;
   const normalized = type.trim().toLowerCase();
@@ -100,13 +112,30 @@ const createVehicle = async (req, res) => {
   }
 };
 
-const listVehicles = async (_req, res) => {
+const listVehicles = async (req, res) => {
   try {
-    const vehicles = await Vehicle.find().populate("owner", "nombre apellido cedula email permisoSistema");
+    const page = parsePositiveInt(req?.query?.page, 1);
+    const limit = parseVehicleLimit(req?.query?.limit);
+    const skip = (page - 1) * limit;
+    const vehiclesPromise = Vehicle.find()
+      .populate("owner", "nombre apellido cedula email permisoSistema")
+      .skip(skip)
+      .limit(limit);
+    const totalPromise = Vehicle.countDocuments();
+
+    const [vehicles, total] = await Promise.all([vehiclesPromise, totalPromise]);
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + vehicles.length < total,
+    };
 
     return res.status(200).json({
       status: "success",
       data: vehicles,
+      pagination,
     });
   } catch (error) {
     return res.status(500).json({
@@ -249,11 +278,27 @@ const listVehiclesByUser = async (req, res) => {
       });
     }
 
-    const vehicles = await Vehicle.find({ owner: userId });
+    const page = parsePositiveInt(req?.query?.page, 1);
+    const limit = parseVehicleLimit(req?.query?.limit);
+    const skip = (page - 1) * limit;
+
+    const query = { owner: userId };
+    const vehiclesPromise = Vehicle.find(query).skip(skip).limit(limit);
+    const totalPromise = Vehicle.countDocuments(query);
+
+    const [vehicles, total] = await Promise.all([vehiclesPromise, totalPromise]);
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + vehicles.length < total,
+    };
 
     return res.status(200).json({
       status: "success",
       data: vehicles,
+      pagination,
     });
   } catch (error) {
     return res.status(500).json({

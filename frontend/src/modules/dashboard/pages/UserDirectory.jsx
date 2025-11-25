@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 import { FaCarAlt, FaRegAddressCard } from 'react-icons/fa';
 import { FaMotorcycle } from 'react-icons/fa6';
@@ -155,6 +155,16 @@ const ROLES_ACADEMICOS = [
   'Otro',
 ];
 
+const DEFAULT_USERS_PAGE_SIZE = 10;
+
+const resolveUserImage = (user) => {
+  if (!user) return '';
+  if (user.imagenThumbnail) return user.imagenThumbnail;
+  if (user.imagen) return user.imagen;
+  const fallbackName = encodeURIComponent(user.nombre || 'Usuario');
+  return `https://ui-avatars.com/api/?background=00594e&color=fff&name=${fallbackName}`;
+};
+
 const formatShortDate = (value) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -261,6 +271,13 @@ const UserDirectory = () => {
   const navigate = useNavigate();
 
   const [users, setUsers] = useState([]);
+  const [usersPagination, setUsersPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    total: 0,
+    limit: DEFAULT_USERS_PAGE_SIZE,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -288,16 +305,38 @@ const UserDirectory = () => {
   const colorNormalizerRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async (page = 1) => {
     if (!token) return;
 
     setLoading(true);
     setError('');
 
     try {
-      const response = await apiRequest('/users?includeVisitorTicket=true', { token });
+      const params = new URLSearchParams();
+      params.set('page', page);
+      params.set('limit', usersPagination.limit || DEFAULT_USERS_PAGE_SIZE);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      if (permisoFilter) params.set('permiso', permisoFilter);
+      if (estadoFilter) params.set('estado', estadoFilter);
+      params.set('includeVisitorTicket', 'true');
+
+      const response = await apiRequest(`/users?${params.toString()}`, { token });
       const data = Array.isArray(response) ? response : response?.data || [];
+      const pagination = response?.pagination || {};
+      const limit = pagination.limit || usersPagination.limit || DEFAULT_USERS_PAGE_SIZE;
+      const total = pagination.total ?? data.length;
+      const totalPages = pagination.totalPages || Math.max(1, Math.ceil(total / limit));
+      const currentPage = pagination.page || page;
+
       setUsers(data);
+      setUsersPagination({
+        page: currentPage,
+        totalPages,
+        total,
+        limit,
+        hasMore: pagination.hasMore ?? currentPage < totalPages,
+      });
+
       setUserVehicleData((prev) => {
         if (!prev || Object.keys(prev).length === 0) return prev;
         const next = {};
@@ -310,15 +349,15 @@ const UserDirectory = () => {
       });
     } catch (err) {
       setError(err.message || 'No fue posible obtener los usuarios');
+      setUsersPagination((prev) => ({ ...prev, hasMore: false }));
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, usersPagination.limit, searchTerm, permisoFilter, estadoFilter]);
 
   useEffect(() => {
-    loadUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    loadUsers(1);
+  }, [token, loadUsers]);
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -371,6 +410,17 @@ const UserDirectory = () => {
     setSearchTerm('');
     setPermisoFilter('');
     setEstadoFilter('');
+  };
+
+  const handleUserPageChange = (direction) => {
+    const { page, totalPages } = usersPagination;
+    if (loading) return;
+    if (direction === 'next' && page < totalPages) {
+      loadUsers(page + 1);
+    }
+    if (direction === 'prev' && page > 1) {
+      loadUsers(page - 1);
+    }
   };
 
   const openImagePreview = (src, alt = 'Imagen seleccionada') => {
@@ -462,12 +512,34 @@ const UserDirectory = () => {
     if (user?._id && userVehicleData[user._id] === undefined) {
       fetchVehicleData(user._id);
     }
+    if (user?._id && (!user.imagenQR || !user.documentIdentity?.photo)) {
+      fetchUserDetail(user._id);
+    }
   };
 
   const getVehicleInfo = (userId) => {
     if (!userId) return null;
     return userVehicleData[userId] ?? null;
   };
+
+  const fetchUserDetail = useCallback(
+    async (userId) => {
+      if (!token || !userId) return null;
+      try {
+        const response = await apiRequest(`/users/${userId}/detail`, { token });
+        const detail = response?.user || response;
+        if (detail && detail._id) {
+          setUsers((prev) => prev.map((u) => (u._id === detail._id ? { ...u, ...detail } : u)));
+          setViewUser((prev) => (prev && prev._id === detail._id ? { ...prev, ...detail } : prev));
+        }
+        return detail;
+      } catch (err) {
+        setError(err.message || 'No fue posible obtener el detalle del usuario');
+        return null;
+      }
+    },
+    [token]
+  );
 
   useEffect(() => {
     if (!canAccessVehicles || !filteredUsers.length) return undefined;
@@ -1133,8 +1205,10 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 >
                 <div className="flex items-center gap-4">
                   <img
-                    src={user.imagen || 'https://ui-avatars.com/api/?background=00594e&color=fff&name=' + encodeURIComponent(user.nombre || 'Usuario')}
+                    src={resolveUserImage(user)}
                     alt={user.nombre || 'Usuario'}
+                    loading="lazy"
+                    decoding="async"
                     className="h-14 w-14 rounded-full border border-slate-200 object-cover"
                   />
                   <div className="flex flex-col gap-1">
@@ -1214,6 +1288,30 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
             )}
           </div>
         )}
+
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-3 text-sm text-[#0f172a]">
+          <span className="text-xs font-semibold text-[#64748b]">
+            {usersPagination.page}/{usersPagination.totalPages} · {usersPagination.total.toLocaleString('es-CO')} usuarios
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleUserPageChange('prev')}
+              disabled={loading || usersPagination.page <= 1}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => handleUserPageChange('next')}
+              disabled={loading || usersPagination.page >= usersPagination.totalPages}
+              className="rounded-md bg-[#00594e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              →
+            </button>
+          </div>
+        </div>
       </div>
 
       {viewUser && (
@@ -1310,6 +1408,8 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                         <img
                           src={viewDocumentPhoto}
                           alt={viewUser?.nombre ? `Documento de ${viewUser.nombre}` : 'Documento capturado'}
+                          loading="lazy"
+                          decoding="async"
                           className="mt-3 h-44 w-full rounded-xl border border-slate-200 object-cover shadow-sm cursor-zoom-in"
                           onClick={() =>
                             openImagePreview(

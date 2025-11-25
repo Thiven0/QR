@@ -1,5 +1,3 @@
-const Tesseract = require("tesseract.js");
-
 const MAX_IMAGE_BYTES = Number(process.env.VISITOR_DOC_MAX_BYTES || 5 * 1024 * 1024);
 
 const normalizeLine = (line) => {
@@ -182,6 +180,8 @@ const parseDocumentFields = (rawText) => {
 const extractDocumentDataFromImage = async (imageData) => {
   const buffer = decodeBase64Image(imageData);
 
+  // Cargar Tesseract bajo demanda para evitar que permanezca en memoria si no se usa OCR.
+  const Tesseract = require("tesseract.js");
   const { data } = await Tesseract.recognize(buffer, "spa+eng", {
     logger: () => {},
   });

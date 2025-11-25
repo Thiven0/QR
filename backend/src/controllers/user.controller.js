@@ -5,8 +5,8 @@ const Registro = require("../models/entry-exit.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
 const { serializeVisitorTicket, getActiveVisitorTicketForUser } = require("../utils/visitorTicket");
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
-const USERS_DEFAULT_PAGE_SIZE = Number(process.env.USERS_PAGE_SIZE || 25);
-const USERS_MAX_PAGE_SIZE = Number(process.env.USERS_PAGE_MAX_SIZE || 100);
+const USERS_DEFAULT_PAGE_SIZE = Number(process.env.USERS_PAGE_SIZE || 10);
+const USERS_MAX_PAGE_SIZE = Number(process.env.USERS_PAGE_MAX_SIZE || 50);
 const USERS_SUMMARY_RECENT_LIMIT = Number(process.env.USERS_SUMMARY_RECENT_LIMIT || 6);
 
 const DEFAULT_ALLOWED_BY_ROLE = {
@@ -68,12 +68,9 @@ const parsePositiveInt = (value, fallback, max = USERS_MAX_PAGE_SIZE) => {
 };
 const parseLimitParam = (value) => {
   if (value === undefined || value === null || value === '') {
-    return null;
+    return USERS_DEFAULT_PAGE_SIZE;
   }
-  if (Number(value) === 0) {
-    return 0;
-  }
-  return parsePositiveInt(value, USERS_DEFAULT_PAGE_SIZE);
+  return parsePositiveInt(value, USERS_DEFAULT_PAGE_SIZE, USERS_MAX_PAGE_SIZE);
 };
 const toBoolean = (value, defaultValue = false) => {
   if (value === undefined || value === null) {
@@ -312,10 +309,8 @@ const listUsers = async (req, res) => {
     const includeVisitorTicket = toBoolean(req.query.includeVisitorTicket);
 
     const page = parsePositiveInt(req.query.page, 1, Number.MAX_SAFE_INTEGER);
-    const rawLimit = parseLimitParam(req.query.limit);
-    const limit = rawLimit === 0 ? null : rawLimit;
-    const shouldPaginate = Number.isFinite(limit) && limit > 0;
-    const skip = shouldPaginate ? (page - 1) * limit : 0;
+    const limit = parseLimitParam(req.query.limit);
+    const skip = (page - 1) * limit;
 
     const query = {};
     if (normalizedPermiso) {
@@ -328,10 +323,11 @@ const listUsers = async (req, res) => {
       Object.assign(query, searchFilter);
     }
 
-    const listQuery = User.find(query).select('-password').sort({ created_at: -1 });
-    if (shouldPaginate) {
-      listQuery.skip(skip).limit(limit);
-    }
+    const listQuery = User.find(query)
+      .select('-password -imagenQR -documentIdentity.photo -documentIdentity.extractedData.rawText')
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(limit);
 
     const [usersDocs, total] = await Promise.all([listQuery.lean(), User.countDocuments(query)]);
 
@@ -375,21 +371,13 @@ const listUsers = async (req, res) => {
       }));
     }
 
-    const pagination = shouldPaginate
-      ? {
-          page,
-          limit,
-          total,
-          totalPages: Math.max(1, Math.ceil(total / limit)),
-          hasMore: skip + result.length < total,
-        }
-      : {
-          page: 1,
-          limit: result.length,
-          total,
-          totalPages: 1,
-          hasMore: false,
-        };
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + result.length < total,
+    };
 
     return res.status(200).json({
       status: 'success',
@@ -782,6 +770,38 @@ const deleteUser = async (req, res) => {
   }
 };
 
+const getUserDetail = async (req, res) => {
+  try {
+    const userId = req.params?.id;
+    if (!userId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'El identificador del usuario es obligatorio',
+      });
+    }
+
+    const user = await User.findById(userId).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Error al obtener el usuario',
+      error: error.message,
+    });
+  }
+};
+
 const getUsersSummary = async (req, res) => {
   try {
     const now = new Date();
@@ -1002,6 +1022,7 @@ module.exports = {
   validateScannedUser,
   updateUser,
   deleteUser,
+  getUserDetail,
 };
 
 

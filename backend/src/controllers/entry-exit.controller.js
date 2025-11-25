@@ -11,8 +11,24 @@ const ALERT_STATUSES = {
 };
 const DEFAULT_ALERT_THRESHOLD_MINUTES = Number(process.env.ALERT_THRESHOLD_MINUTES || 5);
 const MAX_REGISTROS_RANGE_DAYS = Number(process.env.REGISTROS_MAX_RANGE_DAYS || 90);
-const MAX_REGISTROS_LIMIT = Number(process.env.REGISTROS_MAX_LIMIT || 2000);
+const MAX_REGISTROS_LIMIT = Number(process.env.REGISTROS_MAX_LIMIT || 100);
+const DEFAULT_REGISTROS_LIMIT = Math.min(
+  Number(process.env.REGISTROS_PAGE_SIZE || 10),
+  MAX_REGISTROS_LIMIT
+);
+const MAX_ALERTS_LIMIT = Number(process.env.ALERTS_MAX_LIMIT || 100);
+const DEFAULT_ALERTS_LIMIT = Math.min(
+  Number(process.env.ALERTS_PAGE_SIZE || 10),
+  MAX_ALERTS_LIMIT
+);
 const isUserBlocked = (userDoc) => ((userDoc?.estado || '').toLowerCase() === 'bloqueado');
+const parsePositiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.min(fallback, max);
+  }
+  return Math.min(Math.floor(parsed), max);
+};
 const clampRangeDays = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -20,12 +36,17 @@ const clampRangeDays = (value) => {
   }
   return Math.min(Math.floor(parsed), MAX_REGISTROS_RANGE_DAYS);
 };
-const parseQueryLimit = (value) => {
+const parseQueryLimit = (value, fallback, maxLimit = MAX_REGISTROS_LIMIT) => {
+  const safeFallback = parsePositiveInt(
+    fallback || DEFAULT_REGISTROS_LIMIT,
+    DEFAULT_REGISTROS_LIMIT,
+    maxLimit
+  );
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
+    return safeFallback;
   }
-  return Math.min(Math.floor(parsed), MAX_REGISTROS_LIMIT);
+  return Math.min(Math.floor(parsed), maxLimit);
 };
 const toBoolean = (value, defaultValue = false) => {
   if (value === undefined || value === null) {
@@ -564,7 +585,9 @@ exports.getRegistros = async (req, res) => {
     const fromDate = ensureDate(req.query.from);
     const toDate = ensureDate(req.query.to);
     const activeOnly = toBoolean(req.query.activeOnly);
-    const limit = parseQueryLimit(req.query.limit);
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = parseQueryLimit(req.query.limit, DEFAULT_REGISTROS_LIMIT, MAX_REGISTROS_LIMIT);
+    const skip = (page - 1) * limit;
 
     const filters = {};
     const fechaEntradaFilter = buildFechaEntradaFilter({ from: fromDate, to: toDate, rangeDays });
@@ -579,27 +602,29 @@ exports.getRegistros = async (req, res) => {
       .populate("usuario", "nombre apellido email cedula permisoSistema estado rolAcademico telefono")
       .populate("administrador", "nombre apellido email permisoSistema")
       .populate("vehiculo", "type brand model color plate estado")
-      .sort({ fechaEntrada: -1 });
+      .sort({ fechaEntrada: -1 })
+      .skip(skip)
+      .limit(limit);
 
-    if (limit) {
-      query.limit(limit);
-    }
-
-    const registros = await query.lean();
+    const [registros, total] = await Promise.all([query.lean(), Registro.countDocuments(filters)]);
     const data = registros.map((registro) => normalizeAlertMetadata(registro));
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + data.length < total,
+    };
 
     return res.status(200).json({
       status: 'success',
       data,
-      meta: {
-        count: data.length,
-        filters: {
-          rangeDays: rangeDays || null,
-          from: fromDate ? fromDate.toISOString() : null,
-          to: toDate ? toDate.toISOString() : null,
-          activeOnly,
-          limit: limit || null,
-        },
+      pagination,
+      filters: {
+        rangeDays: rangeDays || null,
+        from: fromDate ? fromDate.toISOString() : null,
+        to: toDate ? toDate.toISOString() : null,
+        activeOnly,
       },
     });
   } catch (error) {
@@ -728,13 +753,21 @@ exports.listAlertas = async (req, res) => {
     }
 
     const thresholdMinutes = resolveAlertThreshold(req.query?.thresholdMinutes);
-    const registros = await Registro.find({
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = parseQueryLimit(req.query.limit, DEFAULT_ALERTS_LIMIT, MAX_ALERTS_LIMIT);
+    const skip = (page - 1) * limit;
+    const baseQuery = {
       $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
-    })
+    };
+    const registrosPromise = Registro.find(baseQuery)
       .populate("usuario", "nombre apellido email cedula permisoSistema estado rolAcademico telefono")
       .populate("administrador", "nombre apellido email permisoSistema")
       .populate("vehiculo", "type brand model color plate estado")
-      .sort({ fechaEntrada: 1 });
+      .sort({ fechaEntrada: 1 })
+      .skip(skip)
+      .limit(limit);
+    const totalPromise = Registro.countDocuments(baseQuery);
+    const [registros, total] = await Promise.all([registrosPromise, totalPromise]);
 
     const data = [];
 
@@ -757,9 +790,18 @@ exports.listAlertas = async (req, res) => {
       }
     }
 
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + data.length < total,
+    };
+
     return res.status(200).json({
       status: 'success',
       thresholdMinutes,
+      pagination,
       data,
     });
   } catch (error) {

@@ -8,6 +8,7 @@ const router = express.Router();
 router.post("/", authMiddleware(["Administrador", "Celador"]), userController.createUser);
 router.get("/", authMiddleware(["Administrador", "Celador"]), userController.listUsers);
 router.get("/summary", authMiddleware(["Administrador", "Celador"]), userController.getUsersSummary);
+router.get("/:id/detail", authMiddleware(["Administrador", "Celador"]), userController.getUserDetail);
 router.put("/:id", authMiddleware(["Administrador"]), userController.updateUser);
 router.delete("/:id", authMiddleware(["Administrador"]), userController.deleteUser);
 router.post("/toggle-access", authMiddleware(["Administrador", "Celador"]), userController.toggleAccessByCedula);

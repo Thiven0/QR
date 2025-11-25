@@ -62,7 +62,9 @@ const login = async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      '-documentIdentity.photo -documentIdentity.extractedData.rawText'
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -156,7 +158,9 @@ const profile = async (req, res) => {
     });
   }
 
-  const user = await User.findById(userId).select('-password');
+  const user = await User.findById(userId).select(
+    '-password -documentIdentity.photo -documentIdentity.extractedData.rawText'
+  );
 
   if (!user) {
     return res.status(404).json({

@@ -11,9 +11,20 @@ const { extractDocumentDataFromImage } = require("../services/ocr.service");
 const VISITOR_ROLE = "Visitante";
 const VISITOR_PERMISSION = "Usuario";
 const VISITOR_SESSION_DAYS = Number(process.env.VISITOR_SESSION_DAYS || 1);
+const DEFAULT_TICKETS_LIMIT = Number(process.env.VISITOR_TICKETS_PAGE_SIZE || 10);
+const MAX_TICKETS_LIMIT = Number(process.env.VISITOR_TICKETS_MAX_SIZE || 100);
 const DEFAULT_DATA_TREATMENT_URL =
   process.env.DATA_TREATMENT_URL ||
   "https://drive.google.com/file/d/1JtSP0Fa19TKU0kzNwhDqC6BQIe2c_JK8/view";
+const parsePositiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.min(fallback, max);
+  }
+  return Math.min(Math.floor(parsed), max);
+};
+const parseTicketsLimit = (value) =>
+  parsePositiveInt(value, DEFAULT_TICKETS_LIMIT, MAX_TICKETS_LIMIT);
 
 const cleanObject = (object = {}) => {
   return Object.entries(object).reduce((acc, [key, value]) => {
@@ -447,12 +458,21 @@ const reactivateVisitorTicket = async (req, res) => {
   }
 };
 
-const listVisitorTickets = async (_req, res) => {
+const listVisitorTickets = async (req, res) => {
   try {
-    const tickets = await VisitorTicket.find().populate(
-      "user",
-      "nombre apellido email permisoSistema estado rolAcademico created_at"
-    );
+    const page = parsePositiveInt(req?.query?.page, 1);
+    const limit = parseTicketsLimit(req?.query?.limit);
+    const skip = (page - 1) * limit;
+    const ticketsPromise = VisitorTicket.find()
+      .populate(
+        "user",
+        "nombre apellido email permisoSistema estado rolAcademico created_at"
+      )
+      .skip(skip)
+      .limit(limit);
+    const totalPromise = VisitorTicket.countDocuments();
+
+    const [tickets, total] = await Promise.all([ticketsPromise, totalPromise]);
 
     const data = tickets.map((ticket) => {
       const serialized = serializeVisitorTicket(ticket);
@@ -470,9 +490,18 @@ const listVisitorTickets = async (_req, res) => {
       };
     });
 
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      hasMore: skip + data.length < total,
+    };
+
     return res.status(200).json({
       status: "success",
       data,
+      pagination,
     });
   } catch (error) {
     return res.status(500).json({

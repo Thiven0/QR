@@ -4,6 +4,7 @@ import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 
 const VEHICLE_TYPES = ['Carro', 'Moto', 'Bicicleta'];
+const DEFAULT_VEHICLE_PAGE_SIZE = 10;
 
 const buildInitialForm = () => ({
   owner: '',
@@ -41,6 +42,13 @@ const UserVehicles = () => {
 
   const [vehicles, setVehicles] = useState([]);
   const [users, setUsers] = useState([]);
+  const [vehiclePagination, setVehiclePagination] = useState({
+    page: 1,
+    totalPages: 1,
+    total: 0,
+    limit: DEFAULT_VEHICLE_PAGE_SIZE,
+    hasMore: false,
+  });
   const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [error, setError] = useState('');
@@ -92,23 +100,51 @@ const UserVehicles = () => {
     }
   };
 
-  const loadVehicles = useCallback(async () => {
+  const handleVehiclePageChange = (direction) => {
+    const { page, totalPages } = vehiclePagination;
+    if (loadingVehicles) return;
+    if (direction === 'next' && page < totalPages) {
+      loadVehicles(page + 1);
+    }
+    if (direction === 'prev' && page > 1) {
+      loadVehicles(page - 1);
+    }
+  };
+
+  const loadVehicles = useCallback(async (page = 1) => {
     if (!token || !canViewVehicles) return;
 
     setLoadingVehicles(true);
     setError('');
 
     try {
-      const response = await apiRequest('/vehicles', { token });
+      const params = new URLSearchParams();
+      params.set('page', page);
+      params.set('limit', vehiclePagination.limit || DEFAULT_VEHICLE_PAGE_SIZE);
+      const response = await apiRequest(`/vehicles?${params.toString()}`, { token });
       const data = Array.isArray(response) ? response : response?.data || [];
+      const pagination = response?.pagination || {};
+      const limit = pagination.limit || vehiclePagination.limit || DEFAULT_VEHICLE_PAGE_SIZE;
+      const total = pagination.total ?? data.length;
+      const totalPages = pagination.totalPages || Math.max(1, Math.ceil(total / limit));
+      const currentPage = pagination.page || page;
+
       setVehicles(data);
+      setVehiclePagination({
+        page: currentPage,
+        totalPages,
+        total,
+        limit,
+        hasMore: pagination.hasMore ?? currentPage < totalPages,
+      });
     } catch (err) {
       setError(err.message || 'No fue posible obtener los vehiculos registrados.');
       setVehicles([]);
+      setVehiclePagination((prev) => ({ ...prev, hasMore: false }));
     } finally {
       setLoadingVehicles(false);
     }
-  }, [token, canViewVehicles]);
+  }, [token, canViewVehicles, vehiclePagination.limit]);
 
   const loadUsers = useCallback(async () => {
     if (!token || !canEditVehicles) return;
@@ -525,6 +561,8 @@ const UserVehicles = () => {
                             <img
                               src={vehicle.imagen}
                               alt={`Foto de ${vehicle.type || 'vehiculo'}`}
+                              loading="lazy"
+                              decoding="async"
                               className="h-16 w-16 flex-shrink-0 rounded-lg object-cover"
                             />
                           ) : (
@@ -589,6 +627,32 @@ const UserVehicles = () => {
               )}
             </div>
           </section>
+        )}
+
+        {view === 'list' && (
+          <div className="mt-6 flex flex-wrap items-center justify-end gap-3 text-sm text-[#0f172a]">
+            <span className="text-xs font-semibold text-[#64748b]">
+              {vehiclePagination.page}/{vehiclePagination.totalPages} · {vehiclePagination.total.toLocaleString('es-CO')} vehiculos
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleVehiclePageChange('prev')}
+                disabled={loadingVehicles || vehiclePagination.page <= 1}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVehiclePageChange('next')}
+                disabled={loadingVehicles || vehiclePagination.page >= vehiclePagination.totalPages}
+                className="rounded-md bg-[#00594e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                →
+              </button>
+            </div>
+          </div>
         )}
 
         {view === 'register' && (
