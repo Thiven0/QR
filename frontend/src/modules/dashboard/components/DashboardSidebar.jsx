@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import clsx from 'clsx';
 import { NavLink, useLocation } from 'react-router-dom';
-import { FiFolder } from 'react-icons/fi';
-import { IoMdAddCircle, IoIosWarning, IoMdAnalytics } from 'react-icons/io';
+import { IoIosWarning, IoMdAnalytics } from 'react-icons/io';
 import { RiQrCodeFill } from 'react-icons/ri';
 import { FaAddressBook } from 'react-icons/fa6';
-import { AiFillCar } from 'react-icons/ai';
 import { GiArchiveRegister } from 'react-icons/gi';
 import { TiUserAdd } from 'react-icons/ti';
 import useAuth from '../../auth/hooks/useAuth';
@@ -66,10 +64,6 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
   const { hasPermission, user } = useAuth();
   const location = useLocation();
 
-  const isVehiclesPath = location.pathname === '/dashboard/vehicles';
-  const viewParams = new URLSearchParams(location.search);
-  const currentVehicleView = isVehiclesPath && viewParams.get('view') === 'register' ? 'register' : 'list';
-
   const baseItems = [
     {
       to: '/dashboard/qr',
@@ -84,24 +78,10 @@ const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
       icon: <FaAddressBook className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
     },
     {
-      to: '/dashboard/vehicles?view=list',
-      label: 'Vehiculos',
-      permissions: ['Administrador', 'Celador'],
-      icon: <AiFillCar className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
-      isActiveOverride: isVehiclesPath && currentVehicleView !== 'register',
-    },
-    {
       to: '/dashboard/alerts',
       label: 'Alertas',
       permissions: ['Administrador', 'Celador'],
       icon: <IoIosWarning className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
-    },
-    {
-      to: '/dashboard/vehicles?view=register',
-      label: 'Registrar vehiculo',
-      permissions: ['Administrador'],
-      icon: <IoMdAddCircle className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
-      isActiveOverride: isVehiclesPath && currentVehicleView === 'register',
     },
     {
       to: '/dashboard/statistics',

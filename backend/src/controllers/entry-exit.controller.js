@@ -925,13 +925,11 @@ const handleScanAndUpdateUser = async (req, res) => {
     }
 
     const direction = req.body?.direction;
-    const vehicleId = req.body?.vehicleId;
     const exitObservationRaw = typeof req.body?.exitObservation === 'string' ? req.body.exitObservation.trim() : '';
     const result = await procesarTransicionDeUsuario({
       user,
       adminId,
       direction,
-      vehicleId,
       exitObservation: exitObservationRaw || undefined,
     });
 

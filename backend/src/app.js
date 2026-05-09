@@ -39,7 +39,6 @@ const createApp = () => {
   app.use("/api/users", require("./routes/user.routes"));
   app.use("/api/exitEntry", require("./routes/entry-exit.routes"));
   app.use("/api/visitors", require("./routes/visitor.routes"));
-  app.use("/api/vehicles", require("./routes/vehicle.routes"));
 
   app.get("/ruta-prueba", (req, res) => {
     res.status(200).json({

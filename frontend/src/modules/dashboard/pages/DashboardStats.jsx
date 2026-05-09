@@ -91,9 +91,8 @@ const DashboardStats = () => {
 
   const [users, setUsers] = useState([]);
   const [records, setRecords] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
   const [visitorTickets, setVisitorTickets] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [downloadingReport, setDownloadingReport] = useState(false);
 
@@ -110,10 +109,9 @@ const DashboardStats = () => {
         setLoading(true);
         setError('');
 
-        const [usersResponse, recordsResponse, vehiclesResponse, ticketsResponse] = await Promise.all([
+        const [usersResponse, recordsResponse, ticketsResponse] = await Promise.all([
           apiRequest('/users?includeVisitorTicket=true', { token }),
           apiRequest('/exitEntry', { token }),
-          apiRequest('/vehicles', { token }),
           apiRequest('/visitors/tickets', { token }),
         ]);
 
@@ -121,19 +119,16 @@ const DashboardStats = () => {
 
         const usersPayload = Array.isArray(usersResponse) ? usersResponse : usersResponse?.data || [];
         const recordsPayload = Array.isArray(recordsResponse) ? recordsResponse : recordsResponse?.data || [];
-        const vehiclesPayload = Array.isArray(vehiclesResponse) ? vehiclesResponse : vehiclesResponse?.data || [];
         const ticketsPayload = Array.isArray(ticketsResponse) ? ticketsResponse : ticketsResponse?.data || [];
 
         setUsers(usersPayload);
         setRecords(recordsPayload);
-        setVehicles(vehiclesPayload);
         setVisitorTickets(ticketsPayload);
       } catch (err) {
         if (mounted) {
           setError(err.message || 'No fue posible obtener la informacion.');
           setUsers([]);
           setRecords([]);
-          setVehicles([]);
           setVisitorTickets([]);
         }
       } finally {
@@ -432,7 +427,7 @@ const DashboardStats = () => {
 
   const heatmapData = useMemo(() => {
     const days = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
-    const matrix = days.map((label, index) => ({
+    const matrix = days.map((label) => ({
       label,
       values: Array.from({ length: 24 }, (_, hour) => ({
         hour,
@@ -570,109 +565,6 @@ const DashboardStats = () => {
       items,
     };
   }, [users]);
-
-  const vehicleAnalytics = useMemo(() => {
-    if (!vehicles.length) {
-      return {
-        total: 0,
-        active: 0,
-        inactive: 0,
-        activeRate: 0,
-        byType: [],
-        topOwners: [],
-        averagePerOwner: 0,
-      };
-    }
-
-    let active = 0;
-    const typeTotals = new Map();
-    const ownerMap = new Map();
-
-    vehicles.forEach((vehicle) => {
-      const estado = String(vehicle?.estado || '').toLowerCase();
-      const isActive = estado === 'activo';
-      if (isActive) active += 1;
-
-      const typeLabel = vehicle?.type || 'Sin tipo';
-      typeTotals.set(typeLabel, (typeTotals.get(typeLabel) || 0) + 1);
-
-      const ownerRaw = vehicle?.owner;
-      const ownerId =
-        typeof ownerRaw === 'string'
-          ? ownerRaw
-          : ownerRaw?._id || ownerRaw?.id || ownerRaw?.owner || null;
-
-      if (ownerId) {
-        const ownerEntry = ownerMap.get(ownerId) || {
-          ownerId,
-          owner: ownerRaw,
-          total: 0,
-          active: 0,
-        };
-        ownerEntry.total += 1;
-        if (isActive) ownerEntry.active += 1;
-        ownerMap.set(ownerId, ownerEntry);
-      }
-    });
-
-    const total = vehicles.length;
-    const byType = Array.from(typeTotals.entries())
-      .map(([type, count]) => ({
-        type,
-        count,
-        percentage: total ? (count / total) * 100 : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const topOwners = Array.from(ownerMap.values())
-      .map((entry) => {
-        const ownerDoc = entry.owner;
-        const fallback = userMap[entry.ownerId];
-        const fullName = ownerDoc
-          ? `${ownerDoc.nombre || ''} ${ownerDoc.apellido || ''}`.trim() || ownerDoc.email || 'Sin asignar'
-          : fallback
-          ? `${fallback.nombre || ''} ${fallback.apellido || ''}`.trim() || fallback.email || 'Sin asignar'
-          : 'Sin asignar';
-        const permission =
-          ownerDoc?.permisoSistema || fallback?.permisoSistema || 'No definido';
-        return {
-          ownerId: entry.ownerId,
-          name: fullName,
-          permission,
-          total: entry.total,
-          active: entry.active,
-        };
-      })
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-
-    return {
-      total,
-      active,
-      inactive: total - active,
-      activeRate: total ? (active / total) * 100 : 0,
-      byType,
-      topOwners,
-      averagePerOwner: ownerMap.size ? total / ownerMap.size : 0,
-    };
-  }, [vehicles, userMap]);
-
-  const vehicleTypeDonut = useMemo(() => {
-    const total = vehicleAnalytics.total;
-    const items = vehicleAnalytics.byType.map((entry, index) => ({
-      label: entry.type,
-      value: entry.count,
-      count: entry.count,
-      percentage: entry.percentage,
-      color: CHART_COLORS[index % CHART_COLORS.length],
-    }));
-    const gradient = total > 0 ? buildConicGradient(items) : '#e2e8f0';
-    return {
-      total,
-      items,
-      gradient,
-    };
-  }, [vehicleAnalytics]);
 
   const derivedVisitorTickets = useMemo(
     () =>
@@ -967,15 +859,6 @@ const DashboardStats = () => {
             : 'Sin usuarios registrados.',
       },
       {
-        id: 'active-vehicles',
-        label: 'Vehiculos activos',
-        value: vehicleAnalytics.active,
-        description:
-          vehicleAnalytics.total > 0
-            ? `${formatPercent(vehicleAnalytics.activeRate)} del parque vehicular`
-            : 'Sin registros de vehiculos.',
-      },
-      {
         id: 'active-tickets',
         label: 'Tickets vigentes',
         value: visitorTicketAnalytics.active,
@@ -985,7 +868,7 @@ const DashboardStats = () => {
             : 'Sin tickets registrados.',
       },
     ],
-    [summaryMetrics, userRoleSummary, vehicleAnalytics, visitorTicketAnalytics]
+    [summaryMetrics, userRoleSummary, visitorTicketAnalytics]
   );
 
   const rankingData = useMemo(() => {
@@ -1269,58 +1152,7 @@ const DashboardStats = () => {
           ))}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-3">
-          <article className="flex flex-col items-center gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <header className="w-full">
-              <h2 className="text-lg font-semibold text-[#0f172a]">Vehiculos por tipo</h2>
-              <p className="text-sm text-[#64748b]">Proporcion del parque vehicular por categoria registrada.</p>
-            </header>
-            <div className="flex flex-col items-center gap-4">
-              <div className="relative h-32 w-32">
-                <div
-                  className="h-full w-full rounded-full"
-                  style={{
-                    background: vehicleTypeDonut.gradient.startsWith('conic-gradient')
-                      ? vehicleTypeDonut.gradient
-                      : undefined,
-                    backgroundColor: vehicleTypeDonut.gradient.startsWith('conic-gradient')
-                      ? undefined
-                      : vehicleTypeDonut.gradient,
-                  }}
-                />
-                <div className="absolute inset-5 flex items-center justify-center rounded-full bg-white text-center">
-                  <div>
-                    <p className="text-xs text-[#94a3b8]">Total</p>
-                    <p className="text-lg font-semibold text-[#0f172a]">
-                      {vehicleTypeDonut.total.toLocaleString('es-CO')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <ul className="w-full space-y-2 text-sm text-[#475569]">
-              {vehicleTypeDonut.items.length > 0 ? (
-                vehicleTypeDonut.items.map((item) => (
-                  <li key={item.label} className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-2">
-                    <span className="flex items-center gap-3">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: item.color }}
-                      />
-                      <span className="font-semibold text-[#0f172a]">{item.label}</span>
-                    </span>
-                    <span>
-                      {item.count.toLocaleString('es-CO')} ({formatPercent(item.percentage)})
-                    </span>
-                  </li>
-                ))
-              ) : (
-                <li className="rounded-lg border border-dashed border-slate-200 px-4 py-3 text-center text-sm text-[#64748b]">
-                  No hay vehiculos registrados para este reporte.
-                </li>
-              )}
-            </ul>
-          </article>
+        <section className="grid gap-6 xl:grid-cols-2">
           <article className="flex flex-col items-center gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header className="w-full">
               <h2 className="text-lg font-semibold text-[#0f172a]">Usuarios por estado</h2>
@@ -1673,90 +1505,7 @@ const DashboardStats = () => {
           </article>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <header>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Vehiculos parqueados</h2>
-              <p className="text-sm text-[#64748b]">
-                {vehicleAnalytics.total.toLocaleString('es-CO')} vehiculos registrados • Promedio por propietario:{' '}
-                {vehicleAnalytics.averagePerOwner ? vehicleAnalytics.averagePerOwner.toFixed(2) : '0.00'}
-              </p>
-            </header>
-            <div className="grid gap-3 text-sm sm:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Activos</p>
-                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">
-                  {vehicleAnalytics.active.toLocaleString('es-CO')}
-                </p>
-                <p className="text-xs text-[#475569]">{formatPercent(vehicleAnalytics.activeRate)} del total</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Inactivos</p>
-                <p className="mt-2 text-2xl font-semibold text-[#0f172a]">
-                  {vehicleAnalytics.inactive.toLocaleString('es-CO')}
-                </p>
-                <p className="text-xs text-[#475569]">
-                  {vehicleAnalytics.total
-                    ? formatPercent((vehicleAnalytics.inactive / vehicleAnalytics.total) * 100)
-                    : '0%'}{' '}
-                  del total
-                </p>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#94a3b8]">Distribucion por tipo</h3>
-              <div className="mt-3 space-y-3">
-                {vehicleAnalytics.byType.length > 0 ? (
-                  vehicleAnalytics.byType.map((type) => (
-                    <div key={type.type}>
-                      <div className="flex items-center justify-between text-sm font-semibold text-[#0f172a]">
-                        <span>{type.type}</span>
-                        <span>
-                          {type.count.toLocaleString('es-CO')} ({formatPercent(type.percentage)})
-                        </span>
-                      </div>
-                      <div className="mt-1 h-2 rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-[#B5A160]"
-                          style={{
-                            width: `${Math.max(type.percentage, type.percentage > 0 ? 6 : 0)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-[#94a3b8]">Sin informacion de tipos de vehiculo.</p>
-                )}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#94a3b8]">Top propietarios</h3>
-              <ul className="mt-3 space-y-2 text-sm text-[#475569]">
-                {vehicleAnalytics.topOwners.length > 0 ? (
-                  vehicleAnalytics.topOwners.map((owner) => (
-                    <li
-                      key={owner.ownerId}
-                      className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-2"
-                    >
-                      <div>
-                        <p className="font-semibold text-[#0f172a]">{owner.name}</p>
-                        <p className="text-xs text-[#94a3b8]">{owner.permission}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-[#0f172a]">
-                        {owner.total.toLocaleString('es-CO')} ({owner.active.toLocaleString('es-CO')} activos)
-                      </span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="rounded-lg border border-slate-200 px-4 py-2 text-xs text-[#94a3b8]">
-                    No hay propietarios registrados.
-                  </li>
-                )}
-              </ul>
-            </div>
-          </article>
-
+        <section className="grid gap-6">
           <article className="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <header>
               <h2 className="text-lg font-semibold text-[#0f172a]">Tickets de visitantes</h2>

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
-import { FaCarAlt, FaRegAddressCard } from 'react-icons/fa';
-import { FaMotorcycle } from 'react-icons/fa6';
-import { GrBike } from 'react-icons/gr';
+import { FaRegAddressCard } from 'react-icons/fa';
 import { LuTicketCheck, LuTicketX } from 'react-icons/lu';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import { apiRequest } from '../../../services/apiClient';
@@ -265,10 +263,7 @@ const formatVisitorTicketInfo = (ticket) => {
 const UserDirectory = () => {
   const { token, hasPermission } = useAuth();
   const isAdmin = hasPermission(['Administrador']);
-  const canAccessVehicles = hasPermission(['Administrador', 'Celador']);
-  const canRegisterVehicles = hasPermission(['Administrador']);
   const canManageAccess = hasPermission(['Administrador', 'Celador']);
-  const navigate = useNavigate();
 
   const [users, setUsers] = useState([]);
   const [usersPagination, setUsersPagination] = useState({
@@ -299,8 +294,6 @@ const UserDirectory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [permisoFilter, setPermisoFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [userVehicleData, setUserVehicleData] = useState({});
-  const [loadingVehicleCountFor, setLoadingVehicleCountFor] = useState(null);
   const profileCardRef = useRef(null);
   const colorNormalizerRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -337,16 +330,6 @@ const UserDirectory = () => {
         hasMore: pagination.hasMore ?? currentPage < totalPages,
       });
 
-      setUserVehicleData((prev) => {
-        if (!prev || Object.keys(prev).length === 0) return prev;
-        const next = {};
-        data.forEach((user) => {
-          if (prev[user._id] !== undefined) {
-            next[user._id] = prev[user._id];
-          }
-        });
-        return next;
-      });
     } catch (err) {
       setError(err.message || 'No fue posible obtener los usuarios');
       setUsersPagination((prev) => ({ ...prev, hasMore: false }));
@@ -459,7 +442,6 @@ const UserDirectory = () => {
       'Rol academico',
       'Telefono',
       'Facultad',
-      'Vehiculos registrados',
     ];
 
     const rows = users.map((user) => [
@@ -472,7 +454,6 @@ const UserDirectory = () => {
       user.rolAcademico || '',
       user.telefono || '',
       user.facultad || '',
-      typeof userVehicleData[user._id]?.count === 'number' ? userVehicleData[user._id].count : '',
     ]);
 
     const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
@@ -482,44 +463,11 @@ const UserDirectory = () => {
     setFeedback('Archivo de usuarios exportado correctamente.');
   };
 
-  const fetchVehicleData = async (userId) => {
-    if (!token || !userId) return { count: 0, types: [] };
-    if (loadingVehicleCountFor === userId) return userVehicleData[userId] ?? { count: 0, types: [] };
-
-    setLoadingVehicleCountFor(userId);
-    try {
-      const response = await apiRequest(`/users/${userId}/vehicles`, { token });
-      const data = Array.isArray(response) ? response : response?.data || [];
-      const info = {
-        count: data.length,
-        types: data
-          .map((vehicle) => (vehicle.type || vehicle.tipo || '').toLowerCase())
-          .filter(Boolean),
-      };
-      setUserVehicleData((prev) => ({ ...prev, [userId]: info }));
-      return info;
-    } catch (err) {
-      const fallback = { count: 0, types: [] };
-      setUserVehicleData((prev) => ({ ...prev, [userId]: fallback }));
-      return fallback;
-    } finally {
-      setLoadingVehicleCountFor(null);
-    }
-  };
-
   const handleViewUser = (user) => {
     setViewUser(user);
-    if (user?._id && userVehicleData[user._id] === undefined) {
-      fetchVehicleData(user._id);
-    }
     if (user?._id && (!user.imagenQR || !user.documentIdentity?.photo)) {
       fetchUserDetail(user._id);
     }
-  };
-
-  const getVehicleInfo = (userId) => {
-    if (!userId) return null;
-    return userVehicleData[userId] ?? null;
   };
 
   const fetchUserDetail = useCallback(
@@ -541,66 +489,6 @@ const UserDirectory = () => {
     [token]
   );
 
-  useEffect(() => {
-    if (!canAccessVehicles || !filteredUsers.length) return undefined;
-
-    const missingUserIds = filteredUsers
-      .map((user) => user._id)
-      .filter((id) => id && userVehicleData[id] === undefined);
-
-    if (!missingUserIds.length) return undefined;
-
-    const timers = missingUserIds.map((userId, index) =>
-      setTimeout(() => {
-        fetchVehicleData(userId);
-      }, index * 120)
-    );
-
-    return () => {
-      timers.forEach((timerId) => clearTimeout(timerId));
-    };
-  }, [filteredUsers, canAccessVehicles, userVehicleData, fetchVehicleData]);
-
-  const handleVehicleNavigation = async (user) => {
-    if (!user?._id) return;
-    let info = userVehicleData[user._id];
-    if (info === undefined) {
-      info = await fetchVehicleData(user._id);
-    }
-    openVehiclesPage(user, (info?.count || 0) > 0, 'list');
-  };
-
-  const getVehicleIconByType = (type) => {
-    const normalized = (type || '').toLowerCase();
-    const commonClasses = 'h-5 w-5';
-    if (normalized.includes('moto')) {
-      return <FaMotorcycle className={`${commonClasses} text-[#0f766e]`} />;
-    }
-    if (normalized.includes('bicicleta') || normalized.includes('bici')) {
-      return <GrBike className={`${commonClasses} text-[#0f766e]`} />;
-    }
-    return <FaCarAlt className={`${commonClasses} text-[#0f766e]`} />;
-  };
-
-const openVehiclesPage = (user, hasVehicles, view = 'list') => {
-  if (!user?._id) return;
-  const params = new URLSearchParams();
-  if (view) {
-    params.set('view', view);
-  }
-  if (view === 'list') {
-    params.set('owner', user._id);
-  }
-  const search = params.toString() ? `?${params.toString()}` : '';
-  navigate(`/dashboard/vehicles${search}`, {
-    state: {
-      user,
-      hasVehicles,
-      from: 'directory',
-      intent: view,
-    },
-  });
-};
 
   const openEditModal = (user) => {
     setEditUserId(user._id);
@@ -657,7 +545,11 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         delete next[name];
         return next;
       });
-    } catch (err) {
+    } catch {
+      setEditErrors((prev) => ({
+        ...prev,
+        [name]: 'No fue posible procesar la imagen seleccionada.',
+      }));
     }
   };
 
@@ -708,7 +600,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         imagenQR: qrDataUrl,
       }));
       setFeedback('QR regenerado correctamente.');
-    } catch (err) {
+    } catch {
       setEditErrors((prev) => ({
         ...prev,
         imagenQR: 'No fue posible regenerar el QR. Intenta nuevamente.',
@@ -813,13 +705,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       if (viewUser?._id === deleteTarget._id) {
         setViewUser(null);
       }
-
-      setUserVehicleCounts((prev) => {
-        if (!prev || !(deleteTarget._id in prev)) return prev;
-        const next = { ...prev };
-        delete next[deleteTarget._id];
-        return next;
-      });
 
       setFeedback('Usuario eliminado correctamente.');
       setDeleteTarget(null);
@@ -990,7 +875,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       const filename = `carnet-${viewUser?.cedula || viewUser?.nombre || 'usuario'}.pdf`;
       pdf.save(filename);
       setFeedback('Carnet descargado correctamente.');
-    } catch (error) {
+    } catch {
       setFeedback('No fue posible descargar el carnet. Intentalo nuevamente.');
     } finally {
       restoreSnapshotStyles();
@@ -1115,11 +1000,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
             {filteredUsers.map((user) => {
               const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
               const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
-              const canReactivateTicket = visitorTicketInfo.status !== 'active';
-              const vehicleInfo = getVehicleInfo(user._id);
-              const vehicleCount = vehicleInfo?.count ?? 0;
-              const vehicleTypes = vehicleInfo?.types ?? [];
-              const hasVehicles = vehicleCount > 0;
               const estado = (user.estado || '').toLowerCase() || 'desconocido';
               const isBlocked = estado === 'bloqueado';
               const estadoBadgeClasses =
@@ -1146,28 +1026,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 Boolean(birthDate) ||
                 Boolean(consentAcceptedAt);
               const iconBadges = [];
-
-              if (hasVehicles) {
-                const primaryType = vehicleTypes[0] || 'carro';
-                iconBadges.push(
-                  <div
-                    key={`${user._id}-vehicle`}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0f172a]"
-                    title={
-                      vehicleCount === 1
-                        ? 'Vehiculo registrado'
-                        : `${vehicleCount} vehiculos registrados`
-                    }
-                  >
-                    {getVehicleIconByType(primaryType)}
-                    {vehicleCount > 1 && (
-                      <span className="ml-1 text-[10px] font-semibold text-[#0f172a]">
-                        +{vehicleCount - 1}
-                      </span>
-                    )}
-                  </div>
-                );
-              }
 
               if (isVisitor) {
                 const isTicketActive = visitorTicketInfo.status === 'active';
@@ -1327,7 +1185,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-2xl font-semibold text-[#0f172a]">Detalle del usuario</h3>
-                  <p className="text-sm text-[#475569]">Información general, ticket temporal y accesos de vehículos.</p>
+                  <p className="text-sm text-[#475569]">Informacion general del usuario y ticket temporal.</p>
                   {viewUser?.estado && (
                     <p className={`text-xs font-semibold ${isViewUserBlocked ? 'text-[#b91c1c]' : 'text-[#0f766e]'}`}>
                       Estado actual: {viewUser.estado}
@@ -1449,46 +1307,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                       </dl>
                     </div>
                   )}
-                  {canAccessVehicles && viewUser?._id && (() => {
-                    const vehicleInfo = getVehicleInfo(viewUser._id);
-                    const vehicleCount = vehicleInfo?.count || 0;
-                    const hasVehicles = vehicleCount > 0;
-                    const isLoadingVehicles = loadingVehicleCountFor === viewUser._id;
-                    return (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#0f172a]">
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[#0f172a]">Vehículos</p>
-                          <p className="text-xs text-[#475569]">
-                            {isLoadingVehicles
-                              ? 'Cargando información...'
-                              : hasVehicles
-                                ? `${vehicleCount} vehículo${vehicleCount === 1 ? '' : 's'} registrados.`
-                                : 'Sin vehículos registrados.'}
-                          </p>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {hasVehicles && (
-                            <button
-                              type="button"
-                              onClick={() => handleVehicleNavigation(viewUser)}
-                              className="inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
-                            >
-                              Ver vehículos
-                            </button>
-                          )}
-                          {canRegisterVehicles && (
-                            <button
-                              type="button"
-                              onClick={() => openVehiclesPage(viewUser, hasVehicles, 'register')}
-                              className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
-                            >
-                              Registrar vehículo
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
             </div>

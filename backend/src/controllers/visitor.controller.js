@@ -5,7 +5,6 @@ const VisitorTicket = require("../models/visitor-ticket.model");
 const { createToken } = require("../services/token.service");
 const { serializeVisitorTicket } = require("../utils/visitorTicket");
 const Registro = require("../models/entry-exit.model");
-const { Vehicle } = require("../models/vehicle.model");
 const { extractDocumentDataFromImage } = require("../services/ocr.service");
 
 const VISITOR_ROLE = "Visitante";
@@ -212,10 +211,6 @@ const closeActiveRegistroForVisitor = async (userId, motivo = "ticket_expirado")
   registro.alertResolvedAt = now;
 
   await registro.save();
-
-  if (registro.vehiculo) {
-    await Vehicle.findByIdAndUpdate(registro.vehiculo, { estado: "inactivo" }).catch(() => {});
-  }
 
   return registro;
 };
