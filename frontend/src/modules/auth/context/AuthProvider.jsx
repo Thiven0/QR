@@ -47,7 +47,7 @@ const readPersistedSession = () => {
     const user = userRaw ? JSON.parse(userRaw) : null;
     const ticket = ticketRaw ? JSON.parse(ticketRaw) : null;
     return { token, user, ticket };
-  } catch (error) {
+  } catch {
     return { token: null, user: null, ticket: null };
   }
 };
@@ -85,7 +85,8 @@ const AuthProvider = ({ children }) => {
           token: tokenRef.current,
         });
       }
-    } catch (error) {
+    } catch {
+      // Ignore remote expiration failures and close the local session anyway.
     } finally {
       performLocalLogout();
     }
@@ -120,7 +121,8 @@ const AuthProvider = ({ children }) => {
         method: 'POST',
         token: tokenRef.current,
       });
-    } catch (error) {
+    } catch {
+      // Ignore remote logout failures during client-side sign out.
     }
   }, []);
 
@@ -153,7 +155,7 @@ const AuthProvider = ({ children }) => {
         setTicket(profileTicket);
         tokenRef.current = storedToken;
         persistSession(storedToken, profileUser, profileTicket);
-      } catch (error) {
+      } catch {
         performLocalLogout();
       } finally {
         setLoading(false);

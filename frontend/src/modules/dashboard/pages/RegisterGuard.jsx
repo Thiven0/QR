@@ -94,7 +94,8 @@ const RegisterGuard = () => {
       setQrError('');
       const dataUrl = await readFileAsDataUrl(files[0]);
       setFieldValue(name, dataUrl);
-    } catch (error) {
+    } catch {
+      setQrError('No fue posible leer la imagen seleccionada. Intenta con otro archivo.');
     }
   };
 
@@ -143,7 +144,7 @@ const RegisterGuard = () => {
         margin: 1,
       });
       setFieldValue('imagenQR', dataUrl);
-    } catch (error) {
+    } catch {
       setQrError('No fue posible generar el codigo QR. Intenta nuevamente.');
     } finally {
       setQrGenerating(false);
@@ -310,7 +311,8 @@ const RegisterGuard = () => {
 
       oscillator.start(ctx.currentTime);
       oscillator.stop(ctx.currentTime + duration);
-    } catch (_error) {
+    } catch {
+      return;
     }
   };
 

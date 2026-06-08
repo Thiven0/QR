@@ -144,7 +144,7 @@ const RegisterVisitor = () => {
       stream.getTracks().forEach((track) => {
         try {
           track.stop();
-        } catch (_) {
+        } catch {
           // ignore stop errors
         }
       });
@@ -168,7 +168,7 @@ const RegisterVisitor = () => {
     videoElement.onloadedmetadata = () => {
       try {
         videoElement.play();
-      } catch (_) {
+      } catch {
         // Autoplay might be blocked; user interaction already happened via button.
       }
     };
@@ -221,7 +221,7 @@ const RegisterVisitor = () => {
       resetDocumentFeedback();
       handleFieldChange('documentImage');
       handleCloseCamera();
-    } catch (error) {
+    } catch {
       setCameraError('No fue posible capturar la imagen. Intenta nuevamente.');
     } finally {
       setCameraCapturing(false);
@@ -341,7 +341,7 @@ const RegisterVisitor = () => {
     let qrImage;
     try {
       qrImage = await generateQrImage(formData);
-    } catch (qrError) {
+    } catch {
       setErrors({
         general: 'No fue posible generar el codigo QR. Verifica los datos e intenta nuevamente.',
       });

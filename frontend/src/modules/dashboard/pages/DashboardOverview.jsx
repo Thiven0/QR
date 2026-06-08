@@ -216,7 +216,7 @@ const formatElapsedMinutes = (value) => {
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const formatDateTime = (value) => {
+  const formatDateTime = useCallback((value) => {
     const date = ensureDate(value);
     if (!date) return 'Sin registro';
     return date.toLocaleString('es-CO', {
@@ -225,7 +225,7 @@ const formatElapsedMinutes = (value) => {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
+  }, []);
 
   const attendanceSummaryData = useMemo(() => {
     const now = new Date();
@@ -276,7 +276,7 @@ const formatElapsedMinutes = (value) => {
         delta: `${uniqueUsers.size} usuario${uniqueUsers.size === 1 ? '' : 's'} único${uniqueUsers.size === 1 ? '' : 's'}`,
       };
     });
-  }, [entryRecords, totalUsersCount]);
+  }, [entryRecords, totalUsersCount, formatDateTime]);
 
   const facultyHighlightsData = useMemo(() => {
     const faculties = Array.isArray(userSummary?.facultyStats) ? userSummary.facultyStats : [];
@@ -382,7 +382,7 @@ const formatElapsedMinutes = (value) => {
       });
 
     return pending;
-  }, [entryRecords]);
+  }, [entryRecords, formatDateTime]);
 
         const configShortcutsData = useMemo(() => {
     const permissions = userSummary?.permisoCounts || null;
@@ -635,7 +635,7 @@ const formatElapsedMinutes = (value) => {
     [entryRecords]
   );
 
-  const parseDurationToMinutes = (record) => {
+  const parseDurationToMinutes = useCallback((record) => {
     if (record?.duracionSesion) {
       const parts = String(record.duracionSesion).split(':').map(Number);
       if (parts.length >= 2 && parts.every((value) => Number.isFinite(value))) {
@@ -655,7 +655,7 @@ const formatElapsedMinutes = (value) => {
     }
 
     return null;
-  };
+  }, []);
 
   const topVisitorsData = useMemo(() => {
     if (!entryRecords.length) return [];
@@ -728,7 +728,7 @@ const formatElapsedMinutes = (value) => {
       median: formatMinutes(medianMinutes),
       count: durations.length,
     };
-  }, [entryRecords]);
+  }, [entryRecords, parseDurationToMinutes]);
 
   const openSessionsCount = useMemo(() => {
     if (!entryRecords.length) return 0;

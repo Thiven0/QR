@@ -104,16 +104,6 @@ const formatTimeForPayload = (date) =>
       })
     : undefined;
 
-const formatMinutesLabel = (minutes) => {
-  if (!Number.isFinite(minutes) || minutes <= 0) return '<1 min';
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  if (hours <= 0) {
-    return `${minutes} min`;
-  }
-  return `${hours}h ${String(Math.round(remaining)).padStart(2, '0')}m`;
-};
-
 const RegistroDirectory = () => {
   const { token } = useAuth();
   const location = useLocation();
