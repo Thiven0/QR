@@ -3,11 +3,14 @@ const crypto = require("crypto");
 const { User, PERMISOS_SISTEMA, USER_ESTADOS } = require("../models/user.model");
 const Registro = require("../models/entry-exit.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
+const { extractEmbedding } = require("../services/face.service");
+const createLogger = require("../utils/logger");
 const { serializeVisitorTicket, getActiveVisitorTicketForUser } = require("../utils/visitorTicket");
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
 const USERS_DEFAULT_PAGE_SIZE = Number(process.env.USERS_PAGE_SIZE || 10);
 const USERS_MAX_PAGE_SIZE = Number(process.env.USERS_PAGE_MAX_SIZE || 50);
 const USERS_SUMMARY_RECENT_LIMIT = Number(process.env.USERS_SUMMARY_RECENT_LIMIT || 6);
+const logger = createLogger("user-controller");
 
 const DEFAULT_ALLOWED_BY_ROLE = {
   Administrador: PERMISOS_SISTEMA,
@@ -177,6 +180,9 @@ const buildUserPayload = (payload) => {
   const nombre = payload.nombre || payload.name || "";
   const apellido = payload.apellido || payload.lastName || "";
   const email = (payload.email || payload.correo || "").toLowerCase();
+  const faceDescriptor = Array.isArray(payload.faceDescriptor)
+    ? payload.faceDescriptor.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+    : undefined;
 
   return {
     cedula: payload.cedula,
@@ -192,9 +198,70 @@ const buildUserPayload = (payload) => {
     rolAcademico: payload.rolAcademico || payload.rol,
     permisoSistema: normalizePermiso(payload.permisoSistema || payload.permiso_sistema),
     estado: normalizeEstado(payload.estado),
+    faceDescriptor: faceDescriptor?.length ? faceDescriptor : undefined,
+    faceRegistered: payload.faceRegistered === true || payload.faceRegistered === "true",
+    faceDescriptorUpdatedAt: payload.faceDescriptorUpdatedAt,
     documentIdentity: payload.documentIdentity,
     dataConsent: payload.dataConsent,
   };
+};
+
+const resolveFaceRegistration = async (payload) => {
+  const faceDescriptor = Array.isArray(payload.faceDescriptor) ? payload.faceDescriptor : [];
+  const normalizedImage = typeof payload.faceImage === "string" ? payload.faceImage.trim() : "";
+
+  if (faceDescriptor.length) {
+    return {
+      faceDescriptor,
+      faceRegistered: true,
+      faceDescriptorUpdatedAt: new Date(),
+      result: {
+        registered: true,
+        status: "ready",
+        message: "Embedding facial listo para guardar",
+      },
+    };
+  }
+
+  if (!normalizedImage) {
+    return {
+      result: {
+        registered: false,
+        status: "skipped",
+        message: "No se envio imagen facial para enrolamiento",
+      },
+    };
+  }
+
+  try {
+    const extraction = await extractEmbedding(normalizedImage);
+    return {
+      faceDescriptor: extraction.embedding,
+      faceRegistered: true,
+      faceDescriptorUpdatedAt: new Date(),
+      result: {
+        registered: true,
+        status: "registered",
+        message: "Rostro registrado correctamente durante la creacion del usuario",
+        detectionScore: extraction.detection_score,
+        embeddingDimensions: extraction.embedding_dimensions,
+      },
+    };
+  } catch (error) {
+    logger.warn("No fue posible registrar el rostro durante la creacion del usuario", {
+      error: error.message,
+      statusCode: error.statusCode,
+    });
+
+    return {
+      result: {
+        registered: false,
+        status: "unavailable",
+        message: error.message || "No fue posible registrar el rostro en este momento",
+      },
+      warning: "El usuario fue creado sin embedding facial. Puedes registrarlo despues desde el directorio de usuarios.",
+    };
+  }
 };
 
 const cleanUndefined = (object) => {
@@ -231,11 +298,12 @@ const createUser = async (req, res) => {
   try {
     const requester = req.user;
     const userPayload = buildUserPayload(req.body || {});
+    const warnings = [];
 
-    if (!userPayload.nombre || !userPayload.email) {
+    if (!userPayload.nombre || !userPayload.email || !userPayload.imagen) {
       return res.status(400).json({
         status: "error",
-        message: "Nombre y correo electrÃƒÂ³nico son obligatorios",
+        message: "Nombre, correo electronico e imagen de perfil son obligatorios",
       });
     }
 
@@ -275,6 +343,25 @@ const createUser = async (req, res) => {
       userPayload.estado = "activo";
     }
 
+    const faceRegistration = await resolveFaceRegistration({
+      faceDescriptor: userPayload.faceDescriptor,
+      faceImage: req.body?.faceImage || userPayload.imagen,
+    });
+
+    if (faceRegistration.faceDescriptor?.length) {
+      userPayload.faceDescriptor = faceRegistration.faceDescriptor;
+      userPayload.faceRegistered = true;
+      userPayload.faceDescriptorUpdatedAt = faceRegistration.faceDescriptorUpdatedAt;
+    } else {
+      delete userPayload.faceDescriptor;
+      delete userPayload.faceRegistered;
+      delete userPayload.faceDescriptorUpdatedAt;
+    }
+
+    if (faceRegistration.warning) {
+      warnings.push(faceRegistration.warning);
+    }
+
     const newUser = new User(userPayload);
     const savedUser = await newUser.save();
 
@@ -284,7 +371,12 @@ const createUser = async (req, res) => {
       status: "success",
       message: "Usuario registrado correctamente",
       user: userWithoutPassword,
+      faceRegistration: faceRegistration.result,
     };
+
+    if (warnings.length) {
+      response.warnings = warnings;
+    }
 
     if (!req.body.password) {
       response.generatedPassword = plainPassword;

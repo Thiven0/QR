@@ -36,6 +36,7 @@ const createApp = () => {
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   app.use("/api/auth", require("./routes/auth.routes"));
+  app.use("/api/face", require("./routes/face.routes"));
   app.use("/api/users", require("./routes/user.routes"));
   app.use("/api/exitEntry", require("./routes/entry-exit.routes"));
   app.use("/api/visitors", require("./routes/visitor.routes"));

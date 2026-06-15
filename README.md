@@ -1,21 +1,23 @@
 # QR Access Control Platform
 
-Plataforma web full-stack para controlar accesos mediante códigos QR. Incluye autenticación de usuarios, bloqueo/desbloqueo remoto, administración de vehículos, descarga de carnets en PDF y tableros de métricas para administradores y celadores.
+Plataforma web full-stack para controlar accesos mediante códigos QR y reconocimiento facial. Incluye autenticación de usuarios, bloqueo/desbloqueo remoto, administración de vehículos, descarga de carnets en PDF y tableros de métricas para administradores y celadores.
 
 ## Demo
 - Producción: https://proyectounitropicoqr.vercel.app/
 
 ## Arquitectura
 
-| Carpeta   | Descripción                                                                           |
-|-----------|---------------------------------------------------------------------------------------|
-| `backend` | API REST en Node.js/Express con MongoDB/Mongoose y controladores modularizados         |
-| `frontend`| Aplicación React + Vite con contextos de sesión, dashboard protegido y flujos públicos |
+| Carpeta        | Descripción                                                                                 |
+|----------------|---------------------------------------------------------------------------------------------|
+| `backend`      | API REST en Node.js/Express con MongoDB/Mongoose y controladores modularizados             |
+| `frontend`     | Aplicación React + Vite con contextos de sesión, dashboard protegido y flujos públicos     |
+| `face-service` | Microservicio FastAPI con OpenCV + InsightFace para extraer embeddings faciales            |
 
 ## Principales características
 
 - **Gestión de usuarios**: registro, edición, bloqueo/desbloqueo, reactivación de tickets temporales y descarga de carnets en PDF (con conversión automática de colores para html2canvas).
 - **Escaneo de QR**: flujo doble (usuarios y vehículos), avisos sonoros y control de cierres forzados.
+- **Reconocimiento facial**: enrolamiento y búsqueda de coincidencias sobre embeddings almacenados en MongoDB mediante un microservicio dedicado.
 - **Vehículos**: filtros por propietario desde el directorio, registro rápido y estado activo/inactivo visible.
 - **Historial de registros**: filtros por fecha/estado, badges compactos y exportación a Excel (`xlsx`).
 - **Dashboard rediseñado**: accesos rápidos con íconos de `react-icons`, sidebar ampliado y estados visuales consistentes.
@@ -39,12 +41,27 @@ Plataforma web full-stack para controlar accesos mediante códigos QR. Incluye a
    cd backend
    npm install
    cp .env.example .env   # ajusta MongoDB, JWT, etc.
-   npm run dev
-   ```
-   - API base: `http://localhost:3000/api`
-   - Rutas destacadas: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/vehicles`
+    npm run dev
+    ```
+    - API base: `http://localhost:3000/api`
+    - Variables adicionales recomendadas:
+      - `FACE_SERVICE_URL`: URL base del microservicio facial (`http://127.0.0.1:8000` por defecto)
+      - `FACE_SERVICE_TIMEOUT_MS`: timeout hacia el microservicio (30000 por defecto)
+      - `FACE_MATCH_THRESHOLD`: umbral de similitud coseno para matching facial (0.5 por defecto)
+    - Rutas destacadas: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/face`
 
-3. **Frontend**
+3. **Face Service**
+   ```bash
+   cd face-service
+   py -3.13 -m pip install -r requirements.txt
+   copy .env.example .env
+   py -3.13 -m uvicorn main:app --reload --port 8000
+   ```
+   - Base URL: `http://localhost:8000`
+   - Endpoint principal: `POST /extract-embedding`
+   - Health check: `GET /health`
+
+4. **Frontend**
    ```bash
    cd frontend
    npm install
@@ -70,12 +87,13 @@ Plataforma web full-stack para controlar accesos mediante códigos QR. Incluye a
 ## Tecnologías
 
 - **Backend:** Node.js, Express, Mongoose, JWT, bcrypt.
+- **Face service:** FastAPI, OpenCV, InsightFace, ONNX Runtime.
 - **Frontend:** React 18, Vite, React Router, Tailwind CSS, react-icons.
 - **Reportes/visualizaciones:** Chart.js, react-chartjs-2, `html2canvas`, `jspdf`, `xlsx`.
 
 ## Datos principales
 
-- `users`: incluye `rolAcademico`, `permisoSistema`, estado (`activo`, `inactivo`, `bloqueado`) y ticket temporal.
+- `users`: incluye `rolAcademico`, `permisoSistema`, estado (`activo`, `inactivo`, `bloqueado`), ticket temporal y datos faciales (`faceRegistered`, `faceDescriptor`).
 - `entry-exit`: historial con referencias a usuario, vehículo, motivo de cierre y badges compactos (`En progreso`, `Finalizado`).
 - `visitor_tickets`: tickets temporales con expiración automática y reactivación desde el panel.
 - `vehicles`: catálogo asociado a usuarios con filtros por propietario.

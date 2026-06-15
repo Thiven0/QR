@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiUserCheck } from 'react-icons/fi';
+import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
+import FaceCapture from './FaceCapture';
 
 const MOVEMENT_OPTIONS = [
   {
@@ -107,6 +109,7 @@ const QRScannerPage = () => {
   const { token } = useAuth();
   const [scannerKey, setScannerKey] = useState(0);
   const [cameraActive, setCameraActive] = useState(true);
+  const [scanMode, setScanMode] = useState('qr');
   const audioContextRef = useRef(null);
 
   const [scanData, setScanData] = useState(null);
@@ -134,6 +137,35 @@ const QRScannerPage = () => {
     setConfirmationError('');
     setMovementNote('');
   };
+
+  const setValidatedUser = useCallback((userId, user, message, extra = {}) => {
+    setScanData({
+      rawText: extra.rawText || '',
+      scannedAt: extra.scannedAt || new Date().toISOString(),
+      parsed: extra.parsed || null,
+      userId,
+      user,
+      activeRegistro: extra.activeRegistro || null,
+      registro: extra.registro || null,
+      score: extra.score,
+    });
+
+    setFeedback({
+      type: 'success',
+      message: message || 'Usuario validado. Selecciona el movimiento y confirma el registro.',
+    });
+
+    if (!userId) {
+      setShowConfirmation(false);
+      return;
+    }
+
+    const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
+    setMovementType(defaultMovement);
+    setShowConfirmation(true);
+    setConfirmationError('');
+    setMovementNote('');
+  }, []);
 
   const playBeep = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -237,29 +269,10 @@ const QRScannerPage = () => {
 
       const validationResponse = await validateScanData(parsedData);
       const { userId, user, message, activeRegistro } = validationResponse;
-
-      setScanData((prev) => ({
-        ...(prev || baseData),
-        userId,
-        user,
-        activeRegistro: activeRegistro || null,
-      }));
-
-      setFeedback({
-        type: 'success',
-        message: message || 'Usuario validado. Selecciona el movimiento y confirma el registro.',
+      setValidatedUser(userId, user, message, {
+        ...baseData,
+        activeRegistro,
       });
-
-      if (!userId) {
-        setShowConfirmation(false);
-        return;
-      }
-
-      const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
-      setMovementType(defaultMovement);
-      setShowConfirmation(true);
-      setConfirmationError('');
-      setMovementNote('');
     } catch (scanError) {
       const message = scanError.details?.message || scanError.message || 'No se pudo procesar el codigo escaneado.';
       setFeedback({
@@ -275,6 +288,33 @@ const QRScannerPage = () => {
 
   const handleError = () => {
     setError('No fue posible acceder a la camara.');
+  };
+
+  const handleFaceResult = (result) => {
+    if (!result?.match || !result?.userId || !result?.user) {
+      setFeedback({
+        type: 'error',
+        message: 'No se encontro una coincidencia facial valida para este rostro.',
+      });
+      setScanData(null);
+      setShowConfirmation(false);
+      return;
+    }
+
+    playBeep();
+    setError('');
+    setValidatedUser(result.userId, result.user, 'Usuario identificado por reconocimiento facial.', {
+      score: result.score,
+      scannedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleFaceError = (faceError) => {
+    const message = faceError?.details?.message || faceError?.message || 'No fue posible procesar el reconocimiento facial.';
+    setFeedback({
+      type: 'error',
+      message,
+    });
   };
 
   const handleReset = async () => {
@@ -390,41 +430,85 @@ const QRScannerPage = () => {
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Escaner QR</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">
+                    {scanMode === 'qr' ? 'Escaner QR' : 'Reconocimiento facial'}
+                  </p>
                   <h2 className="mt-2 text-2xl font-bold text-[#0f172a]">Escanear usuario</h2>
                   <p className="mt-2 text-sm text-[#475569]">
-                    Apunta la camara hacia el codigo para registrar ingresos y salidas del usuario.
+                    {scanMode === 'qr'
+                      ? 'Apunta la camara hacia el codigo para registrar ingresos y salidas del usuario.'
+                      : 'Captura el rostro del usuario para identificarlo y registrar su movimiento.'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={resetting}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {resetting ? 'Reiniciando...' : 'Reiniciar'}
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanMode('qr');
+                        setCameraActive(true);
+                        setError('');
+                      }}
+                      className={clsx(
+                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
+                        scanMode === 'qr' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
+                      )}
+                    >
+                      <FaQrcode className="h-4 w-4" />
+                      QR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanMode('face');
+                        setCameraActive(false);
+                        setError('');
+                      }}
+                      className={clsx(
+                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
+                        scanMode === 'face' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
+                      )}
+                    >
+                      <FaUserCircle className="h-4 w-4" />
+                      Rostro
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={resetting}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {resetting ? 'Reiniciando...' : 'Reiniciar'}
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
-                <div className="relative aspect-[4/3] w-full">
-                  {cameraActive ? (
-                    <QrScanner
-                      key={scannerKey}
-                      delay={400}
-                      onError={handleError}
-                      onScan={handleScan}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center bg-[#0f172a] text-white/80">
-                      <p className="text-sm font-medium">Escaneo pausado hasta reiniciar.</p>
+              <div className="mt-6">
+                {scanMode === 'qr' ? (
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
+                    <div className="relative aspect-[4/3] w-full">
+                      {cameraActive ? (
+                        <QrScanner
+                          key={scannerKey}
+                          delay={400}
+                          onError={handleError}
+                          onScan={handleScan}
+                          style={{ width: '100%', height: '100%' }}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-[#0f172a] text-white/80">
+                          <p className="text-sm font-medium">Escaneo pausado hasta reiniciar.</p>
+                        </div>
+                      )}
+                      <div className="pointer-events-none absolute inset-0 border-[12px] border-transparent">
+                        <div className="absolute inset-6 rounded-2xl border-2 border-dashed border-white/70" />
+                      </div>
                     </div>
-                  )}
-                  <div className="pointer-events-none absolute inset-0 border-[12px] border-transparent">
-                    <div className="absolute inset-6 rounded-2xl border-2 border-dashed border-white/70" />
                   </div>
-                </div>
+                ) : (
+                  <FaceCapture mode="identify" onResult={handleFaceResult} onError={handleFaceError} />
+                )}
               </div>
 
               {error && (
@@ -449,6 +533,11 @@ const QRScannerPage = () => {
               ) : scanData?.user ? (
                 <div className="mt-4 space-y-4">
                   {renderUserDetails(scanData.user)}
+                  {typeof scanData?.score === 'number' && (
+                    <div className="rounded-lg border border-[#0f766e]/20 bg-[#0f766e]/5 px-4 py-2 text-xs font-semibold text-[#0f766e]">
+                      Similitud facial: {scanData.score.toFixed(4)}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

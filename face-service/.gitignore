@@ -7,3 +7,5 @@ __pycache__/
 *.pyd
 logs/*.log
 profiles/*.json
+models/
+!models/.gitkeep

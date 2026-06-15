@@ -9,6 +9,7 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     model_loaded: bool
+    model_name: str
 
 
 class EnrollRequest(BaseModel):
@@ -26,6 +27,10 @@ class EnrollRequest(BaseModel):
 
 
 class IdentifyRequest(BaseModel):
+    image: str = Field(min_length=1)
+
+
+class ExtractEmbeddingRequest(BaseModel):
     image: str = Field(min_length=1)
 
 
@@ -50,3 +55,11 @@ class ProfileRecord(BaseModel):
     image: str
     embedding: list[float] = Field(default_factory=list)
     created_at: datetime
+
+
+class ExtractEmbeddingResponse(BaseModel):
+    success: bool
+    embedding: list[float]
+    detection_score: float
+    embedding_dimensions: int
+    message: str

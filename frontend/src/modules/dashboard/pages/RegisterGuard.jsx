@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import QrScanner from 'react-qr-scanner';
 import Input from '../../../shared/components/Input';
+import FaceCapture from '../components/FaceCapture';
 import { useForm } from '../../../shared/hooks/useForm';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
@@ -26,6 +27,8 @@ const FACULTADES = [
 ];
 
 const TIPOS_SANGRE = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const TEST_NAMES = ['Valentina', 'Santiago', 'Camila', 'Mateo', 'Isabella', 'Samuel', 'Lucia', 'Nicolas'];
+const TEST_LAST_NAMES = ['Martinez', 'Gonzalez', 'Rodriguez', 'Lopez', 'Hernandez', 'Garcia', 'Diaz', 'Torres'];
 
 const INITIAL_FORM = {
   cedula: '',
@@ -43,6 +46,14 @@ const INITIAL_FORM = {
   estado: 'inactivo',
 };
 
+const FACE_STATUS = {
+  IDLE: 'idle',
+  CHECKING: 'checking',
+  READY: 'ready',
+  SERVICE_ERROR: 'service_error',
+  VALIDATION_ERROR: 'validation_error',
+};
+
 const readFileAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -58,14 +69,18 @@ const RegisterGuard = () => {
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState({});
-  const [qrGenerating, setQrGenerating] = useState(false);
   const [qrError, setQrError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scannerError, setScannerError] = useState('');
   const [scannerKey, setScannerKey] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
+  const [showFaceCaptureModal, setShowFaceCaptureModal] = useState(false);
+  const [faceDescriptor, setFaceDescriptor] = useState([]);
+  const [faceCaptureStatus, setFaceCaptureStatus] = useState(FACE_STATUS.IDLE);
+  const [faceFeedback, setFaceFeedback] = useState('');
 
   const isSubmitting = status === 'loading';
+
   useEffect(() => {
     return () => {
       const ctx = audioContextRef.current;
@@ -75,6 +90,47 @@ const RegisterGuard = () => {
       audioContextRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const requiresFacultad = form.permisoSistema === 'Usuario';
+    const requiredFields = ['nombre', 'cedula', 'RH', 'telefono'];
+    if (requiresFacultad) {
+      requiredFields.splice(2, 0, 'facultad');
+    }
+
+    const missingFields = requiredFields.some((field) => !String(form[field] || '').trim());
+    if (missingFields) {
+      setForm((prev) => (prev.imagenQR ? { ...prev, imagenQR: '' } : prev));
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const syncQrPreview = async () => {
+      try {
+        const dataUrl = await QRCode.toDataURL(buildQrRawText(), {
+          width: 512,
+          errorCorrectionLevel: 'M',
+          margin: 1,
+        });
+
+        if (!cancelled) {
+          setQrError('');
+          setForm((prev) => (prev.imagenQR === dataUrl ? prev : { ...prev, imagenQR: dataUrl }));
+        }
+      } catch {
+        if (!cancelled) {
+          setQrError('No fue posible generar el codigo QR automaticamente.');
+        }
+      }
+    };
+
+    syncQrPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.nombre, form.apellido, form.cedula, form.facultad, form.RH, form.telefono, form.permisoSistema, setForm]);
 
   const setFieldValue = (name, value) => {
     if (name === 'imagenQR') {
@@ -91,10 +147,25 @@ const RegisterGuard = () => {
     if (!files?.length) return;
 
     try {
-      setQrError('');
       const dataUrl = await readFileAsDataUrl(files[0]);
+      if (name === 'imagen') {
+        setErrors((prev) => {
+          if (!prev.imagen) return prev;
+          const next = { ...prev };
+          delete next.imagen;
+          return next;
+        });
+      }
       setFieldValue(name, dataUrl);
+      if (name === 'imagen') {
+        await analyzeProfileImage(dataUrl);
+      }
     } catch {
+      if (name === 'imagen') {
+        setFaceCaptureStatus(FACE_STATUS.VALIDATION_ERROR);
+        setFaceFeedback('No fue posible leer la imagen seleccionada. Intenta con otro archivo.');
+        return;
+      }
       setQrError('No fue posible leer la imagen seleccionada. Intenta con otro archivo.');
     }
   };
@@ -112,42 +183,41 @@ const RegisterGuard = () => {
     return lines.filter(Boolean).join('\n\n');
   };
 
-  const generateQrFromForm = async () => {
-    setQrError('');
 
-    const requiresFacultad = form.permisoSistema === 'Usuario';
-    const requiredFields = ['nombre', 'cedula', 'RH', 'telefono'];
-    if (requiresFacultad) {
-      requiredFields.splice(2, 0, 'facultad');
-    }
+  const analyzeProfileImage = async (image) => {
+    const normalizedImage = String(image || '').trim();
+    setFaceDescriptor([]);
 
-    const missingFields = requiredFields.filter(
-      (field) => !String(form[field] || '').trim()
-    );
-
-    if (missingFields.length) {
-      const fieldsLabel = requiresFacultad
-        ? 'nombre, cedula, facultad, RH y telefono'
-        : 'nombre, cedula, RH y telefono';
-      setQrError(
-        `Completa los campos obligatorios (${fieldsLabel}) antes de generar el QR.`
-      );
+    if (!normalizedImage) {
+      setFaceCaptureStatus(FACE_STATUS.IDLE);
+      setFaceFeedback('');
       return;
     }
 
     try {
-      setQrGenerating(true);
-      const rawText = buildQrRawText();
-      const dataUrl = await QRCode.toDataURL(rawText, {
-        width: 512,
-        errorCorrectionLevel: 'M',
-        margin: 1,
+      setFaceCaptureStatus(FACE_STATUS.CHECKING);
+      setFaceFeedback('Validando el rostro de la foto seleccionada...');
+
+      const response = await apiRequest('/face/extract', {
+        method: 'POST',
+        token,
+        data: { image: normalizedImage },
       });
-      setFieldValue('imagenQR', dataUrl);
-    } catch {
-      setQrError('No fue posible generar el codigo QR. Intenta nuevamente.');
-    } finally {
-      setQrGenerating(false);
+
+      const data = response?.data || response;
+      setFaceDescriptor(Array.isArray(data?.embedding) ? data.embedding : []);
+      setFaceCaptureStatus(FACE_STATUS.READY);
+      setFaceFeedback('Rostro validado. Se usara esta misma imagen para el perfil y el embedding facial.');
+    } catch (error) {
+      setFaceDescriptor([]);
+      if ([503, 504].includes(error.status)) {
+        setFaceCaptureStatus(FACE_STATUS.SERVICE_ERROR);
+        setFaceFeedback('No fue posible validar el rostro por ahora. El usuario se registrara solo con la foto de perfil.');
+        return;
+      }
+
+      setFaceCaptureStatus(FACE_STATUS.VALIDATION_ERROR);
+      setFaceFeedback(error.message || 'La foto debe contener un solo rostro visible para generar el embedding.');
     }
   };
 
@@ -162,6 +232,8 @@ const RegisterGuard = () => {
     telefono: form.telefono.trim(),
     imagen: form.imagen,
     imagenQR: form.imagenQR,
+    faceImage: form.imagen,
+    faceDescriptor,
     rolAcademico: form.rolAcademico.trim(),
     permisoSistema: form.permisoSistema,
     estado: form.estado,
@@ -172,17 +244,52 @@ const RegisterGuard = () => {
     setStatus('loading');
     setMessage('');
     setErrors({});
+    setFaceFeedback('');
+
+    if (!form.imagen) {
+      setStatus('error');
+      setErrors((prev) => ({ ...prev, imagen: 'La foto de perfil es obligatoria.' }));
+      return;
+    }
+
+    if (faceCaptureStatus === FACE_STATUS.VALIDATION_ERROR) {
+      setStatus('error');
+      setMessage('La foto de perfil debe contener un solo rostro visible para generar el embedding facial.');
+      return;
+    }
+
+    if (faceCaptureStatus === FACE_STATUS.CHECKING) {
+      setStatus('error');
+      setMessage('Espera a que termine la validacion facial antes de registrar el usuario.');
+      return;
+    }
 
     try {
-      await apiRequest('/users', {
+      const response = await apiRequest('/users', {
         method: 'POST',
         token,
         data: buildPayload(),
       });
 
-      setStatus('success');
-      setMessage('Usuario registrado correctamente.');
+      const generatedPasswordMessage = response?.generatedPassword
+        ? ` Contraseña temporal: ${response.generatedPassword}`
+        : '';
+
+      const faceRegistrationMessage = response?.faceRegistration?.registered
+        ? ' Rostro enrolado correctamente.'
+        : response?.warnings?.[0]
+          ? ` ${response.warnings[0]}`
+          : '';
+
+      setFaceCaptureStatus(FACE_STATUS.IDLE);
+      setFaceDescriptor([]);
+      setMessage(`Usuario registrado correctamente.${generatedPasswordMessage}${faceRegistrationMessage}`);
       reset(INITIAL_FORM);
+      if (!response?.faceRegistration?.registered && response?.faceRegistration?.message) {
+        setFaceFeedback(response.faceRegistration.message);
+      }
+
+      setStatus('success');
     } catch (error) {
       setStatus('error');
       const apiErrors = error.details?.errors;
@@ -192,6 +299,48 @@ const RegisterGuard = () => {
         setMessage(error.message || 'No fue posible completar el registro');
       }
     }
+  };
+
+  const handleOpenFaceCapture = () => {
+    setMessage('');
+    setShowFaceCaptureModal(true);
+  };
+
+  const handleRemoveProfileImage = () => {
+    setFieldValue('imagen', '');
+    setFaceDescriptor([]);
+    setFaceCaptureStatus(FACE_STATUS.IDLE);
+    setFaceFeedback('');
+    setErrors((prev) => {
+      if (!prev.imagen) return prev;
+      const next = { ...prev };
+      delete next.imagen;
+      return next;
+    });
+  };
+
+  const handleFaceCaptureSuccess = async (payload) => {
+    const image = payload?.image || '';
+    if (!image) {
+      setFaceCaptureStatus(FACE_STATUS.VALIDATION_ERROR);
+      setFaceFeedback('No fue posible conservar la captura del rostro.');
+      return;
+    }
+
+    setFieldValue('imagen', image);
+    setErrors((prev) => {
+      if (!prev.imagen) return prev;
+      const next = { ...prev };
+      delete next.imagen;
+      return next;
+    });
+    setShowFaceCaptureModal(false);
+    await analyzeProfileImage(image);
+  };
+
+  const handleFaceCaptureError = (error) => {
+    setFaceCaptureStatus(FACE_STATUS.VALIDATION_ERROR);
+    setFaceFeedback(error?.message || 'No fue posible capturar el rostro.');
   };
 
   const normalizeString = (value = '') =>
@@ -314,6 +463,44 @@ const RegisterGuard = () => {
     } catch {
       return;
     }
+  };
+
+  const pickRandom = (values = []) => values[Math.floor(Math.random() * values.length)] || '';
+
+  const fillTestData = () => {
+    const nombre = pickRandom(TEST_NAMES);
+    const apellido = `${pickRandom(TEST_LAST_NAMES)} ${pickRandom(TEST_LAST_NAMES)}`;
+    const cedula = String(Math.floor(10000000 + Math.random() * 89999999));
+    const telefono = `3${String(Math.floor(100000000 + Math.random() * 899999999)).slice(0, 9)}`;
+    const permisoSistema = 'Usuario';
+    const facultad = pickRandom(FACULTADES);
+    const rolAcademico = pickRandom(ROLES_ACADEMICOS);
+    const RH = pickRandom(TIPOS_SANGRE);
+    const emailSlug = `${nombre}.${apellido.split(' ')[0]}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+    setForm((prev) => ({
+      ...prev,
+      cedula,
+      nombre,
+      apellido,
+      email: `${emailSlug}${cedula.slice(-3)}@correo.test`,
+      password: 'Test1234',
+      RH,
+      facultad,
+      telefono,
+      rolAcademico,
+      permisoSistema,
+      estado: 'activo',
+    }));
+
+    setMessage('Datos de prueba cargados. Solo falta la foto del usuario.');
+    setStatus('success');
+    setErrors({});
+    setScannerError('');
+    setQrError('');
   };
 
   return (
@@ -512,62 +699,100 @@ const RegisterGuard = () => {
                   </div>
                 </div>
 
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="space-y-3">
-                    <span className="text-sm font-medium text-[#00594e]">Imagen de perfil</span>
-                    <label
-                      htmlFor="imagen"
-                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-3 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
-                    >
-                      Seleccionar archivo
-                    </label>
-                    <input
-                      id="imagen"
-                      name="imagen"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    {form.imagen && (
-                      <img src={form.imagen} alt="Preview perfil" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
-                    )}
-                    {errors.imagen && (
-                      <p className="text-xs font-medium text-[#b45309]">{errors.imagen}</p>
-                    )}
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#00594e]">Foto del usuario</p>
+                      <h2 className="mt-2 text-xl font-semibold text-[#0f172a]">Perfil e identidad facial en una sola imagen</h2>
+                      <p className="mt-2 max-w-2xl text-sm text-[#475569]">
+                        La foto de perfil es obligatoria. Si el servicio facial esta disponible, se reutilizara la misma imagen para generar el embedding del usuario.
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleOpenFaceCapture}
+                        className="inline-flex items-center justify-center rounded-lg border border-[#B5A160]/40 bg-white px-4 py-2 text-xs font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/10"
+                      >
+                        Tomar con camara
+                      </button>
+                      <label
+                        htmlFor="imagen"
+                        className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
+                      >
+                        Subir archivo
+                      </label>
+                    </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <span className="text-sm font-medium text-[#00594e]">Imagen QR</span>
-                    <label
-                      htmlFor="imagenQR"
-                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#B5A160]/40 bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/20"
-                    >
-                      Seleccionar archivo
-                    </label>
-                    <input
-                      id="imagenQR"
-                      name="imagenQR"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    {form.imagenQR && (
-                      <img src={form.imagenQR} alt="Preview QR" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
+                  <input
+                    id="imagen"
+                    name="imagen"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    {form.imagen && (
+                      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <img src={form.imagen} alt="Preview perfil" className="h-20 w-20 rounded-xl object-cover shadow-sm" />
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-[#0f172a]">Foto lista</p>
+                          <p className="mt-1 text-xs text-[#64748b]">
+                            Esta imagen se usara como foto de perfil y, si es valida, tambien para el embedding facial.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveProfileImage}
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-[#475569] transition hover:bg-slate-100"
+                        >
+                          Quitar foto
+                        </button>
+                      </div>
                     )}
-                    {qrError && (
-                      <p className="text-xs font-medium text-[#b45309]">{qrError}</p>
+
+                    {!form.imagen && (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-[#64748b]">
+                        Aun no hay foto. Toma una imagen frontal o sube una foto clara del usuario.
+                      </div>
                     )}
-                    {errors.imagenQR && (
-                      <p className="text-xs font-medium text-[#b45309]">{errors.imagenQR}</p>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#475569]">
+                        {faceCaptureStatus === FACE_STATUS.IDLE && 'Al seleccionar una foto se validara automaticamente el rostro para intentar registrar el embedding.'}
+                        {faceCaptureStatus === FACE_STATUS.CHECKING && 'Validando rostro y preparando el embedding facial...'}
+                        {faceCaptureStatus === FACE_STATUS.READY && 'Rostro validado correctamente. Esta misma imagen servira para perfil y reconocimiento facial.'}
+                        {faceCaptureStatus === FACE_STATUS.SERVICE_ERROR && 'La foto de perfil quedo lista. Si el servicio facial no responde, el usuario se podra crear sin embedding.'}
+                        {faceCaptureStatus === FACE_STATUS.VALIDATION_ERROR && 'La foto no permite generar el embedding. Usa una imagen frontal con un solo rostro visible.'}
+                    </div>
+
+                    {faceFeedback && (
+                      <div
+                        className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                          faceCaptureStatus === FACE_STATUS.READY
+                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : faceCaptureStatus === FACE_STATUS.CHECKING
+                              ? 'border border-[#00594e]/30 bg-[#00594e]/5 text-[#00594e]'
+                              : faceCaptureStatus === FACE_STATUS.SERVICE_ERROR
+                                ? 'border border-[#B5A160]/40 bg-[#B5A160]/10 text-[#8c7030]'
+                                : 'border border-[#b91c1c]/40 bg-[#fee2e2] text-[#7f1d1d]'
+                        }`}
+                      >
+                        {faceFeedback}
+                      </div>
+                    )}
+
+                    {errors.imagen && (
+                      <p className="text-xs font-medium text-[#b45309]">{errors.imagen}</p>
                     )}
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || faceCaptureStatus === FACE_STATUS.CHECKING}
                   className="w-full rounded-lg bg-[#00594e] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isSubmitting ? 'Registrando...' : 'Registrar usuario'}
@@ -582,16 +807,15 @@ const RegisterGuard = () => {
                 Escanear QR y precargar
               </p>
               <p className="text-sm text-[#475569]">
-                Usa la camara para leer el QR y completar el formulario automaticamente.
+                Si la persona ya cuenta con un QR institucional, puedes leerlo para completar el formulario automaticamente.
               </p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-1">
                 <button
                   type="button"
-                  onClick={generateQrFromForm}
-                  disabled={qrGenerating}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                  onClick={fillTestData}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#B5A160]/40 bg-white px-4 py-2 text-xs font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/10"
                 >
-                  {qrGenerating ? 'Generando QR...' : 'Generar QR con datos del formulario'}
+                  Rellenar datos de prueba
                 </button>
                 <button
                   type="button"
@@ -609,6 +833,36 @@ const RegisterGuard = () => {
               {scannerError && (
                 <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
                   {scannerError}
+                </div>
+              )}
+            </div>
+            <div className="space-y-4 rounded-xl border border-dashed border-[#B5A160]/30 bg-[#fffaf0] p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#8c7030]">Preview del QR</p>
+                <p className="mt-2 text-sm text-[#475569]">
+                  El QR del carnet se genera automaticamente con los datos del formulario y quedara guardado como imagen del usuario.
+                </p>
+              </div>
+
+              {form.imagenQR ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-[#B5A160]/30 bg-white p-3">
+                  <img src={form.imagenQR} alt="Preview QR" className="h-20 w-20 rounded-xl object-contain shadow-sm" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#0f172a]">QR listo</p>
+                    <p className="mt-1 text-xs text-[#64748b]">
+                      Esta imagen se guardara en el perfil del usuario y servira para el carnet.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-[#B5A160]/30 bg-white px-4 py-3 text-sm text-[#64748b]">
+                  Completa nombre, cedula, RH y telefono. Si el permiso es Usuario, tambien debes elegir la facultad.
+                </div>
+              )}
+
+              {qrError && (
+                <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
+                  {qrError}
                 </div>
               )}
             </div>
@@ -702,6 +956,38 @@ const RegisterGuard = () => {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFaceCaptureModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4" onClick={() => setShowFaceCaptureModal(false)}>
+          <div className="w-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#B5A160]">Captura facial</p>
+                  <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Captura el rostro del nuevo usuario</h3>
+                  <p className="mt-2 text-sm text-[#475569]">
+                    Toma una imagen nitida con un solo rostro. El enrolamiento se completara al guardar el formulario.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFaceCaptureModal(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <FaceCapture
+                mode="capture"
+                onResult={handleFaceCaptureSuccess}
+                onError={handleFaceCaptureError}
+                onCancel={() => setShowFaceCaptureModal(false)}
+              />
             </div>
           </div>
         </div>

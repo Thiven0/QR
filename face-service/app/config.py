@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
     face_threshold: float = Field(default=0.5)
     max_image_size_mb: int = Field(default=5)
+    min_image_width: int = Field(default=200)
+    min_image_height: int = Field(default=200)
+    face_model_name: str = Field(default="buffalo_l")
+    face_model_root: Path = Field(default=BASE_DIR / "models")
+    face_det_width: int = Field(default=640)
+    face_det_height: int = Field(default=640)
     profiles_dir: Path = Field(default=BASE_DIR / "profiles")
     logs_dir: Path = Field(default=BASE_DIR / "logs")
 
@@ -30,6 +36,7 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     settings = Settings()
+    settings.face_model_root.mkdir(parents=True, exist_ok=True)
     settings.profiles_dir.mkdir(parents=True, exist_ok=True)
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     return settings

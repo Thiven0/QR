@@ -7,6 +7,7 @@ import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
+import FaceCapture from '../components/FaceCapture';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -278,6 +279,8 @@ const UserDirectory = () => {
   const [feedback, setFeedback] = useState('');
 
   const [viewUser, setViewUser] = useState(null);
+  const [showFaceCaptureModal, setShowFaceCaptureModal] = useState(false);
+  const [faceFeedback, setFaceFeedback] = useState(null);
 
   const [editUserId, setEditUserId] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
@@ -342,6 +345,16 @@ const UserDirectory = () => {
     loadUsers(1);
   }, [token, loadUsers]);
 
+  useEffect(() => {
+    if (!faceFeedback?.message) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setFaceFeedback(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [faceFeedback]);
+
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -388,6 +401,17 @@ const UserDirectory = () => {
     Boolean(viewDocumentData.apellidos) ||
     Boolean(viewDocumentBirthDate) ||
     Boolean(viewDocumentConsentAt);
+
+  const updateUserCollections = useCallback((updatedUser) => {
+    if (!updatedUser?._id) return;
+
+    setUsers((prev) => prev.map((user) => (user._id === updatedUser._id ? { ...user, ...updatedUser } : user)));
+    setViewUser((prev) => (prev && prev._id === updatedUser._id ? { ...prev, ...updatedUser } : prev));
+
+    if (editUserId === updatedUser._id) {
+      setEditForm((prev) => ({ ...prev, ...mapUserToForm(updatedUser) }));
+    }
+  }, [editUserId]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -464,6 +488,8 @@ const UserDirectory = () => {
   };
 
   const handleViewUser = (user) => {
+    setFaceFeedback(null);
+    setShowFaceCaptureModal(false);
     setViewUser(user);
     if (user?._id && (!user.imagenQR || !user.documentIdentity?.photo)) {
       fetchUserDetail(user._id);
@@ -477,8 +503,7 @@ const UserDirectory = () => {
         const response = await apiRequest(`/users/${userId}/detail`, { token });
         const detail = response?.user || response;
         if (detail && detail._id) {
-          setUsers((prev) => prev.map((u) => (u._id === detail._id ? { ...u, ...detail } : u)));
-          setViewUser((prev) => (prev && prev._id === detail._id ? { ...prev, ...detail } : prev));
+          updateUserCollections(detail);
         }
         return detail;
       } catch (err) {
@@ -486,7 +511,7 @@ const UserDirectory = () => {
         return null;
       }
     },
-    [token]
+    [token, updateUserCollections]
   );
 
 
@@ -663,17 +688,11 @@ const UserDirectory = () => {
       });
 
       const updatedUser = response.user || response.data || null;
-      if (updatedUser) {
-        setUsers((prev) =>
-          prev.map((user) => (user._id === editUserId ? updatedUser : user))
-        );
-
-        if (viewUser?._id === editUserId) {
-          setViewUser(updatedUser);
+        if (updatedUser) {
+          updateUserCollections(updatedUser);
+        } else {
+          await loadUsers();
         }
-      } else {
-        await loadUsers();
-      }
 
       setFeedback('Usuario actualizado correctamente.');
       closeEditModal();
@@ -713,6 +732,27 @@ const UserDirectory = () => {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleFaceEnrollSuccess = (data) => {
+    const updatedUser = data?.user || null;
+    if (updatedUser?._id) {
+      updateUserCollections(updatedUser);
+    }
+
+    setFaceFeedback({
+      type: 'success',
+      message: 'Rostro registrado correctamente para este usuario.',
+    });
+    setShowFaceCaptureModal(false);
+  };
+
+  const handleFaceEnrollError = (faceError) => {
+    const message = faceError?.details?.message || faceError?.message || 'No fue posible registrar el rostro.';
+    setFaceFeedback({
+      type: 'error',
+      message,
+    });
   };
 
   const handleReactivateTicket = async (userId) => {
@@ -1207,15 +1247,54 @@ const UserDirectory = () => {
                       {isViewToggling ? 'Actualizando...' : isViewUserBlocked ? 'Desbloquear usuario' : 'Bloquear usuario'}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setViewUser(null)}
-                    className="rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
-                  >
-                    Cerrar
+                  {canManageAccess && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (viewUser?.faceRegistered) {
+                          setFaceFeedback({
+                            type: 'error',
+                            message: 'Este usuario ya tiene un rostro registrado.',
+                          });
+                          return;
+                        }
+                        setFaceFeedback(null);
+                        setShowFaceCaptureModal(true);
+                      }}
+                      disabled={Boolean(viewUser?.faceRegistered)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        viewUser?.faceRegistered
+                          ? 'bg-slate-100 text-[#475569]'
+                          : 'bg-[#B5A160]/20 text-[#8c7030] hover:bg-[#B5A160]/30'
+                      }`}
+                    >
+                      {viewUser?.faceRegistered ? 'Rostro ya registrado' : 'Registrar rostro'}
+                    </button>
+                  )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowFaceCaptureModal(false);
+                        setFaceFeedback(null);
+                        setViewUser(null);
+                      }}
+                      className="rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
+                    >
+                      Cerrar
                   </button>
                 </div>
               </div>
+              {faceFeedback?.message && (
+                <div
+                  className={`mt-4 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                    faceFeedback.type === 'error'
+                      ? 'border-[#fecaca] bg-[#fee2e2] text-[#b91c1c]'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {faceFeedback.message}
+                </div>
+              )}
               <div className="mt-4 grid gap-6 lg:grid-cols-[1.25fr_0.85fr]">
                 <div className="space-y-4">
                   <div ref={profileCardRef}>
@@ -1577,6 +1656,42 @@ const UserDirectory = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showFaceCaptureModal && viewUser && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowFaceCaptureModal(false)}
+        >
+          <div className="w-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#B5A160]">Registro facial</p>
+                  <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Captura el rostro del usuario</h3>
+                  <p className="mt-2 text-sm text-[#475569]">
+                    Asegurate de que solo aparezca un rostro dentro del marco antes de capturar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFaceCaptureModal(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <FaceCapture
+                mode="enroll"
+                userId={viewUser._id}
+                onResult={handleFaceEnrollSuccess}
+                onError={handleFaceEnrollError}
+                onCancel={() => setShowFaceCaptureModal(false)}
+              />
+            </div>
           </div>
         </div>
       )}
