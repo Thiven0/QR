@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "evaluate:face": "node scripts/evaluate-face.js"
   },
   "author": "Harold Gutierrez Orduz",
   "license": "MIT",
