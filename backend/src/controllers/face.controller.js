@@ -1,4 +1,5 @@
 const { User } = require("../models/user.model");
+const { FaceRecognitionLog } = require("../models/face-recognition-log.model");
 const { extractEmbedding } = require("../services/face.service");
 const createLogger = require("../utils/logger");
 
@@ -38,6 +39,71 @@ const cosineSimilarity = (vectorA = [], vectorB = []) => {
   }
 
   return dotProduct / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
+};
+
+const ensureDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getStartOfDay = (value) => {
+  const date = ensureDate(value);
+  if (!date) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getEndOfDay = (value) => {
+  const date = ensureDate(value);
+  if (!date) return null;
+  date.setHours(23, 59, 59, 999);
+  return date;
+};
+
+const formatDateKey = (value) => {
+  const date = ensureDate(value);
+  if (!date) return null;
+  return date.toISOString().slice(0, 10);
+};
+
+const buildDateLabel = (value) => {
+  const date = ensureDate(value);
+  if (!date) return "";
+  return date.toLocaleDateString("es-CO", {
+    day: "2-digit",
+    month: "short",
+  });
+};
+
+const createFaceRecognitionLog = async (payload) => {
+  try {
+    await FaceRecognitionLog.create(payload);
+  } catch (error) {
+    logger.warn("No fue posible persistir el intento de reconocimiento facial", {
+      error: error.message,
+      payloadStatus: payload?.status,
+      actorId: payload?.actor,
+    });
+  }
+};
+
+const buildScoreBands = (attempts = []) => {
+  const bands = [
+    { label: "< 0.40", min: -Infinity, max: 0.4, count: 0 },
+    { label: "0.40 - 0.49", min: 0.4, max: 0.5, count: 0 },
+    { label: "0.50 - 0.59", min: 0.5, max: 0.6, count: 0 },
+    { label: "0.60 - 0.69", min: 0.6, max: 0.7, count: 0 },
+    { label: ">= 0.70", min: 0.7, max: Infinity, count: 0 },
+  ];
+
+  for (const attempt of attempts) {
+    if (!Number.isFinite(attempt.score)) continue;
+    const band = bands.find((item) => attempt.score >= item.min && attempt.score < item.max);
+    if (band) band.count += 1;
+  }
+
+  return bands.map(({ label, count }) => ({ label, count }));
 };
 
 const enrollFace = async (req, res) => {
@@ -121,6 +187,18 @@ const identifyFace = async (req, res) => {
       .select("+faceDescriptor nombre apellido email cedula facultad telefono imagen permisoSistema rolAcademico estado faceRegistered faceDescriptorUpdatedAt");
 
     if (!users.length) {
+      await createFaceRecognitionLog({
+        actor: req.user?.id || null,
+        matchedUser: null,
+        status: "unmatched",
+        match: false,
+        score: null,
+        threshold: FACE_MATCH_THRESHOLD,
+        detectionScore: extraction.detection_score ?? null,
+        comparedProfiles: 0,
+        errorMessage: null,
+      });
+
       logger.warn("Intento de identificacion sin perfiles enrolados", {
         actorId: req.user?.id,
       });
@@ -151,6 +229,18 @@ const identifyFace = async (req, res) => {
 
     const matched = Boolean(bestMatch && bestMatch.score >= FACE_MATCH_THRESHOLD);
 
+    await createFaceRecognitionLog({
+      actor: req.user?.id || null,
+      matchedUser: matched ? bestMatch.user._id : null,
+      status: matched ? "matched" : "unmatched",
+      match: matched,
+      score: bestMatch ? Number(bestMatch.score.toFixed(6)) : null,
+      threshold: FACE_MATCH_THRESHOLD,
+      detectionScore: extraction.detection_score ?? null,
+      comparedProfiles: users.length,
+      errorMessage: null,
+    });
+
     logger.info("Resultado de identificacion facial", {
       actorId: req.user?.id,
       matched,
@@ -174,9 +264,175 @@ const identifyFace = async (req, res) => {
       },
     });
   } catch (error) {
+    if (req.body?.image && String(req.body.image).trim()) {
+      await createFaceRecognitionLog({
+        actor: req.user?.id || null,
+        matchedUser: null,
+        status: "error",
+        match: false,
+        score: null,
+        threshold: FACE_MATCH_THRESHOLD,
+        detectionScore: null,
+        comparedProfiles: 0,
+        errorMessage: error.message || "No fue posible identificar el rostro",
+      });
+    }
+
     return res.status(error.statusCode || 500).json({
       status: "error",
       message: error.message || "No fue posible identificar el rostro",
+      details: error.payload,
+    });
+  }
+};
+
+const getFaceStats = async (req, res) => {
+  try {
+    const startDate = getStartOfDay(req.query?.start);
+    const endDate = getEndOfDay(req.query?.end);
+    const facultyFilter = String(req.query?.faculty || "").trim().toLowerCase();
+    const query = {};
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = startDate;
+      if (endDate) query.createdAt.$lte = endDate;
+    }
+
+    const attempts = await FaceRecognitionLog.find(query)
+      .sort({ createdAt: -1 })
+      .populate("matchedUser", "nombre apellido email cedula facultad permisoSistema rolAcademico estado")
+      .populate("actor", "nombre apellido email permisoSistema");
+
+    const filteredAttempts = facultyFilter
+      ? attempts.filter((attempt) => {
+          const faculty = String(attempt?.matchedUser?.facultad || "").trim().toLowerCase();
+          return faculty && faculty === facultyFilter;
+        })
+      : attempts;
+
+    const totalAttempts = filteredAttempts.length;
+    const matchedAttempts = filteredAttempts.filter((attempt) => attempt.status === "matched");
+    const unmatchedAttempts = filteredAttempts.filter((attempt) => attempt.status === "unmatched");
+    const errorAttempts = filteredAttempts.filter((attempt) => attempt.status === "error");
+    const scores = matchedAttempts.map((attempt) => Number(attempt.score)).filter(Number.isFinite);
+    const detectionScores = filteredAttempts.map((attempt) => Number(attempt.detectionScore)).filter(Number.isFinite);
+    const comparedProfiles = filteredAttempts.map((attempt) => Number(attempt.comparedProfiles)).filter(Number.isFinite);
+
+    const rangeDates = [];
+    if (startDate && endDate && startDate <= endDate) {
+      for (const cursor = new Date(startDate); cursor <= endDate; cursor.setDate(cursor.getDate() + 1)) {
+        rangeDates.push(new Date(cursor));
+      }
+    }
+
+    const dailyMap = filteredAttempts.reduce((acc, attempt) => {
+      const key = formatDateKey(attempt.createdAt);
+      if (!key) return acc;
+      if (!acc[key]) {
+        acc[key] = { date: key, label: buildDateLabel(key), total: 0, matched: 0, unmatched: 0, error: 0 };
+      }
+
+      acc[key].total += 1;
+      if (attempt.status === "matched") acc[key].matched += 1;
+      if (attempt.status === "unmatched") acc[key].unmatched += 1;
+      if (attempt.status === "error") acc[key].error += 1;
+      return acc;
+    }, {});
+
+    for (const date of rangeDates) {
+      const key = formatDateKey(date);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: key, label: buildDateLabel(date), total: 0, matched: 0, unmatched: 0, error: 0 };
+      }
+    }
+
+    const dailySeries = Object.values(dailyMap)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const topMatchedUsers = Object.values(
+      matchedAttempts.reduce((acc, attempt) => {
+        const user = attempt.matchedUser;
+        if (!user?._id) return acc;
+        const key = String(user._id);
+        if (!acc[key]) {
+          acc[key] = {
+            userId: key,
+            nombre: [user.nombre, user.apellido].filter(Boolean).join(" ").trim() || user.email || user.cedula || "Usuario sin nombre",
+            facultad: user.facultad || "Sin facultad",
+            count: 0,
+            totalScore: 0,
+          };
+        }
+
+        acc[key].count += 1;
+        acc[key].totalScore += Number(attempt.score) || 0;
+        return acc;
+      }, {})
+    )
+      .map((item) => ({
+        ...item,
+        averageScore: item.count ? Number((item.totalScore / item.count).toFixed(4)) : 0,
+      }))
+      .sort((a, b) => b.count - a.count || b.averageScore - a.averageScore)
+      .slice(0, 5);
+
+    const recentAttempts = filteredAttempts.slice(0, 8).map((attempt) => ({
+      id: String(attempt._id),
+      createdAt: attempt.createdAt,
+      status: attempt.status,
+      match: attempt.match,
+      score: Number.isFinite(attempt.score) ? Number(attempt.score.toFixed(4)) : null,
+      threshold: attempt.threshold,
+      detectionScore: Number.isFinite(attempt.detectionScore) ? Number(attempt.detectionScore.toFixed(4)) : null,
+      comparedProfiles: attempt.comparedProfiles,
+      errorMessage: attempt.errorMessage,
+      matchedUser: attempt.matchedUser
+        ? {
+            id: String(attempt.matchedUser._id),
+            nombre: [attempt.matchedUser.nombre, attempt.matchedUser.apellido].filter(Boolean).join(" ").trim(),
+            facultad: attempt.matchedUser.facultad || "Sin facultad",
+            rolAcademico: attempt.matchedUser.rolAcademico || "Sin rol",
+          }
+        : null,
+      actor: attempt.actor
+        ? {
+            id: String(attempt.actor._id),
+            nombre: [attempt.actor.nombre, attempt.actor.apellido].filter(Boolean).join(" ").trim(),
+            permisoSistema: attempt.actor.permisoSistema || "Sin permiso",
+          }
+        : null,
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        summary: {
+          totalAttempts,
+          matchedAttempts: matchedAttempts.length,
+          unmatchedAttempts: unmatchedAttempts.length,
+          errorAttempts: errorAttempts.length,
+          successRate: totalAttempts ? Number(((matchedAttempts.length / totalAttempts) * 100).toFixed(2)) : 0,
+          averageScore: scores.length
+            ? Number((scores.reduce((acc, value) => acc + value, 0) / scores.length).toFixed(4))
+            : 0,
+          averageDetectionScore: detectionScores.length
+            ? Number((detectionScores.reduce((acc, value) => acc + value, 0) / detectionScores.length).toFixed(4))
+            : 0,
+          averageComparedProfiles: comparedProfiles.length
+            ? Number((comparedProfiles.reduce((acc, value) => acc + value, 0) / comparedProfiles.length).toFixed(2))
+            : 0,
+        },
+        dailySeries,
+        scoreBands: buildScoreBands(filteredAttempts),
+        topMatchedUsers,
+        recentAttempts,
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      status: "error",
+      message: error.message || "No fue posible obtener las estadisticas faciales",
       details: error.payload,
     });
   }
@@ -214,5 +470,6 @@ const extractFaceEmbedding = async (req, res) => {
 module.exports = {
   enrollFace,
   identifyFace,
+  getFaceStats,
   extractFaceEmbedding,
 };

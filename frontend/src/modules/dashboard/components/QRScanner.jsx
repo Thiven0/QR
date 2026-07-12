@@ -105,12 +105,44 @@ const buildFeedbackBox = (feedback) => {
   return <div className={`${base} ${tone}`}>{feedback.message}</div>;
 };
 
+const renderQrFocusOverlay = () => (
+  <div className="pointer-events-none absolute inset-0">
+    <div className="absolute inset-6 rounded-[1.75rem] border border-white/10 bg-black/5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" />
+
+    <div className="absolute inset-6">
+      <div className="absolute left-0 top-0 h-12 w-1 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+      <div className="absolute left-0 top-0 h-1 w-12 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+
+      <div className="absolute right-0 top-0 h-12 w-1 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+      <div className="absolute right-0 top-0 h-1 w-12 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+
+      <div className="absolute bottom-0 left-0 h-12 w-1 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+      <div className="absolute bottom-0 left-0 h-1 w-12 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+
+      <div className="absolute bottom-0 right-0 h-12 w-1 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+      <div className="absolute bottom-0 right-0 h-1 w-12 rounded-full bg-[#2dd4bf]/90 shadow-[0_0_18px_rgba(45,212,191,0.6)]" />
+
+      <div className="absolute inset-x-10 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+      <div className="absolute left-1/2 top-10 h-[calc(100%-5rem)] w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-white/20 to-transparent" />
+    </div>
+
+    <div className="absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-black/45 px-4 py-1.5 text-xs font-semibold tracking-wide text-white/90 backdrop-blur-sm">
+      Enfoca el codigo QR dentro del visor
+    </div>
+  </div>
+);
+
+const FACE_FALLBACK_DELAY_MS = 3500;
+const BLOCKED_USER_MESSAGE = 'El usuario se encuentra bloqueado. No se puede registrar el ingreso ni la salida.';
+
 const QRScannerPage = () => {
   const { token } = useAuth();
   const [scannerKey, setScannerKey] = useState(0);
-  const [cameraActive, setCameraActive] = useState(true);
-  const [scanMode, setScanMode] = useState('qr');
+  const [cameraActive, setCameraActive] = useState(false);
+  const [scanMode, setScanMode] = useState('face');
   const audioContextRef = useRef(null);
+  const faceFallbackTimeoutRef = useRef(null);
+  const faceFallbackMessageTimeoutRef = useRef(null);
 
   const [scanData, setScanData] = useState(null);
   const [error, setError] = useState('');
@@ -138,6 +170,90 @@ const QRScannerPage = () => {
     setMovementNote('');
   };
 
+  const clearFaceFallback = useCallback(() => {
+    if (faceFallbackTimeoutRef.current) {
+      window.clearTimeout(faceFallbackTimeoutRef.current);
+      faceFallbackTimeoutRef.current = null;
+    }
+    if (faceFallbackMessageTimeoutRef.current) {
+      window.clearTimeout(faceFallbackMessageTimeoutRef.current);
+      faceFallbackMessageTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleQrFallback = useCallback((message) => {
+    clearFaceFallback();
+    setFeedback({
+      type: 'error',
+      message,
+    });
+    setScanData(null);
+    setShowConfirmation(false);
+    setConfirmationError('');
+
+    faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      setScanMode('qr');
+      setCameraActive(true);
+      setError('');
+      setScannerKey((prev) => prev + 1);
+      faceFallbackTimeoutRef.current = null;
+    }, FACE_FALLBACK_DELAY_MS);
+
+    faceFallbackMessageTimeoutRef.current = window.setTimeout(() => {
+      setFeedback((current) => (current?.type === 'error' && current?.message === message ? null : current));
+      faceFallbackMessageTimeoutRef.current = null;
+    }, 5000);
+  }, [clearFaceFallback]);
+
+  useEffect(() => {
+    return () => {
+      clearFaceFallback();
+    };
+  }, [clearFaceFallback]);
+
+  const playBeep = useCallback((type = 'success') => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass();
+      }
+      const context = audioContextRef.current;
+      if (context.state === 'suspended') {
+        context.resume().catch(() => {});
+      }
+
+      const gain = context.createGain();
+      gain.connect(context.destination);
+
+      const playTone = (frequency, startAt, duration, volume, waveType = 'sine') => {
+        const oscillator = context.createOscillator();
+        oscillator.type = waveType;
+        oscillator.frequency.setValueAtTime(frequency, startAt);
+        oscillator.connect(gain);
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+        oscillator.start(startAt);
+        oscillator.stop(startAt + duration);
+      };
+
+      if (type === 'error') {
+        playTone(320, context.currentTime, 0.16, 0.2, 'triangle');
+        playTone(220, context.currentTime + 0.14, 0.2, 0.18, 'triangle');
+        return;
+      }
+
+      playTone(880, context.currentTime, 0.12, 0.22, 'sine');
+      playTone(1175, context.currentTime + 0.09, 0.14, 0.18, 'sine');
+    } catch {
+      return;
+    }
+  }, []);
+
   const setValidatedUser = useCallback((userId, user, message, extra = {}) => {
     setScanData({
       rawText: extra.rawText || '',
@@ -160,45 +276,14 @@ const QRScannerPage = () => {
       return;
     }
 
+    playBeep('success');
+
     const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
     setMovementType(defaultMovement);
     setShowConfirmation(true);
     setConfirmationError('');
     setMovementNote('');
-  }, []);
-
-  const playBeep = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) return;
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContextClass();
-      }
-      const context = audioContextRef.current;
-      if (context.state === 'suspended') {
-        context.resume().catch(() => {});
-      }
-
-      const duration = 0.15;
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, context.currentTime);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-
-      gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-
-      oscillator.start(context.currentTime);
-      oscillator.stop(context.currentTime + duration);
-    } catch {
-      return;
-    }
-  }, []);
+  }, [playBeep]);
 
   useEffect(() => {
     return () => {
@@ -265,7 +350,6 @@ const QRScannerPage = () => {
 
       setScanData(baseData);
       setLastRawText(rawText);
-      playBeep();
 
       const validationResponse = await validateScanData(parsedData);
       const { userId, user, message, activeRegistro } = validationResponse;
@@ -274,7 +358,10 @@ const QRScannerPage = () => {
         activeRegistro,
       });
     } catch (scanError) {
-      const message = scanError.details?.message || scanError.message || 'No se pudo procesar el codigo escaneado.';
+      playBeep('error');
+      const message = scanError.details?.code === 'SCANNED_USER_BLOCKED'
+        ? BLOCKED_USER_MESSAGE
+        : scanError.details?.message || scanError.message || 'No se pudo procesar el codigo escaneado.';
       setFeedback({
         type: 'error',
         message,
@@ -292,16 +379,25 @@ const QRScannerPage = () => {
 
   const handleFaceResult = (result) => {
     if (!result?.match || !result?.userId || !result?.user) {
-      setFeedback({
-        type: 'error',
-        message: 'No se encontro una coincidencia facial valida para este rostro.',
-      });
-      setScanData(null);
-      setShowConfirmation(false);
+      playBeep('error');
+      scheduleQrFallback('No se encontro una coincidencia facial valida para este rostro. Cambiando a escaneo QR...');
       return;
     }
 
-    playBeep();
+    if ((result.user.estado || '').toLowerCase() === 'bloqueado') {
+      clearFaceFallback();
+      playBeep('error');
+      setScanData(null);
+      setShowConfirmation(false);
+      setConfirmationError('');
+      setFeedback({
+        type: 'error',
+        message: BLOCKED_USER_MESSAGE,
+      });
+      return;
+    }
+
+    clearFaceFallback();
     setError('');
     setValidatedUser(result.userId, result.user, 'Usuario identificado por reconocimiento facial.', {
       score: result.score,
@@ -310,11 +406,9 @@ const QRScannerPage = () => {
   };
 
   const handleFaceError = (faceError) => {
+    playBeep('error');
     const message = faceError?.details?.message || faceError?.message || 'No fue posible procesar el reconocimiento facial.';
-    setFeedback({
-      type: 'error',
-      message,
-    });
+    scheduleQrFallback(`${message} Cambiando a escaneo QR...`);
   };
 
   const handleReset = async () => {
@@ -328,6 +422,7 @@ const QRScannerPage = () => {
 
     setCameraActive(true);
     setResetting(true);
+    clearFaceFallback();
     resetState();
     setScannerKey((prev) => prev + 1);
 
@@ -421,7 +516,7 @@ const QRScannerPage = () => {
               </span>
               <div>
                 <p className="text-sm font-semibold text-[#0f172a]">Escanear usuario</p>
-                <p className="text-xs text-[#475569]">Registra ingresos y salidas sin flujo de vehiculos.</p>
+                <p className="text-xs text-[#475569]">Registra ingresos y salidas.</p>
               </div>
             </div>
           </div>
@@ -445,21 +540,7 @@ const QRScannerPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        setScanMode('qr');
-                        setCameraActive(true);
-                        setError('');
-                      }}
-                      className={clsx(
-                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
-                        scanMode === 'qr' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
-                      )}
-                    >
-                      <FaQrcode className="h-4 w-4" />
-                      QR
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
+                        clearFaceFallback();
                         setScanMode('face');
                         setCameraActive(false);
                         setError('');
@@ -471,6 +552,22 @@ const QRScannerPage = () => {
                     >
                       <FaUserCircle className="h-4 w-4" />
                       Rostro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearFaceFallback();
+                        setScanMode('qr');
+                        setCameraActive(true);
+                        setError('');
+                      }}
+                      className={clsx(
+                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
+                        scanMode === 'qr' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
+                      )}
+                    >
+                      <FaQrcode className="h-4 w-4" />
+                      QR
                     </button>
                   </div>
                   <button
@@ -501,9 +598,7 @@ const QRScannerPage = () => {
                           <p className="text-sm font-medium">Escaneo pausado hasta reiniciar.</p>
                         </div>
                       )}
-                      <div className="pointer-events-none absolute inset-0 border-[12px] border-transparent">
-                        <div className="absolute inset-6 rounded-2xl border-2 border-dashed border-white/70" />
-                      </div>
+                      {renderQrFocusOverlay()}
                     </div>
                   </div>
                 ) : (

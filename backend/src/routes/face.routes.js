@@ -7,5 +7,6 @@ const router = express.Router();
 router.post("/enroll", authMiddleware(["Administrador", "Celador"]), faceController.enrollFace);
 router.post("/identify", authMiddleware(["Administrador", "Celador"]), faceController.identifyFace);
 router.post("/extract", authMiddleware(["Administrador", "Celador"]), faceController.extractFaceEmbedding);
+router.get("/stats", authMiddleware(["Administrador"]), faceController.getFaceStats);
 
 module.exports = router;

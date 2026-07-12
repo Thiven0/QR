@@ -86,14 +86,70 @@ const formatPercent = (value, fractionDigits = 1) => {
   return `${value.toFixed(fractionDigits)}%`;
 };
 
+const formatScore = (value, fractionDigits = 2) => {
+  if (!Number.isFinite(value)) return '0.00';
+  return value.toFixed(fractionDigits);
+};
+
+const average = (values = []) => {
+  if (!values.length) return 0;
+  return values.reduce((acc, value) => acc + value, 0) / values.length;
+};
+
+const median = (values = []) => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
+
+const percentile = (values = [], p = 0.9) => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+  return sorted[index];
+};
+
+const standardDeviation = (values = []) => {
+  if (!values.length) return 0;
+  const mean = average(values);
+  const variance = average(values.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+};
+
+const formatSignedPercent = (value, fractionDigits = 1) => {
+  if (!Number.isFinite(value)) return 'Sin base';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(fractionDigits)}%`;
+};
+
+const createEmptyFaceStats = () => ({
+  summary: {
+    totalAttempts: 0,
+    matchedAttempts: 0,
+    unmatchedAttempts: 0,
+    errorAttempts: 0,
+    successRate: 0,
+    averageScore: 0,
+    averageDetectionScore: 0,
+    averageComparedProfiles: 0,
+  },
+  dailySeries: [],
+  scoreBands: [],
+  topMatchedUsers: [],
+  recentAttempts: [],
+});
+
 const DashboardStats = () => {
   const { token } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [records, setRecords] = useState([]);
   const [visitorTickets, setVisitorTickets] = useState([]);
+  const [faceStats, setFaceStats] = useState(createEmptyFaceStats);
   const [, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [faceStatsError, setFaceStatsError] = useState('');
   const [downloadingReport, setDownloadingReport] = useState(false);
 
   const [dateRange, setDateRange] = useState(getDefaultRange);
@@ -142,6 +198,45 @@ const DashboardStats = () => {
       mounted = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let mounted = true;
+    const fetchFaceStats = async () => {
+      try {
+        setFaceStatsError('');
+
+        const query = new URLSearchParams();
+        if (dateRange.start) query.set('start', dateRange.start);
+        if (dateRange.end) query.set('end', dateRange.end);
+        if (facultyFilter) query.set('faculty', facultyFilter);
+
+        const response = await apiRequest(`/face/stats?${query.toString()}`, { token });
+        if (!mounted) return;
+
+        const payload = response?.data || response || createEmptyFaceStats();
+        setFaceStats({
+          ...createEmptyFaceStats(),
+          ...payload,
+          summary: {
+            ...createEmptyFaceStats().summary,
+            ...(payload.summary || {}),
+          },
+        });
+      } catch (err) {
+        if (!mounted) return;
+        setFaceStats(createEmptyFaceStats());
+        setFaceStatsError(err.message || 'No fue posible obtener las metricas faciales.');
+      }
+    };
+
+    fetchFaceStats();
+
+    return () => {
+      mounted = false;
+    };
+  }, [token, dateRange.start, dateRange.end, facultyFilter]);
 
   const userMap = useMemo(() => {
     return users.reduce((acc, user) => {
@@ -871,6 +966,110 @@ const DashboardStats = () => {
     [summaryMetrics, userRoleSummary, visitorTicketAnalytics]
   );
 
+  const faceSummaryCards = useMemo(
+    () => [
+      {
+        id: 'face-total',
+        label: 'Intentos faciales',
+        value: faceStats.summary.totalAttempts,
+        description: 'Escaneos faciales procesados en el periodo filtrado.',
+      },
+      {
+        id: 'face-success',
+        label: 'Tasa de acierto',
+        value: formatPercent(faceStats.summary.successRate, 1),
+        description: `${faceStats.summary.matchedAttempts.toLocaleString('es-CO')} coincidencias validas`,
+      },
+      {
+        id: 'face-score',
+        label: 'Score promedio',
+        value: formatScore(faceStats.summary.averageScore, 3),
+        description: 'Promedio de similitud entre coincidencias aceptadas.',
+      },
+      {
+        id: 'face-detection',
+        label: 'Deteccion promedio',
+        value: formatScore(faceStats.summary.averageDetectionScore, 3),
+        description: `Promedio de ${faceStats.summary.averageComparedProfiles.toLocaleString('es-CO')} perfiles comparados por intento`,
+      },
+    ],
+    [faceStats]
+  );
+
+  const faceDailySeries = useMemo(() => {
+    const items = Array.isArray(faceStats.dailySeries) ? faceStats.dailySeries : [];
+    const max = items.reduce((acc, item) => Math.max(acc, item.total || 0), 0);
+    return {
+      max: Math.max(max, 1),
+      items,
+    };
+  }, [faceStats.dailySeries]);
+
+  const faceScoreBands = useMemo(() => {
+    const items = Array.isArray(faceStats.scoreBands) ? faceStats.scoreBands : [];
+    const max = items.reduce((acc, item) => Math.max(acc, item.count || 0), 0);
+    return {
+      max: Math.max(max, 1),
+      items,
+    };
+  }, [faceStats.scoreBands]);
+
+  const previousPeriodComparison = useMemo(() => {
+    if (!rangeStart || !rangeEnd) {
+      return {
+        current: filteredRecords.length,
+        previous: 0,
+        delta: filteredRecords.length,
+        deltaPercent: null,
+        days: 0,
+      };
+    }
+
+    const currentStart = new Date(rangeStart);
+    currentStart.setHours(0, 0, 0, 0);
+    const currentEnd = new Date(rangeEnd);
+    currentEnd.setHours(23, 59, 59, 999);
+
+    const days = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+    const previousEnd = new Date(currentStart.getTime() - 1);
+    const previousStart = new Date(previousEnd);
+    previousStart.setHours(0, 0, 0, 0);
+    previousStart.setDate(previousStart.getDate() - (days - 1));
+
+    const previous = normalizedRecords.filter((record) => {
+      const withinRange = record.fechaEntradaDate >= previousStart && record.fechaEntradaDate <= previousEnd;
+      const matchesFaculty = !facultyFilter || record.faculty.toLowerCase() === facultyFilter.toLowerCase();
+      return withinRange && matchesFaculty;
+    }).length;
+
+    return {
+      current: filteredRecords.length,
+      previous,
+      delta: filteredRecords.length - previous,
+      deltaPercent: previous > 0 ? ((filteredRecords.length - previous) / previous) * 100 : null,
+      days,
+    };
+  }, [filteredRecords.length, normalizedRecords, rangeStart, rangeEnd, facultyFilter]);
+
+  const statisticalInsights = useMemo(() => {
+    const dailyValues = dailyEntriesSeries.items.map((item) => item.value);
+    const completedSessions = filteredRecords.filter((record) => ensureDate(record.fechaSalida)).length;
+    const closedRate = filteredRecords.length ? (completedSessions / filteredRecords.length) * 100 : 0;
+    const mean = average(dailyValues);
+    const stdDev = standardDeviation(dailyValues);
+
+    return {
+      mean,
+      median: median(dailyValues),
+      p90: percentile(dailyValues, 0.9),
+      stdDev,
+      variationCoefficient: mean > 0 ? (stdDev / mean) * 100 : 0,
+      closedRate,
+      openRate: filteredRecords.length ? 100 - closedRate : 0,
+      sampleDays: dailyValues.length,
+    };
+  }, [dailyEntriesSeries.items, filteredRecords]);
+
   const rankingData = useMemo(() => {
     const totals = filteredRecords.reduce((acc, record) => {
       const label = record.faculty || 'Sin facultad';
@@ -1150,6 +1349,272 @@ const DashboardStats = () => {
               <p className="mt-1 text-xs text-[#475569]">{card.description}</p>
             </div>
           ))}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#00594e]">Indicadores estadisticos</p>
+              <h2 className="mt-2 text-2xl font-bold text-[#0f172a]">Lectura analitica del periodo</h2>
+              <p className="mt-2 text-sm text-[#64748b]">
+                Resume dispersion, comportamiento diario y comparacion contra el periodo inmediatamente anterior.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#475569]">
+              <span className="font-semibold text-[#0f172a]">Periodo previo comparable:</span>{' '}
+              {previousPeriodComparison.days.toLocaleString('es-CO')} dias,{' '}
+              {previousPeriodComparison.previous.toLocaleString('es-CO')} accesos
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Variacion vs previo</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatSignedPercent(previousPeriodComparison.deltaPercent, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">
+                Delta absoluto: {previousPeriodComparison.delta >= 0 ? '+' : ''}
+                {previousPeriodComparison.delta.toLocaleString('es-CO')} accesos.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Promedio diario</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatScore(statisticalInsights.mean, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">Media de accesos por dia dentro del rango filtrado.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Mediana diaria</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatScore(statisticalInsights.median, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">Mitad de los dias queda por debajo y mitad por encima de este valor.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Desviacion estandar</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatScore(statisticalInsights.stdDev, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">Cuanto se dispersan los accesos diarios respecto a la media.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Percentil 90 diario</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatScore(statisticalInsights.p90, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">Solo el 10% de los dias supera este nivel de accesos.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">Tasa de cierre</p>
+              <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{formatPercent(statisticalInsights.closedRate, 1)}</p>
+              <p className="mt-1 text-xs text-[#475569]">
+                Sesiones con salida registrada. Variabilidad: {formatPercent(statisticalInsights.variationCoefficient, 1)}.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Reconocimiento facial</p>
+              <h2 className="mt-2 text-2xl font-bold text-[#0f172a]">Reporte de escaneo facial</h2>
+              <p className="mt-2 text-sm text-[#64748b]">
+                Consolida intentos, aciertos, errores de procesamiento y usuarios reconocidos por rostro.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#475569]">
+              Coincidencias: <span className="font-semibold text-[#0f172a]">{faceStats.summary.matchedAttempts.toLocaleString('es-CO')}</span>
+              {' '}de{' '}
+              <span className="font-semibold text-[#0f172a]">{faceStats.summary.totalAttempts.toLocaleString('es-CO')}</span>
+            </div>
+          </div>
+
+          {faceStatsError && <p className="mt-4 text-sm font-semibold text-[#b91c1c]">{faceStatsError}</p>}
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {faceSummaryCards.map((card) => (
+              <div key={card.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#64748b]">{card.label}</p>
+                <p className="mt-3 text-3xl font-semibold text-[#0f172a]">{card.value}</p>
+                <p className="mt-1 text-xs text-[#475569]">{card.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <article className="min-w-0 rounded-xl border border-slate-200 p-5">
+              <header>
+                <h3 className="text-lg font-semibold text-[#0f172a]">Evolucion diaria</h3>
+                <p className="text-sm text-[#64748b]">Intentos diarios con desglose visual entre volumen y coincidencias.</p>
+              </header>
+              <div className="mt-5 w-full overflow-x-auto rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
+                <div className="flex min-h-[15rem] min-w-max items-end gap-3">
+                {faceDailySeries.items.length ? (
+                  faceDailySeries.items.map((item) => {
+                    const totalHeight = Math.max(((item.total || 0) / faceDailySeries.max) * 100, item.total ? 8 : 0);
+                    const matchedHeight = item.total
+                      ? Math.max(((item.matched || 0) / (item.total || 1)) * totalHeight, item.matched ? 8 : 0)
+                      : 0;
+
+                    return (
+                      <div key={item.date} className="flex w-12 shrink-0 flex-col items-center gap-2">
+                        <div className="flex h-40 w-full items-end overflow-hidden rounded-md bg-slate-200/70">
+                          <div
+                            className="relative w-full rounded-t-md bg-[#cbd5e1]"
+                            style={{ height: `${totalHeight}%` }}
+                            title={`${item.label}: ${item.total} intentos, ${item.matched} coincidencias, ${item.error} errores`}
+                          >
+                            <div
+                              className="absolute bottom-0 w-full rounded-t-md bg-[#0f766e]"
+                              style={{ height: `${matchedHeight}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-[#64748b]">{item.label}</span>
+                        <span className="text-xs text-[#0f172a]">{item.total.toLocaleString('es-CO')}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex w-full min-w-[16rem] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-[#64748b]">
+                    Aun no hay intentos faciales en el periodo seleccionado.
+                  </div>
+                )}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-4 text-xs text-[#475569]">
+                <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-[#0f766e]" />Coincidencias</span>
+                <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-[#cbd5e1]" />Intentos totales</span>
+                <span className="inline-flex items-center gap-2"><span className="font-semibold text-[#0f172a]">Sin match:</span> {faceStats.summary.unmatchedAttempts.toLocaleString('es-CO')}</span>
+                <span className="inline-flex items-center gap-2"><span className="font-semibold text-[#0f172a]">Errores:</span> {faceStats.summary.errorAttempts.toLocaleString('es-CO')}</span>
+              </div>
+            </article>
+
+            <article className="min-w-0 rounded-xl border border-slate-200 p-5">
+              <header>
+                <h3 className="text-lg font-semibold text-[#0f172a]">Distribucion de scores</h3>
+                <p className="text-sm text-[#64748b]">Frecuencia de similitudes observadas durante los escaneos.</p>
+              </header>
+              <div className="mt-5 space-y-3">
+                {faceScoreBands.items.length ? (
+                  faceScoreBands.items.map((band) => (
+                    <div key={band.label}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-semibold text-[#0f172a]">{band.label}</span>
+                        <span className="text-[#475569]">{band.count.toLocaleString('es-CO')}</span>
+                      </div>
+                      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#0ea5e9]"
+                          style={{ width: `${Math.max(((band.count || 0) / faceScoreBands.max) * 100, band.count ? 8 : 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-[#64748b]">
+                    No hay suficientes scores para construir la distribucion.
+                  </div>
+                )}
+              </div>
+            </article>
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <article className="rounded-xl border border-slate-200 p-5">
+              <header>
+                <h3 className="text-lg font-semibold text-[#0f172a]">Usuarios mas reconocidos</h3>
+                <p className="text-sm text-[#64748b]">Ranking de coincidencias faciales exitosas dentro del periodo.</p>
+              </header>
+              <div className="mt-4 space-y-3">
+                {faceStats.topMatchedUsers.length ? (
+                  faceStats.topMatchedUsers.map((user, index) => (
+                    <div key={user.userId} className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#0f172a]">{index + 1}. {user.nombre}</p>
+                          <p className="text-xs text-[#64748b]">{user.facultad}</p>
+                        </div>
+                        <div className="text-right text-sm">
+                          <p className="font-semibold text-[#0f766e]">{user.count.toLocaleString('es-CO')} matches</p>
+                          <p className="text-xs text-[#64748b]">Score prom. {formatScore(user.averageScore, 3)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-[#64748b]">
+                    No hay coincidencias faciales registradas para este filtro.
+                  </div>
+                )}
+              </div>
+            </article>
+
+            <article className="rounded-xl border border-slate-200 p-5">
+              <header>
+                <h3 className="text-lg font-semibold text-[#0f172a]">Intentos recientes</h3>
+                <p className="text-sm text-[#64748b]">Ultimos eventos faciales con operador, estado y confianza.</p>
+              </header>
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200 text-sm text-[#334155]">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Fecha</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Resultado</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Usuario</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748b]">Operador</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#64748b]">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {faceStats.recentAttempts.length ? (
+                      faceStats.recentAttempts.map((attempt) => (
+                        <tr key={attempt.id}>
+                          <td className="px-4 py-3 text-xs text-[#475569]">
+                            {new Date(attempt.createdAt).toLocaleString('es-CO', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={[
+                                'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                                attempt.status === 'matched'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : attempt.status === 'unmatched'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-rose-100 text-rose-700',
+                              ].join(' ')}
+                            >
+                              {attempt.status === 'matched'
+                                ? 'Coincidencia'
+                                : attempt.status === 'unmatched'
+                                  ? 'Sin match'
+                                  : 'Error'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-[#0f172a]">{attempt.matchedUser?.nombre || 'Sin coincidencia'}</p>
+                            <p className="text-xs text-[#64748b]">
+                              {attempt.errorMessage || attempt.matchedUser?.facultad || 'Sin detalle adicional'}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-[#475569]">
+                            {attempt.actor?.nombre || 'Sistema'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-[#0f172a]">
+                            {attempt.score !== null ? formatScore(attempt.score, 3) : '--'}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-sm text-[#64748b]">
+                          No hay intentos recientes para mostrar.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-2">

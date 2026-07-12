@@ -7,6 +7,7 @@ const { extractEmbedding } = require("../services/face.service");
 const createLogger = require("../utils/logger");
 const { serializeVisitorTicket, getActiveVisitorTicketForUser } = require("../utils/visitorTicket");
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
+const SCANNED_USER_BLOCKED_CODE = 'SCANNED_USER_BLOCKED';
 const USERS_DEFAULT_PAGE_SIZE = Number(process.env.USERS_PAGE_SIZE || 10);
 const USERS_MAX_PAGE_SIZE = Number(process.env.USERS_PAGE_MAX_SIZE || 50);
 const USERS_SUMMARY_RECENT_LIMIT = Number(process.env.USERS_SUMMARY_RECENT_LIMIT || 6);
@@ -666,7 +667,7 @@ const validateScannedUser = async (req, res) => {
     if ((user.estado || '').toLowerCase() === 'bloqueado') {
       return res.status(403).json({
         status: 'error',
-        code: USER_BLOCKED_CODE,
+        code: SCANNED_USER_BLOCKED_CODE,
         message: 'El usuario esta bloqueado y no puede validar acceso con su codigo QR.',
       });
     }
