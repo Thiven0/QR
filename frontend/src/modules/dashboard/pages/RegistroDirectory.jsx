@@ -51,6 +51,13 @@ const formatDurationValue = (value) => {
   return normalized;
 };
 
+const formatScanMethod = (value) => {
+  const normalized = String(value || 'manual').trim().toLowerCase();
+  if (normalized === 'face') return 'Reconocimiento facial';
+  if (normalized === 'qr') return 'Escaneo QR';
+  return 'Registro manual';
+};
+
 const getRegistroTimestamp = (registro, candidates = []) => {
   if (!registro) return undefined;
 
@@ -1342,6 +1349,39 @@ const RegistroDirectory = () => {
                   <span className="font-semibold">Duracion de la sesion:</span>{' '}
                   {formatDurationValue(selected.duracionSesion)}
                 </p>
+                <p className="mt-1">
+                  <span className="font-semibold">Metodo de ingreso:</span>{' '}
+                  {formatScanMethod(selected.scanMethod)}
+                </p>
+                {selected.faceRecognitionLog && (
+                  <div className="mt-3 rounded-lg border border-[#0f766e]/15 bg-white/80 p-3 text-xs text-[#0f172a]">
+                    <p>
+                      <span className="font-semibold">Score facial:</span>{' '}
+                      {typeof selected.faceRecognitionLog.score === 'number'
+                        ? selected.faceRecognitionLog.score.toFixed(4)
+                        : 'Sin score'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Detection score:</span>{' '}
+                      {typeof selected.faceRecognitionLog.detectionScore === 'number'
+                        ? selected.faceRecognitionLog.detectionScore.toFixed(4)
+                        : 'Sin dato'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Threshold:</span>{' '}
+                      {typeof selected.faceRecognitionLog.threshold === 'number'
+                        ? selected.faceRecognitionLog.threshold.toFixed(2)
+                        : 'Sin dato'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Perfiles comparados:</span>{' '}
+                      {selected.faceRecognitionLog.comparedProfiles ?? 'Sin dato'}
+                    </p>
+                    <p className="mt-1 text-[#0f172a]/70">
+                      Log facial: {formatDateTime(selected.faceRecognitionLog.createdAt)}
+                    </p>
+                  </div>
+                )}
                 {selected.cierreForzado && (
                   <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#b45309]">
                     Cierre por ticket expirado

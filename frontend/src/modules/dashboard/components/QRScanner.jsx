@@ -105,6 +105,94 @@ const buildFeedbackBox = (feedback) => {
   return <div className={`${base} ${tone}`}>{feedback.message}</div>;
 };
 
+const FACE_MATCH_THRESHOLD = 0.5;
+
+const getSimilarityTone = (score, threshold = FACE_MATCH_THRESHOLD) => {
+  if (score >= Math.max(threshold + 0.2, 0.75)) {
+    return {
+      label: 'Alta',
+      accent: 'text-emerald-700',
+      badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      marker: 'bg-emerald-500',
+    };
+  }
+
+  if (score >= threshold) {
+    return {
+      label: 'Media',
+      accent: 'text-amber-700',
+      badge: 'bg-amber-100 text-amber-700 border-amber-200',
+      marker: 'bg-amber-500',
+    };
+  }
+
+  return {
+    label: 'Baja',
+    accent: 'text-rose-700',
+    badge: 'bg-rose-100 text-rose-700 border-rose-200',
+    marker: 'bg-rose-500',
+  };
+};
+
+const FacialSimilarityMeter = ({ score, threshold = FACE_MATCH_THRESHOLD }) => {
+  if (typeof score !== 'number') return null;
+
+  const normalizedScore = Math.min(1, Math.max(0, score));
+  const markerPosition = `${normalizedScore * 100}%`;
+  const thresholdPosition = `${Math.min(1, Math.max(0, threshold)) * 100}%`;
+  const tone = getSimilarityTone(normalizedScore, threshold);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-[#f8fafc] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Semaforo facial</p>
+          <p className="mt-2 text-sm font-semibold text-[#0f172a]">Similitud facial</p>
+          <p className="mt-1 text-xs text-[#475569]">Referencia visual del nivel de coincidencia detectado.</p>
+        </div>
+        <div className={clsx('inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold', tone.badge)}>
+          {tone.label}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-[#64748b]">Score detectado</p>
+            <p className={clsx('text-2xl font-bold', tone.accent)}>{normalizedScore.toFixed(4)}</p>
+          </div>
+          <div className="text-right text-xs text-[#475569]">
+            <p>Umbral minimo</p>
+            <p className="font-semibold text-[#0f172a]">{threshold.toFixed(2)}</p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="relative h-4 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+            <div className="absolute inset-y-0 left-0 w-1/2 bg-rose-300/70" />
+            <div className="absolute inset-y-0 left-1/2 w-1/4 bg-amber-300/80" />
+            <div className="absolute inset-y-0 right-0 w-1/4 bg-emerald-400/80" />
+            <div className="absolute inset-y-[-4px] w-px bg-[#0f172a]/60" style={{ left: thresholdPosition }} />
+            <div className="absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg" style={{ left: markerPosition }}>
+              <div className={clsx('h-full w-full rounded-full', tone.marker)} />
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between text-[11px] font-medium text-[#64748b]">
+            <span>Bajo</span>
+            <span>Medio</span>
+            <span>Alto</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-[#94a3b8]">
+            <span>0.00</span>
+            <span>1.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const renderQrFocusOverlay = () => (
   <div className="pointer-events-none absolute inset-0">
     <div className="absolute inset-6 rounded-[1.75rem] border border-white/10 bg-black/5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" />
@@ -132,7 +220,8 @@ const renderQrFocusOverlay = () => (
   </div>
 );
 
-const FACE_FALLBACK_DELAY_MS = 3500;
+const FACE_CAMERA_RESTART_DELAY_MS = 1200;
+const FACE_MAX_ATTEMPTS = 2;
 const BLOCKED_USER_MESSAGE = 'El usuario se encuentra bloqueado. No se puede registrar el ingreso ni la salida.';
 
 const QRScannerPage = () => {
@@ -142,7 +231,7 @@ const QRScannerPage = () => {
   const [scanMode, setScanMode] = useState('face');
   const audioContextRef = useRef(null);
   const faceFallbackTimeoutRef = useRef(null);
-  const faceFallbackMessageTimeoutRef = useRef(null);
+  const faceAttemptsRef = useRef(0);
 
   const [scanData, setScanData] = useState(null);
   const [error, setError] = useState('');
@@ -155,6 +244,10 @@ const QRScannerPage = () => {
   const [confirmingMovement, setConfirmingMovement] = useState(false);
   const [confirmationError, setConfirmationError] = useState('');
   const [movementNote, setMovementNote] = useState('');
+  const [faceCaptureKey, setFaceCaptureKey] = useState(0);
+  const [faceRetrying, setFaceRetrying] = useState(false);
+  const [faceRetryMessage, setFaceRetryMessage] = useState('');
+  const [faceIdentified, setFaceIdentified] = useState(false);
 
   const resetState = () => {
     setScanData(null);
@@ -175,13 +268,16 @@ const QRScannerPage = () => {
       window.clearTimeout(faceFallbackTimeoutRef.current);
       faceFallbackTimeoutRef.current = null;
     }
-    if (faceFallbackMessageTimeoutRef.current) {
-      window.clearTimeout(faceFallbackMessageTimeoutRef.current);
-      faceFallbackMessageTimeoutRef.current = null;
-    }
   }, []);
 
-  const scheduleQrFallback = useCallback((message) => {
+  const resetFaceAttempts = useCallback(() => {
+    faceAttemptsRef.current = 0;
+    setFaceRetrying(false);
+    setFaceRetryMessage('');
+    setFaceIdentified(false);
+  }, []);
+
+  const restartFaceCapture = useCallback((message) => {
     clearFaceFallback();
     setFeedback({
       type: 'error',
@@ -190,20 +286,52 @@ const QRScannerPage = () => {
     setScanData(null);
     setShowConfirmation(false);
     setConfirmationError('');
+    setFaceRetrying(true);
+    setFaceRetryMessage('Reiniciando camara facial para un nuevo intento...');
 
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      setFaceRetrying(false);
+      setFaceRetryMessage('');
+      setError('');
+      setFaceCaptureKey((prev) => prev + 1);
+      faceFallbackTimeoutRef.current = null;
+    }, FACE_CAMERA_RESTART_DELAY_MS);
+  }, [clearFaceFallback]);
+
+  const fallbackToQrAfterFaceFailure = useCallback((message) => {
+    clearFaceFallback();
+    setFeedback({
+      type: 'error',
+      message,
+    });
+    setScanData(null);
+    setShowConfirmation(false);
+    setConfirmationError('');
+    setFaceRetrying(true);
+    setFaceRetryMessage('Apagando camara facial y preparando el escaneo QR...');
+
+    faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      setFaceRetrying(false);
+      setFaceRetryMessage('');
       setScanMode('qr');
       setCameraActive(true);
       setError('');
       setScannerKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
-    }, FACE_FALLBACK_DELAY_MS);
-
-    faceFallbackMessageTimeoutRef.current = window.setTimeout(() => {
-      setFeedback((current) => (current?.type === 'error' && current?.message === message ? null : current));
-      faceFallbackMessageTimeoutRef.current = null;
-    }, 5000);
+    }, FACE_CAMERA_RESTART_DELAY_MS);
   }, [clearFaceFallback]);
+
+  const handleFaceAttemptFailure = useCallback((message) => {
+    const nextAttempt = faceAttemptsRef.current + 1;
+    faceAttemptsRef.current = nextAttempt;
+
+    if (nextAttempt < FACE_MAX_ATTEMPTS) {
+      restartFaceCapture(`${message} Reiniciando camara facial...`);
+      return;
+    }
+
+    fallbackToQrAfterFaceFailure(`${message} Cambiando a escaneo QR...`);
+  }, [fallbackToQrAfterFaceFailure, restartFaceCapture]);
 
   useEffect(() => {
     return () => {
@@ -264,6 +392,8 @@ const QRScannerPage = () => {
       activeRegistro: extra.activeRegistro || null,
       registro: extra.registro || null,
       score: extra.score,
+      scanMethod: extra.scanMethod || 'qr',
+      faceRecognitionLogId: extra.faceRecognitionLogId || null,
     });
 
     setFeedback({
@@ -356,6 +486,7 @@ const QRScannerPage = () => {
       setValidatedUser(userId, user, message, {
         ...baseData,
         activeRegistro,
+        scanMethod: 'qr',
       });
     } catch (scanError) {
       playBeep('error');
@@ -380,12 +511,13 @@ const QRScannerPage = () => {
   const handleFaceResult = (result) => {
     if (!result?.match || !result?.userId || !result?.user) {
       playBeep('error');
-      scheduleQrFallback('No se encontro una coincidencia facial valida para este rostro. Cambiando a escaneo QR...');
+      handleFaceAttemptFailure('No se encontro una coincidencia facial valida para este rostro.');
       return;
     }
 
     if ((result.user.estado || '').toLowerCase() === 'bloqueado') {
       clearFaceFallback();
+      resetFaceAttempts();
       playBeep('error');
       setScanData(null);
       setShowConfirmation(false);
@@ -398,17 +530,21 @@ const QRScannerPage = () => {
     }
 
     clearFaceFallback();
+    resetFaceAttempts();
+    setFaceIdentified(true);
     setError('');
     setValidatedUser(result.userId, result.user, 'Usuario identificado por reconocimiento facial.', {
       score: result.score,
       scannedAt: new Date().toISOString(),
+      scanMethod: 'face',
+      faceRecognitionLogId: result.faceRecognitionLogId || null,
     });
   };
 
   const handleFaceError = (faceError) => {
     playBeep('error');
     const message = faceError?.details?.message || faceError?.message || 'No fue posible procesar el reconocimiento facial.';
-    scheduleQrFallback(`${message} Cambiando a escaneo QR...`);
+    handleFaceAttemptFailure(message);
   };
 
   const handleReset = async () => {
@@ -423,7 +559,9 @@ const QRScannerPage = () => {
     setCameraActive(true);
     setResetting(true);
     clearFaceFallback();
+    resetFaceAttempts();
     resetState();
+    setFaceCaptureKey((prev) => prev + 1);
     setScannerKey((prev) => prev + 1);
 
     try {
@@ -469,7 +607,11 @@ const QRScannerPage = () => {
       const payload = {
         userId: scanData.userId,
         direction: movementType,
+        scanMethod: scanData.scanMethod || 'qr',
       };
+      if (scanData.faceRecognitionLogId) {
+        payload.faceRecognitionLogId = scanData.faceRecognitionLogId;
+      }
       if (movementNote.trim()) {
         payload.exitObservation = movementNote.trim();
       }
@@ -541,9 +683,11 @@ const QRScannerPage = () => {
                       type="button"
                       onClick={() => {
                         clearFaceFallback();
+                        resetFaceAttempts();
                         setScanMode('face');
                         setCameraActive(false);
                         setError('');
+                        setFaceCaptureKey((prev) => prev + 1);
                       }}
                       className={clsx(
                         'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
@@ -557,6 +701,7 @@ const QRScannerPage = () => {
                       type="button"
                       onClick={() => {
                         clearFaceFallback();
+                        resetFaceAttempts();
                         setScanMode('qr');
                         setCameraActive(true);
                         setError('');
@@ -601,8 +746,26 @@ const QRScannerPage = () => {
                       {renderQrFocusOverlay()}
                     </div>
                   </div>
+                ) : faceRetrying ? (
+                  <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-slate-200 bg-[#0f172a] px-6 text-center text-white/80">
+                    <p className="text-sm font-medium">{faceRetryMessage || 'Procesando camara facial...'}</p>
+                  </div>
+                ) : faceIdentified ? (
+                  <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-slate-200 bg-[#0f172a] px-6 text-center">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">Rostro confirmado</p>
+                      <p className="mt-3 text-xl font-bold text-white">Camara facial apagada</p>
+                      <p className="mt-2 text-sm text-white/70">Usuario identificado correctamente. Continua con la confirmacion del registro.</p>
+                    </div>
+                  </div>
                 ) : (
-                  <FaceCapture mode="identify" onResult={handleFaceResult} onError={handleFaceError} />
+                  <FaceCapture
+                    key={faceCaptureKey}
+                    mode="identify"
+                    enableAutoBlink={true}
+                    onResult={handleFaceResult}
+                    onError={handleFaceError}
+                  />
                 )}
               </div>
 
@@ -698,6 +861,10 @@ const QRScannerPage = () => {
                   </span>
                 )}
               </div>
+
+              {scanData.scanMethod === 'face' && typeof scanData.score === 'number' && (
+                <FacialSimilarityMeter score={scanData.score} threshold={FACE_MATCH_THRESHOLD} />
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 {MOVEMENT_OPTIONS.map((option) => {

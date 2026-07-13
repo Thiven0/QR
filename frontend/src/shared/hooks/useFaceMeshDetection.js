@@ -90,7 +90,13 @@ const drawLandmarks = (context, landmarks, strokeStyle, fillStyle) => {
   }
 };
 
-export const useFaceMeshDetection = ({ videoRef, active = true, captureLocked = false, onBlinkCapture } = {}) => {
+export const useFaceMeshDetection = ({
+  videoRef,
+  active = true,
+  captureLocked = false,
+  onBlinkCapture,
+  autoBlinkOverride,
+} = {}) => {
   const meshCanvasRef = useRef(null);
   const landmarkerRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -110,7 +116,10 @@ export const useFaceMeshDetection = ({ videoRef, active = true, captureLocked = 
   const [blinkDetected, setBlinkDetected] = useState(false);
 
   const meshVisible = readBooleanEnv(import.meta.env.VITE_FACE_CAPTURE_MESH_VISIBLE, true);
-  const autoBlinkEnabled = readBooleanEnv(import.meta.env.VITE_FACE_CAPTURE_AUTO_BLINK, true);
+  const autoBlinkEnabled =
+    autoBlinkOverride !== undefined
+      ? Boolean(autoBlinkOverride)
+      : readBooleanEnv(import.meta.env.VITE_FACE_CAPTURE_AUTO_BLINK, true);
   const blinkThreshold = readNumberEnv(import.meta.env.VITE_FACE_CAPTURE_BLINK_THRESHOLD, 0.2);
   const detectionFps = Math.max(1, readNumberEnv(import.meta.env.VITE_FACE_CAPTURE_DETECTION_FPS, 10));
   const detectionEnabled = active && (meshVisible || autoBlinkEnabled);

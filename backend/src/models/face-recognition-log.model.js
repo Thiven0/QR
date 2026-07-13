@@ -20,6 +20,7 @@ const faceRecognitionLogSchema = new Schema(
     detectionScore: { type: Number, default: null },
     comparedProfiles: { type: Number, default: 0 },
     errorMessage: { type: String, trim: true, default: null },
+    registro: { type: Schema.Types.ObjectId, ref: "Registro", default: null },
   },
   { timestamps: true }
 );
@@ -28,6 +29,7 @@ faceRecognitionLogSchema.index({ createdAt: -1 });
 faceRecognitionLogSchema.index({ status: 1, createdAt: -1 });
 faceRecognitionLogSchema.index({ matchedUser: 1, createdAt: -1 });
 faceRecognitionLogSchema.index({ actor: 1, createdAt: -1 });
+faceRecognitionLogSchema.index({ registro: 1 });
 
 module.exports = {
   FACE_RECOGNITION_STATUSES,

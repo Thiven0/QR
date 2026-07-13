@@ -984,6 +984,7 @@ const RegisterGuard = () => {
 
               <FaceCapture
                 mode="capture"
+                enableAutoBlink={false}
                 onResult={handleFaceCaptureSuccess}
                 onError={handleFaceCaptureError}
                 onCancel={() => setShowFaceCaptureModal(false)}

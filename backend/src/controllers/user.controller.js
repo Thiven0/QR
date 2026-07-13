@@ -195,12 +195,15 @@ const buildUserPayload = (payload) => {
     facultad: payload.facultad,
     telefono: payload.telefono,
     imagen: payload.imagen,
-    imagenQR: payload.imagenQR,
+    imagenQR: payload.imagenQR || undefined,
     rolAcademico: payload.rolAcademico || payload.rol,
     permisoSistema: normalizePermiso(payload.permisoSistema || payload.permiso_sistema),
     estado: normalizeEstado(payload.estado),
     faceDescriptor: faceDescriptor?.length ? faceDescriptor : undefined,
-    faceRegistered: payload.faceRegistered === true || payload.faceRegistered === "true",
+    faceRegistered:
+      Object.prototype.hasOwnProperty.call(payload || {}, "faceRegistered")
+        ? payload.faceRegistered === true || payload.faceRegistered === "true"
+        : undefined,
     faceDescriptorUpdatedAt: payload.faceDescriptorUpdatedAt,
     documentIdentity: payload.documentIdentity,
     dataConsent: payload.dataConsent,
@@ -804,7 +807,7 @@ const updateUser = async (req, res) => {
       delete payload.password;
     }
 
-    Object.assign(user, payload);
+    user.set(payload);
     await user.save();
 
     const { password, ...userWithoutPassword } = user.toObject();

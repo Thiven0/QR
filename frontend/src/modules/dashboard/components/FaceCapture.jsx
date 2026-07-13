@@ -8,7 +8,7 @@ import useAuth from '../../auth/hooks/useAuth';
 
 const getErrorMessage = (error, fallback) => error?.details?.message || error?.message || fallback;
 
-const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel }) => {
+const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, enableAutoBlink, enrollOptions }) => {
   const { token } = useAuth();
   const [capturing, setCapturing] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -37,7 +37,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel })
       const response = await apiRequest(mode === 'identify' ? '/face/identify' : '/face/enroll', {
         method: 'POST',
         token,
-        data: mode === 'identify' ? { image } : { userId, image },
+        data: mode === 'identify' ? { image } : { userId, image, ...(enrollOptions || {}) },
       });
 
       const data = response?.data || response;
@@ -53,7 +53,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel })
       setCapturing(false);
       setProcessing(false);
     }
-  }, [cameraChecking, cameraOpen, captureImage, capturing, mode, onError, onResult, processing, setCameraError, token, userId]);
+  }, [cameraChecking, cameraOpen, captureImage, capturing, enrollOptions, mode, onError, onResult, processing, setCameraError, token, userId]);
 
   const {
     meshCanvasRef,
@@ -69,6 +69,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel })
     active: cameraOpen && !cameraChecking,
     captureLocked: capturing || processing,
     onBlinkCapture: handleCapture,
+    autoBlinkOverride: enableAutoBlink,
   });
 
   const handleRetryCamera = async () => {

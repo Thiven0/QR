@@ -78,13 +78,14 @@ const buildDateLabel = (value) => {
 
 const createFaceRecognitionLog = async (payload) => {
   try {
-    await FaceRecognitionLog.create(payload);
+    return await FaceRecognitionLog.create(payload);
   } catch (error) {
     logger.warn("No fue posible persistir el intento de reconocimiento facial", {
       error: error.message,
       payloadStatus: payload?.status,
       actorId: payload?.actor,
     });
+    return null;
   }
 };
 
@@ -125,7 +126,9 @@ const enrollFace = async (req, res) => {
       });
     }
 
-    if (user.faceRegistered) {
+    const forceReEnroll = req.body?.force === true || req.body?.force === "true";
+
+    if (user.faceRegistered && !forceReEnroll) {
       return res.status(409).json({
         status: "error",
         message: "El usuario ya tiene un rostro registrado",
@@ -156,7 +159,7 @@ const enrollFace = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "Rostro registrado correctamente",
+      message: forceReEnroll ? "Rostro actualizado correctamente" : "Rostro registrado correctamente",
       data: {
         user: sanitizeUser(updatedUser),
         embeddingDimensions: extraction.embedding_dimensions,
@@ -187,7 +190,7 @@ const identifyFace = async (req, res) => {
       .select("+faceDescriptor nombre apellido email cedula facultad telefono imagen permisoSistema rolAcademico estado faceRegistered faceDescriptorUpdatedAt");
 
     if (!users.length) {
-      await createFaceRecognitionLog({
+      const faceRecognitionLog = await createFaceRecognitionLog({
         actor: req.user?.id || null,
         matchedUser: null,
         status: "unmatched",
@@ -208,6 +211,7 @@ const identifyFace = async (req, res) => {
           match: false,
           user: null,
           userId: null,
+          faceRecognitionLogId: faceRecognitionLog ? String(faceRecognitionLog._id) : null,
           score: null,
           threshold: FACE_MATCH_THRESHOLD,
           detectionScore: extraction.detection_score,
@@ -229,7 +233,7 @@ const identifyFace = async (req, res) => {
 
     const matched = Boolean(bestMatch && bestMatch.score >= FACE_MATCH_THRESHOLD);
 
-    await createFaceRecognitionLog({
+    const faceRecognitionLog = await createFaceRecognitionLog({
       actor: req.user?.id || null,
       matchedUser: matched ? bestMatch.user._id : null,
       status: matched ? "matched" : "unmatched",
@@ -257,6 +261,7 @@ const identifyFace = async (req, res) => {
         match: matched,
         user: matched ? sanitizeUser(bestMatch.user) : null,
         userId: matched ? String(bestMatch.user._id) : null,
+        faceRecognitionLogId: faceRecognitionLog ? String(faceRecognitionLog._id) : null,
         score: bestMatch ? Number(bestMatch.score.toFixed(6)) : null,
         threshold: FACE_MATCH_THRESHOLD,
         detectionScore: extraction.detection_score,

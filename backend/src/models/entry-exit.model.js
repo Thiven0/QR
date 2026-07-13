@@ -15,6 +15,16 @@ const RegistroSchema = new Schema(
 
     // Duración total de la sesión en formato HH:mm
     duracionSesion: { type: String },
+    scanMethod: {
+      type: String,
+      enum: ["manual", "qr", "face"],
+      default: "manual",
+    },
+    faceRecognitionLog: {
+      type: Schema.Types.ObjectId,
+      ref: "FaceRecognitionLog",
+      default: null,
+    },
     cierreForzado: { type: Boolean, default: false },
     cierreMotivo: { type: String, trim: true },
     observaciones: { type: String, trim: true },
