@@ -34,6 +34,7 @@ const RegisterForm = ({
   onSubmit,
   errors = {},
   onFieldChange = () => {},
+  onValuesChange = () => {},
   initialValues = {},
   disabledFields = [],
   enablePassword = false,
@@ -89,6 +90,10 @@ const RegisterForm = ({
       };
     });
   }, [externalValues]);
+
+  useEffect(() => {
+    onValuesChange(formData);
+  }, [formData, onValuesChange]);
 
   const isDisabled = (field) => disabledFields.includes(field);
 

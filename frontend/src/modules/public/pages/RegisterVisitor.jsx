@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { useNavigate } from 'react-router-dom';
 import RegisterForm from '../../dashboard/components/RegisterUserForm';
+import FaceCapture from '../../dashboard/components/FaceCapture';
 import { apiRequest } from '../../../services/apiClient';
-import useAuth from '../../auth/hooks/useAuth';
 
 const validateVisitor = (formData) => {
   const errors = {};
@@ -43,8 +42,11 @@ const validateVisitor = (formData) => {
   return errors;
 };
 
-const DATA_TREATMENT_URL = 'https://drive.google.com/file/d/1JtSP0Fa19TKU0kzNwhDqC6BQIe2c_JK8/view';
 const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024;
+const FACE_STATUS = {
+  IDLE: 'idle',
+  READY: 'ready',
+};
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -96,8 +98,6 @@ const sanitizeMetadataForSubmission = (formValues, metadata) => {
 };
 
 const RegisterVisitor = () => {
-  const { establishSession } = useAuth();
-  const navigate = useNavigate();
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [documentImage, setDocumentImage] = useState('');
@@ -105,11 +105,18 @@ const RegisterVisitor = () => {
   const [documentOcrError, setDocumentOcrError] = useState('');
   const [documentLoading, setDocumentLoading] = useState(false);
   const [formOverrides, setFormOverrides] = useState(null);
-  const [dataConsentAccepted, setDataConsentAccepted] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraCapturing, setCameraCapturing] = useState(false);
   const [cameraChecking, setCameraChecking] = useState(false);
+  const [showFaceCaptureModal, setShowFaceCaptureModal] = useState(false);
+  const [faceCaptureStatus, setFaceCaptureStatus] = useState(FACE_STATUS.IDLE);
+  const [faceFeedback, setFaceFeedback] = useState('');
+  const [formSnapshot, setFormSnapshot] = useState(null);
+  const [qrPreview, setQrPreview] = useState('');
+  const [qrError, setQrError] = useState('');
+  const [successPayload, setSuccessPayload] = useState(null);
+  const [formKey, setFormKey] = useState(0);
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
 
@@ -137,6 +144,8 @@ const RegisterVisitor = () => {
   const resetDocumentFeedback = () => {
     setDocumentOcrError('');
   };
+
+  const clearSuccessState = () => setSuccessPayload(null);
 
   const stopCameraStream = () => {
     const stream = cameraStreamRef.current;
@@ -218,6 +227,7 @@ const RegisterVisitor = () => {
       setDocumentImage(dataUrl);
       setDocumentMetadata(null);
       setFormOverrides(null);
+      clearSuccessState();
       resetDocumentFeedback();
       handleFieldChange('documentImage');
       handleCloseCamera();
@@ -265,6 +275,7 @@ const RegisterVisitor = () => {
       setDocumentMetadata(null);
       resetDocumentFeedback();
       setFormOverrides(null);
+      clearSuccessState();
       handleFieldChange('documentImage');
     } catch (error) {
       setErrors((prev) => ({
@@ -279,6 +290,7 @@ const RegisterVisitor = () => {
     setDocumentMetadata(null);
     resetDocumentFeedback();
     handleFieldChange('documentImage');
+    clearSuccessState();
   };
 
   const handleExtractDocumentData = async () => {
@@ -317,6 +329,54 @@ const RegisterVisitor = () => {
     }
   };
 
+  useEffect(() => {
+    if (!formSnapshot) {
+      setQrPreview('');
+      return undefined;
+    }
+
+    const requiredFields = [formSnapshot.nombre, formSnapshot.cedula, formSnapshot.rh, formSnapshot.telefono, formSnapshot.facultad];
+    if (requiredFields.some((value) => !String(value || '').trim())) {
+      setQrPreview('');
+      setQrError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const syncQrPreview = async () => {
+      try {
+        const dataUrl = await generateQrImage(formSnapshot);
+        if (!cancelled) {
+          setQrError('');
+          setQrPreview(dataUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setQrPreview('');
+          setQrError('No fue posible generar el codigo QR automaticamente.');
+        }
+      }
+    };
+
+    syncQrPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formSnapshot]);
+
+  useEffect(() => {
+    if (!formSnapshot?.imagen) {
+      setFaceCaptureStatus(FACE_STATUS.IDLE);
+      setFaceFeedback('');
+      return;
+    }
+
+    setFaceCaptureStatus(FACE_STATUS.READY);
+    setFaceFeedback('La foto de perfil quedo lista. Se intentara generar el embedding facial al guardar la visita.');
+  }, [formSnapshot?.imagen]);
+
   const handleSubmit = async (formData) => {
     if (submitting) return;
 
@@ -328,8 +388,8 @@ const RegisterVisitor = () => {
       combinedErrors.documentImage = 'Debes adjuntar la foto de tu cedula.';
     }
 
-    if (!dataConsentAccepted) {
-      combinedErrors.dataConsent = 'Debes aceptar el tratamiento de datos personales.';
+    if (!formData.imagen) {
+      combinedErrors.imagen = 'La foto de perfil es obligatoria para registrar el rostro.';
     }
 
     if (Object.keys(combinedErrors).length) {
@@ -368,12 +428,9 @@ const RegisterVisitor = () => {
         password: payloadData.password,
         imagen: payloadData.imagen,
         imagenQR: payloadData.imagenQR,
+        faceImage: payloadData.imagen,
         documentImage,
         documentMetadata: Object.keys(metadataPayload).length ? metadataPayload : undefined,
-        dataConsent: {
-          accepted: true,
-          documentUrl: DATA_TREATMENT_URL,
-        },
       };
 
       if (!payload.documentMetadata) {
@@ -385,13 +442,18 @@ const RegisterVisitor = () => {
         data: payload,
       });
 
-      establishSession({
-        user: response.user,
-        token: response.token,
-        ticket: response.ticket || null,
-      });
-
-      navigate('/dashboard');
+      setSuccessPayload(response);
+      setErrors({});
+      setDocumentImage('');
+      setDocumentMetadata(null);
+      setDocumentOcrError('');
+      setFormOverrides(null);
+      setFaceCaptureStatus(FACE_STATUS.IDLE);
+      setFaceFeedback(response?.faceRegistration?.message || 'Visita registrada correctamente.');
+      setQrPreview('');
+      setQrError('');
+      setFormSnapshot(null);
+      setFormKey((prev) => prev + 1);
     } catch (error) {
       const apiErrors = error.details?.errors;
       if (apiErrors) {
@@ -407,6 +469,7 @@ const RegisterVisitor = () => {
   };
 
   const handleFieldChange = (field) => {
+    clearSuccessState();
     setErrors((prev) => {
       if (!prev[field] && !prev.general) return prev;
       const next = { ...prev };
@@ -416,9 +479,23 @@ const RegisterVisitor = () => {
     });
   };
 
-  const handleConsentToggle = (event) => {
-    setDataConsentAccepted(event.target.checked);
-    handleFieldChange('dataConsent');
+  const handleFaceCaptureSuccess = ({ image }) => {
+    if (!image) {
+      setFaceCaptureStatus(FACE_STATUS.IDLE);
+      setFaceFeedback('No fue posible conservar la captura del rostro.');
+      return;
+    }
+
+    setFormOverrides((prev) => ({ ...(prev || {}), imagen: image }));
+    setShowFaceCaptureModal(false);
+    setFaceCaptureStatus(FACE_STATUS.READY);
+    setFaceFeedback('Foto facial capturada. Se usara como perfil y para intentar registrar el embedding.');
+    handleFieldChange('imagen');
+  };
+
+  const handleFaceCaptureError = (error) => {
+    setFaceCaptureStatus(FACE_STATUS.IDLE);
+    setFaceFeedback(error?.message || 'No fue posible capturar el rostro.');
   };
 
   return (
@@ -442,11 +519,20 @@ const RegisterVisitor = () => {
                 </div>
               )}
 
+              {successPayload?.message && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  {successPayload.message}
+                  {successPayload?.warnings?.[0] ? ` ${successPayload.warnings[0]}` : ''}
+                </div>
+              )}
+
               <RegisterForm
+                key={formKey}
                 onSubmit={handleSubmit}
                 errors={errors}
                 onFieldChange={handleFieldChange}
-                initialValues={{ rol: 'Usuario' }}
+                onValuesChange={setFormSnapshot}
+                initialValues={{ rol: 'Visitante' }}
                 disabledFields={['rol']}
                 enablePassword
                 submitLabel={submitting ? 'Registrando...' : 'Registrar visita'}
@@ -562,28 +648,29 @@ const RegisterVisitor = () => {
                 </section>
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <label className="flex items-start gap-3 text-sm text-[#0f172a]">
-                    <input
-                      type="checkbox"
-                      checked={dataConsentAccepted}
-                      onChange={handleConsentToggle}
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0f766e] focus:ring-[#0f766e]"
-                    />
-                    <span>
-                      Acepto el{' '}
-                      <a
-                        href={DATA_TREATMENT_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold text-[#0f766e] underline hover:text-[#0c5f58]"
-                      >
-                        tratamiento de datos personales
-                      </a>{' '}
-                      y autorizo el almacenamiento de la foto de mi documento de identidad.
-                    </span>
-                  </label>
-                  {errors.dataConsent && (
-                    <p className="mt-2 text-xs font-medium text-[#b45309]">{errors.dataConsent}</p>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0f766e]">Rostro del visitante</p>
+                      <p className="mt-1 text-sm text-[#0f172a]">
+                        Toma una foto frontal para usarla como perfil e intentar generar el embedding facial del visitante.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowFaceCaptureModal(true)}
+                      className="inline-flex items-center justify-center rounded-lg border border-[#B5A160]/40 bg-[#fffaf0] px-4 py-2 text-sm font-semibold text-[#8c7030] transition hover:bg-[#B5A160]/10"
+                    >
+                      Tomar rostro con camara
+                    </button>
+                  </div>
+                  {faceFeedback && (
+                    <div className={`mt-4 rounded-lg px-3 py-2 text-xs font-semibold ${
+                      faceCaptureStatus === FACE_STATUS.READY
+                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border border-slate-200 bg-slate-50 text-[#475569]'
+                    }`}>
+                      {faceFeedback}
+                    </div>
                   )}
                 </section>
               </RegisterForm>
@@ -594,17 +681,84 @@ const RegisterVisitor = () => {
             <div>
               <h2 className="text-xl font-semibold text-[#0f172a]">Ticket temporal</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                Al completar el registro se iniciara sesion automaticamente. Tu ticket temporal tendra una vigencia limitada;
-                cuando expire, deberas registrar una nueva visita.
+                Al completar el registro se generara un ticket temporal de acceso. No se iniciara sesion automaticamente y el ticket tendra una vigencia limitada.
               </p>
             </div>
             <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 px-4 py-4 text-sm text-[#00594e]">
-              Manten tus credenciales a la mano. Si el ticket expira se cerrara tu sesion automaticamente y tu estado pasara a inactivo.
+              Guarda tus credenciales y el identificador de visita. Si el ticket expira, el visitante quedara inactivo hasta que un administrador reactive o cree una nueva visita.
             </div>
+
+            <div className="space-y-4 rounded-xl border border-dashed border-[#B5A160]/30 bg-[#fffaf0] p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#8c7030]">Preview del QR</p>
+                <p className="mt-2 text-sm text-[#475569]">
+                  El codigo QR se genera automaticamente con los datos del formulario y quedara asociado a la visita.
+                </p>
+              </div>
+
+              {qrPreview ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-[#B5A160]/30 bg-white p-3">
+                  <img src={qrPreview} alt="Preview QR" className="h-20 w-20 rounded-xl object-contain shadow-sm" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#0f172a]">QR listo</p>
+                    <p className="mt-1 text-xs text-[#64748b]">Se guardara con la visita para escaneo y carnet.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-[#B5A160]/30 bg-white px-4 py-3 text-sm text-[#64748b]">
+                  Completa nombre, cedula, RH, telefono y facultad para generar el preview del QR.
+                </div>
+              )}
+
+              {qrError && (
+                <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
+                  {qrError}
+                </div>
+              )}
+            </div>
+
+            {successPayload?.ticket && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">Ticket generado</p>
+                <p className="mt-2 font-semibold">Token: {successPayload.ticket.token}</p>
+                <p className="mt-1">Expira: {new Date(successPayload.ticket.expiresAt).toLocaleString('es-CO')}</p>
+              </div>
+            )}
           </aside>
         </div>
       </div>  
       </section>
+
+      {showFaceCaptureModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4" onClick={() => setShowFaceCaptureModal(false)}>
+          <div className="w-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#B5A160]">Captura facial</p>
+                  <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Captura el rostro del visitante</h3>
+                  <p className="mt-2 text-sm text-[#475569]">Toma una imagen nitida con un solo rostro. Se usara como foto de perfil y para intentar registrar el embedding facial.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFaceCaptureModal(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <FaceCapture
+                mode="capture"
+                enableAutoBlink={false}
+                onResult={handleFaceCaptureSuccess}
+                onError={handleFaceCaptureError}
+                onCancel={() => setShowFaceCaptureModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {cameraOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
