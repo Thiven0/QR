@@ -828,7 +828,7 @@ const QRScannerPage = () => {
               setConfirmationError('');
             }}
           />
-          <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white p-6 shadow-2xl">
             <button
               type="button"
               onClick={() => {
@@ -840,7 +840,8 @@ const QRScannerPage = () => {
             >
               &times;
             </button>
-            <div className="space-y-4">
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Confirmar registro</p>
                 <h3 className="text-2xl font-bold text-[#0f172a]">Selecciona el movimiento</h3>
@@ -893,7 +894,7 @@ const QRScannerPage = () => {
                 })}
               </div>
 
-              <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4">
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4 sm:max-h-72">
                 {renderUserDetails(scanData.user)}
               </div>
 
@@ -921,27 +922,27 @@ const QRScannerPage = () => {
                   {confirmationError}
                 </div>
               )}
+            </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowConfirmation(false);
-                    setConfirmationError('');
-                  }}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMovement}
-                  disabled={confirmingMovement}
-                  className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
-                >
-                  {confirmingMovement ? 'Registrando...' : 'Confirmar registro'}
-                </button>
-              </div>
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmation(false);
+                  setConfirmationError('');
+                }}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMovement}
+                disabled={confirmingMovement}
+                className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
+              >
+                {confirmingMovement ? 'Registrando...' : 'Confirmar registro'}
+              </button>
             </div>
           </div>
         </div>
