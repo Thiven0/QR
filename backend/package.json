@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "evaluate:face": "node scripts/evaluate-face.js"
+    "evaluate:face": "node scripts/evaluate-face.js",
+    "visualize:embedding": "node evaluation/embedding-visualizer/generate-embedding-plot.js",
+    "visualize:embedding-map": "node evaluation/embedding-visualizer/generate-embedding-map.js"
   },
   "author": "Harold Gutierrez Orduz",
   "license": "MIT",

@@ -100,7 +100,7 @@ Plataforma web full-stack para controlar accesos mediante códigos QR y reconoci
 
 ## Documentación
 
-Consulta la carpeta [`docs/`](docs) para la arquitectura detallada, colecciones de Postman y ejemplos de `.env` actualizados.
+Consulta la carpeta [`docs/`](docs) para la arquitectura detallada, colecciones de Postman, pendientes tecnicos (`TODO.md`) y ejemplos de `.env` actualizados.
 
 ## Licencia
 
