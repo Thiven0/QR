@@ -37,17 +37,22 @@ Plataforma web full-stack para controlar accesos mediante códigos QR y reconoci
    ```
 
 2. **Backend**
-   ```bash
-   cd backend
-   npm install
-   cp .env.example .env   # ajusta MongoDB, JWT, etc.
-    npm run dev
+    ```bash
+    cd backend
+    npm install
+    cp .env.example .env   # ajusta MongoDB, JWT, etc.
+     npm run dev
     ```
     - API base: `http://localhost:3000/api`
+    - `MONGODB_URI` local por defecto: `mongodb://localhost:27017/universidad`
+    - Los archivos subidos se guardan localmente en `backend/uploads/` (configurable con `UPLOAD_DIR`).
+    - Si vienes de MongoDB Atlas, basta con reemplazar `MONGODB_URI` en `backend/.env`; el código no depende de features exclusivas de Atlas.
+    - Para crear el primer administrador en una base vacia: `npm run seed:admin`
     - Variables adicionales recomendadas:
       - `FACE_SERVICE_URL`: URL base del microservicio facial (`http://127.0.0.1:8000` por defecto)
       - `FACE_SERVICE_TIMEOUT_MS`: timeout hacia el microservicio (30000 por defecto)
       - `FACE_MATCH_THRESHOLD`: umbral de similitud coseno para matching facial (0.5 por defecto)
+      - `UPLOAD_DIR`: carpeta local donde se almacenan imagenes (`uploads` por defecto dentro de `backend/`)
     - Rutas destacadas: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/face`
 
 3. **Face Service**

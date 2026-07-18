@@ -4,7 +4,7 @@ import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
 import useAuth from '../../auth/hooks/useAuth';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, resolveAssetUrl } from '../../../services/apiClient';
 import FaceCapture from './FaceCapture';
 
 const MOVEMENT_OPTIONS = [
@@ -49,7 +49,7 @@ const renderUserDetails = (user) => {
       {user.imagen && (
         <div className="flex items-center gap-4">
           <img
-            src={user.imagen}
+            src={resolveAssetUrl(user.imagen)}
             alt={user.nombre ? `Foto de ${user.nombre}` : 'Foto del usuario'}
             className="h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm"
           />
@@ -65,7 +65,7 @@ const renderUserDetails = (user) => {
       {documentIdentity?.photo && (
         <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:flex-row">
           <img
-            src={documentIdentity.photo}
+            src={resolveAssetUrl(documentIdentity.photo)}
             alt={user.nombre ? `Documento de ${user.nombre}` : 'Documento escaneado'}
             className="h-24 w-36 rounded-lg border border-slate-200 object-cover"
           />

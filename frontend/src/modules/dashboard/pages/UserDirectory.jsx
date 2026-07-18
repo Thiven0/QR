@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, resolveAssetUrl, uploadImageSource } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 import FaceCapture from '../components/FaceCapture';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
@@ -159,8 +159,8 @@ const DEFAULT_USERS_PAGE_SIZE = 10;
 
 const resolveUserImage = (user) => {
   if (!user) return '';
-  if (user.imagenThumbnail) return user.imagenThumbnail;
-  if (user.imagen) return user.imagen;
+  if (user.imagenThumbnail) return resolveAssetUrl(user.imagenThumbnail);
+  if (user.imagen) return resolveAssetUrl(user.imagen);
   const fallbackName = encodeURIComponent(user.nombre || 'Usuario');
   return `https://ui-avatars.com/api/?background=00594e&color=fff&name=${fallbackName}`;
 };
@@ -404,7 +404,7 @@ const UserDirectory = () => {
   const isViewUserBlocked = viewUserEstado === 'bloqueado';
   const isViewToggling = viewUserToggleId ? togglingAccessId === viewUserToggleId : false;
   const viewDocumentData = viewUser?.documentIdentity?.extractedData || {};
-  const viewDocumentPhoto = viewUser?.documentIdentity?.photo || '';
+  const viewDocumentPhoto = resolveAssetUrl(viewUser?.documentIdentity?.photo || '');
   const viewDocumentBirthDate = viewDocumentData.fechaNacimiento
     ? formatShortDate(viewDocumentData.fechaNacimiento) || viewDocumentData.fechaNacimiento
     : null;
@@ -449,7 +449,7 @@ const UserDirectory = () => {
 
   const openImagePreview = (src, alt = 'Imagen seleccionada') => {
     if (!src) return;
-    setImagePreview({ src, alt });
+    setImagePreview({ src: resolveAssetUrl(src), alt });
   };
 
   const closeImagePreview = () => setImagePreview(null);
@@ -675,7 +675,16 @@ const UserDirectory = () => {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const buildUpdatePayload = () => {
+  const buildUpdatePayload = async () => {
+    const uploadedProfileImage = await uploadImageSource('profile', editForm.imagen, {
+      token,
+      fileName: `${editForm.cedula || editForm.nombre || 'usuario'}-perfil.jpg`,
+    });
+    const uploadedQrImage = await uploadImageSource('qr', editForm.imagenQR, {
+      token,
+      fileName: `${editForm.cedula || editForm.nombre || 'usuario'}-qr.png`,
+    });
+
     const payload = {
       cedula: editForm.cedula.trim(),
       nombre: editForm.nombre.trim(),
@@ -684,8 +693,8 @@ const UserDirectory = () => {
       RH: editForm.RH.trim().toUpperCase(),
       facultad: editForm.facultad.trim(),
       telefono: editForm.telefono.trim(),
-      imagen: editForm.imagen,
-      imagenQR: editForm.imagenQR,
+      imagen: uploadedProfileImage,
+      imagenQR: uploadedQrImage,
       rolAcademico: editForm.rolAcademico.trim(),
       permisoSistema: editForm.permisoSistema,
       estado: editForm.estado,
@@ -707,7 +716,7 @@ const UserDirectory = () => {
     setFeedback('');
 
     try {
-      const payload = buildUpdatePayload();
+      const payload = await buildUpdatePayload();
       const response = await apiRequest(`/users/${editUserId}`, {
         method: 'PUT',
         token,
@@ -1622,7 +1631,7 @@ const UserDirectory = () => {
                     </label>
                     {editForm.imagen && (
                       <>
-                        <img src={editForm.imagen} alt="Preview perfil" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <img src={resolveAssetUrl(editForm.imagen)} alt="Preview perfil" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
                         <button
                           type="button"
                           onClick={() => removeImageField('imagen')}
@@ -1662,7 +1671,7 @@ const UserDirectory = () => {
                     </button>
                     {editForm.imagenQR && (
                       <>
-                        <img src={editForm.imagenQR} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <img src={resolveAssetUrl(editForm.imagenQR)} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
                         <button
                           type="button"
                           onClick={() => removeImageField('imagenQR')}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import RegisterForm from '../components/RegisterUserForm';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, uploadImageSource } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 
 const validate = (formData) => {
@@ -35,6 +35,15 @@ const RegisterUser = () => {
     }
 
     try {
+      const uploadedProfileImage = await uploadImageSource('profile', formData.imagen, {
+        token,
+        fileName: `${formData.cedula || formData.nombre || 'usuario'}-perfil.jpg`,
+      });
+      const uploadedQrImage = await uploadImageSource('qr', formData.imagenQR, {
+        token,
+        fileName: `${formData.cedula || formData.nombre || 'usuario'}-qr.png`,
+      });
+
       const payload = {
         cedula: formData.cedula,
         nombre: formData.nombre,
@@ -43,8 +52,9 @@ const RegisterUser = () => {
         facultad: formData.facultad,
         telefono: formData.telefono,
         email: formData.correo,
-        imagen: formData.imagen,
-        imagenQR: formData.imagenQR,
+        imagen: uploadedProfileImage,
+        imagenQR: uploadedQrImage,
+        faceImage: formData.imagen,
         rolAcademico: formData.rol,
         estado: formData.estado ? formData.estado.toLowerCase() : 'inactivo',
         permisoSistema: 'Usuario',

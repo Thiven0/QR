@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { resolveAssetUrl } from '../../../services/apiClient';
 
 const carreras = [
   "Administracion de Empresas",
@@ -307,7 +308,7 @@ const RegisterForm = ({
           </label>
           <input id="imagen" type="file" accept="image/*" onChange={handleChange} className="hidden" />
           {formData.imagen && (
-            <img src={formData.imagen} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
+            <img src={resolveAssetUrl(formData.imagen)} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
           )}
           {errors.imagen && (
             <p className="text-xs font-medium text-[#b45309]">{errors.imagen}</p>
@@ -327,7 +328,7 @@ const RegisterForm = ({
             </label>
             <input id="imagenQR" type="file" accept="image/*" onChange={handleChange} className="hidden" />
             {formData.imagenQR && (
-              <img src={formData.imagenQR} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
+              <img src={resolveAssetUrl(formData.imagenQR)} alt="preview" className="h-20 w-20 rounded-lg object-cover shadow-sm" />
             )}
             {errors.imagenQR && (
               <p className="text-xs font-medium text-[#b45309]">{errors.imagenQR}</p>

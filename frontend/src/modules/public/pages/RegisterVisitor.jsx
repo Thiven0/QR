@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import RegisterForm from '../../dashboard/components/RegisterUserForm';
 import FaceCapture from '../../dashboard/components/FaceCapture';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, uploadImageSource } from '../../../services/apiClient';
 
 const validateVisitor = (formData) => {
   const errors = {};
@@ -410,9 +410,20 @@ const RegisterVisitor = () => {
     }
 
     try {
+      const uploadedProfileImage = await uploadImageSource('profile', formData.imagen, {
+        fileName: `${formData.cedula || formData.nombre || 'visitante'}-perfil.jpg`,
+      });
+      const uploadedQrImage = await uploadImageSource('qr', qrImage, {
+        fileName: `${formData.cedula || formData.nombre || 'visitante'}-qr.png`,
+      });
+      const uploadedDocumentImage = await uploadImageSource('document', documentImage, {
+        fileName: `${formData.cedula || formData.nombre || 'visitante'}-documento.jpg`,
+      });
+
       const payloadData = {
         ...formData,
-        imagenQR: qrImage,
+        imagen: uploadedProfileImage,
+        imagenQR: uploadedQrImage,
       };
 
       const metadataPayload = sanitizeMetadataForSubmission(payloadData, documentMetadata || {});
@@ -428,8 +439,8 @@ const RegisterVisitor = () => {
         password: payloadData.password,
         imagen: payloadData.imagen,
         imagenQR: payloadData.imagenQR,
-        faceImage: payloadData.imagen,
-        documentImage,
+        faceImage: formData.imagen,
+        documentImage: uploadedDocumentImage,
         documentMetadata: Object.keys(metadataPayload).length ? metadataPayload : undefined,
       };
 

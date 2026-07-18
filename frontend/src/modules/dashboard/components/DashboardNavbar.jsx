@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { NavLink, useNavigate } from 'react-router-dom';
 import useAuth from '../../auth/hooks/useAuth';
+import { resolveAssetUrl } from '../../../services/apiClient';
 import escudoBlanco from '../../../img/escudo_blanco.png';
 import defaultProfile from '../../../img/profileDefault.jpg';
 import escudoColor from '../../../img/escudo.png';
@@ -136,7 +137,7 @@ const DashboardNavbar = () => {
   const theme = useMemo(() => ROLE_THEMES[role] ?? ROLE_THEMES.default, [role]);
 
   const logoSrc = role === 'Usuario' || !role ? escudoColor : escudoBlanco;
-  const avatarImage = user?.imagen || (role === 'Usuario' || !role ? escudoColor : defaultProfile);
+  const avatarImage = resolveAssetUrl(user?.imagen) || (role === 'Usuario' || !role ? escudoColor : defaultProfile);
 
   const navbarClasses = clsx('fixed top-0 z-40 w-full shadow-xl', 'transition-colors', 'duration-200', theme.shell);
   const avatarButtonClasses = clsx(

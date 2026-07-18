@@ -4,7 +4,7 @@ import QrScanner from 'react-qr-scanner';
 import Input from '../../../shared/components/Input';
 import FaceCapture from '../components/FaceCapture';
 import { useForm } from '../../../shared/hooks/useForm';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, resolveAssetUrl, uploadImageSource } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 
 const PERMISOS_SISTEMA = ['Administrador', 'Celador', 'Usuario'];
@@ -411,7 +411,7 @@ const RegisterGuard = () => {
     }
   };
 
-  const buildPayload = () => ({
+  const buildPayload = ({ profileImage, qrImage }) => ({
     cedula: form.cedula.trim(),
     nombre: form.nombre.trim(),
     apellido: form.apellido.trim(),
@@ -420,8 +420,8 @@ const RegisterGuard = () => {
     RH: form.RH.trim().toUpperCase(),
     facultad: form.facultad.trim(),
     telefono: form.telefono.trim(),
-    imagen: form.imagen,
-    imagenQR: form.imagenQR,
+    imagen: profileImage,
+    imagenQR: qrImage,
     faceImage: form.imagen,
     faceDescriptor,
     rolAcademico: form.rolAcademico.trim(),
@@ -455,10 +455,19 @@ const RegisterGuard = () => {
     }
 
     try {
+      const uploadedProfileImage = await uploadImageSource('profile', form.imagen, {
+        token,
+        fileName: `${form.cedula || form.nombre || 'usuario'}-perfil.jpg`,
+      });
+      const uploadedQrImage = await uploadImageSource('qr', form.imagenQR, {
+        token,
+        fileName: `${form.cedula || form.nombre || 'usuario'}-qr.png`,
+      });
+
       const response = await apiRequest('/users', {
         method: 'POST',
         token,
-        data: buildPayload(),
+        data: buildPayload({ profileImage: uploadedProfileImage, qrImage: uploadedQrImage }),
       });
 
       const generatedPasswordMessage = response?.generatedPassword
@@ -1026,7 +1035,7 @@ const RegisterGuard = () => {
                   <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
                     {form.imagen && (
                       <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <img src={form.imagen} alt="Preview perfil" className="h-20 w-20 rounded-xl object-cover shadow-sm" />
+                        <img src={resolveAssetUrl(form.imagen)} alt="Preview perfil" className="h-20 w-20 rounded-xl object-cover shadow-sm" />
                         <div className="flex-1">
                           <p className="text-sm font-semibold text-[#0f172a]">Foto lista</p>
                           <p className="mt-1 text-xs text-[#64748b]">
@@ -1135,7 +1144,7 @@ const RegisterGuard = () => {
 
               {form.imagenQR ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-[#B5A160]/30 bg-white p-3">
-                  <img src={form.imagenQR} alt="Preview QR" className="h-20 w-20 rounded-xl object-contain shadow-sm" />
+                  <img src={resolveAssetUrl(form.imagenQR)} alt="Preview QR" className="h-20 w-20 rounded-xl object-contain shadow-sm" />
                   <div>
                     <p className="text-sm font-semibold text-[#0f172a]">QR listo</p>
                     <p className="mt-1 text-xs text-[#64748b]">
