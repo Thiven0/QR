@@ -2,20 +2,17 @@ const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { User } = require("../models/user.model");
 const VisitorTicket = require("../models/visitor-ticket.model");
-const { createToken } = require("../services/token.service");
+const { extractEmbedding } = require("../services/face.service");
 const { serializeVisitorTicket } = require("../utils/visitorTicket");
 const Registro = require("../models/entry-exit.model");
-const { Vehicle } = require("../models/vehicle.model");
 const { extractDocumentDataFromImage } = require("../services/ocr.service");
+const createLogger = require("../utils/logger");
 
 const VISITOR_ROLE = "Visitante";
 const VISITOR_PERMISSION = "Usuario";
-const VISITOR_SESSION_DAYS = Number(process.env.VISITOR_SESSION_DAYS || 1);
 const DEFAULT_TICKETS_LIMIT = Number(process.env.VISITOR_TICKETS_PAGE_SIZE || 10);
 const MAX_TICKETS_LIMIT = Number(process.env.VISITOR_TICKETS_MAX_SIZE || 100);
-const DEFAULT_DATA_TREATMENT_URL =
-  process.env.DATA_TREATMENT_URL ||
-  "https://drive.google.com/file/d/1JtSP0Fa19TKU0kzNwhDqC6BQIe2c_JK8/view";
+const logger = createLogger("visitor-controller");
 const parsePositiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -53,56 +50,6 @@ const sanitizeUser = (userDoc) => {
   const userObject = userDoc.toObject();
   delete userObject.password;
   return userObject;
-};
-
-const parseConsentValue = (candidate) => {
-  if (candidate === undefined || candidate === null) {
-    return { accepted: false };
-  }
-  if (typeof candidate === "boolean") {
-    return { accepted: candidate };
-  }
-  if (typeof candidate === "string") {
-    const normalized = candidate.trim().toLowerCase();
-    return {
-      accepted: ["1", "true", "si", "sí", "acepto"].includes(normalized),
-    };
-  }
-  if (typeof candidate === "object") {
-    return {
-      accepted: Boolean(
-        candidate.accepted ?? candidate.isAccepted ?? candidate.value ?? candidate.status
-      ),
-      documentUrl: candidate.documentUrl || candidate.url || candidate.link,
-    };
-  }
-  return { accepted: false };
-};
-
-const resolveDataConsent = (body = {}) => {
-  const candidates = [
-    body.dataConsent,
-    body.dataTreatment,
-    body.dataTreatmentConsent,
-    body.dataTreatmentAccepted,
-    body.dataConsentAccepted,
-    body.acceptsDataTreatment,
-  ];
-
-  for (const candidate of candidates) {
-    const parsed = parseConsentValue(candidate);
-    if (parsed.accepted) {
-      return {
-        accepted: true,
-        documentUrl: parsed.documentUrl || DEFAULT_DATA_TREATMENT_URL,
-      };
-    }
-  }
-
-  return {
-    accepted: false,
-    documentUrl: DEFAULT_DATA_TREATMENT_URL,
-  };
 };
 
 const sanitizeDocumentMetadata = (metadata = {}, defaults = {}) => {
@@ -158,15 +105,62 @@ const buildTicketPayload = (userId) => {
   };
 };
 
-const createVisitorSessionToken = (user) => {
-  return createToken({
-    userId: user._id,
-    nombre: user.nombre,
-    apellido: user.apellido,
-    email: user.email,
-    permisoSistema: user.permisoSistema,
-    expiresInDays: Math.max(VISITOR_SESSION_DAYS, 1),
-  });
+const resolveFaceRegistration = async (payload = {}) => {
+  const faceDescriptor = Array.isArray(payload.faceDescriptor) ? payload.faceDescriptor : [];
+  const normalizedImage = typeof payload.faceImage === "string" ? payload.faceImage.trim() : "";
+
+  if (faceDescriptor.length) {
+    return {
+      faceDescriptor,
+      faceRegistered: true,
+      faceDescriptorUpdatedAt: new Date(),
+      result: {
+        registered: true,
+        status: "ready",
+        message: "Embedding facial listo para guardar",
+      },
+    };
+  }
+
+  if (!normalizedImage) {
+    return {
+      result: {
+        registered: false,
+        status: "skipped",
+        message: "No se envio imagen facial para enrolamiento",
+      },
+    };
+  }
+
+  try {
+    const extraction = await extractEmbedding(normalizedImage);
+    return {
+      faceDescriptor: extraction.embedding,
+      faceRegistered: true,
+      faceDescriptorUpdatedAt: new Date(),
+      result: {
+        registered: true,
+        status: "registered",
+        message: "Rostro registrado correctamente durante la creacion de la visita",
+        detectionScore: extraction.detection_score,
+        embeddingDimensions: extraction.embedding_dimensions,
+      },
+    };
+  } catch (error) {
+    logger.warn("No fue posible registrar el rostro durante la creacion de la visita", {
+      error: error.message,
+      statusCode: error.statusCode,
+    });
+
+    return {
+      result: {
+        registered: false,
+        status: "unavailable",
+        message: error.message || "No fue posible registrar el rostro en este momento",
+      },
+      warning: "La visita fue creada sin embedding facial. Puedes actualizar el rostro mas tarde desde el directorio de usuarios.",
+    };
+  }
 };
 
 const formatTime = (date) => {
@@ -213,10 +207,6 @@ const closeActiveRegistroForVisitor = async (userId, motivo = "ticket_expirado")
 
   await registro.save();
 
-  if (registro.vehiculo) {
-    await Vehicle.findByIdAndUpdate(registro.vehiculo, { estado: "inactivo" }).catch(() => {});
-  }
-
   return registro;
 };
 
@@ -234,14 +224,16 @@ const registerVisitor = async (req, res) => {
       imagen,
       imagenQR,
       documentImage,
+      faceDescriptor,
+      faceImage,
     } = req.body || {};
     const metadataPayload =
       req.body?.documentMetadata || req.body?.documentData || req.body?.documentInfo;
 
-    if (!nombre || !email || !password) {
+    if (!nombre || !email || !password || !imagen) {
       return res.status(400).json({
         status: "error",
-        message: "Nombre, email y contrasena son obligatorios",
+        message: "Nombre, email, contrasena e imagen de perfil son obligatorios",
       });
     }
 
@@ -249,14 +241,6 @@ const registerVisitor = async (req, res) => {
       return res.status(400).json({
         status: "error",
         message: "La fotografia de la cedula es obligatoria",
-      });
-    }
-
-    const resolvedConsent = resolveDataConsent(req.body || {});
-    if (!resolvedConsent.accepted) {
-      return res.status(400).json({
-        status: "error",
-        message: "Debes aceptar el tratamiento de datos personales para continuar",
       });
     }
 
@@ -282,11 +266,11 @@ const registerVisitor = async (req, res) => {
       apellidos: apellido,
     });
 
-    const dataConsentPayload = {
-      accepted: true,
-      acceptedAt: new Date(),
-      documentUrl: resolvedConsent.documentUrl || DEFAULT_DATA_TREATMENT_URL,
-    };
+    const warnings = [];
+    const faceRegistration = await resolveFaceRegistration({
+      faceDescriptor,
+      faceImage: faceImage || imagen,
+    });
 
     const visitorUser = new User({
       cedula,
@@ -304,10 +288,19 @@ const registerVisitor = async (req, res) => {
       estado: "inactivo",
     });
 
+    if (faceRegistration.faceDescriptor?.length) {
+      visitorUser.faceDescriptor = faceRegistration.faceDescriptor;
+      visitorUser.faceRegistered = true;
+      visitorUser.faceDescriptorUpdatedAt = faceRegistration.faceDescriptorUpdatedAt;
+    }
+
     if (documentIdentity) {
       visitorUser.documentIdentity = documentIdentity;
     }
-    visitorUser.dataConsent = dataConsentPayload;
+
+    if (faceRegistration.warning) {
+      warnings.push(faceRegistration.warning);
+    }
 
     const savedVisitor = await visitorUser.save();
 
@@ -316,20 +309,22 @@ const registerVisitor = async (req, res) => {
 
     const responseUser = sanitizeUser(savedVisitor);
     const serializedTicket = serializeVisitorTicket(ticket);
-    const sessionToken = createVisitorSessionToken(savedVisitor);
 
     responseUser.visitorTicket = serializedTicket;
 
-    res.set('Authorization', `Bearer ${sessionToken}`);
-    res.set('Access-Control-Expose-Headers', 'Authorization');
-
-    return res.status(201).json({
+    const response = {
       status: "success",
       message: "Visita registrada correctamente",
       user: responseUser,
       ticket: serializedTicket,
-      token: sessionToken,
-    });
+      faceRegistration: faceRegistration.result,
+    };
+
+    if (warnings.length) {
+      response.warnings = warnings;
+    }
+
+    return res.status(201).json(response);
   } catch (error) {
     return res.status(500).json({
       status: "error",

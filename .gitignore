@@ -10,6 +10,8 @@ frontend/dist/
 .env
 backend/.env
 frontend/.env
+backend/uploads/
+backend/evaluation/dataset-prueba
 
 # Logs
 npm-debug.log*

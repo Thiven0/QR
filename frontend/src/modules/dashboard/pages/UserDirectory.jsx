@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
-import { FaCarAlt, FaRegAddressCard } from 'react-icons/fa';
-import { FaMotorcycle } from 'react-icons/fa6';
-import { GrBike } from 'react-icons/gr';
+import { FaRegAddressCard } from 'react-icons/fa';
 import { LuTicketCheck, LuTicketX } from 'react-icons/lu';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import clsx from 'clsx';
 import ProfileCard from '../../../shared/components/ProfileCard';
 import UserStatsCharts from '../../../shared/components/UserStatsCharts';
-import { apiRequest } from '../../../services/apiClient';
+import { apiRequest, resolveAssetUrl, uploadImageSource } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
+import FaceCapture from '../components/FaceCapture';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -159,8 +159,8 @@ const DEFAULT_USERS_PAGE_SIZE = 10;
 
 const resolveUserImage = (user) => {
   if (!user) return '';
-  if (user.imagenThumbnail) return user.imagenThumbnail;
-  if (user.imagen) return user.imagen;
+  if (user.imagenThumbnail) return resolveAssetUrl(user.imagenThumbnail);
+  if (user.imagen) return resolveAssetUrl(user.imagen);
   const fallbackName = encodeURIComponent(user.nombre || 'Usuario');
   return `https://ui-avatars.com/api/?background=00594e&color=fff&name=${fallbackName}`;
 };
@@ -192,6 +192,8 @@ const EMPTY_FORM = {
   rolAcademico: '',
   permisoSistema: 'Usuario',
   estado: 'inactivo',
+  faceRegistered: false,
+  faceDescriptorUpdatedAt: '',
 };
 
 const readFileAsDataUrl = (file) =>
@@ -202,20 +204,33 @@ const readFileAsDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const mapUserToForm = (user) => ({
-  cedula: user.cedula || '',
-  nombre: user.nombre || '',
-  apellido: user.apellido || '',
-  email: user.email || '',
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
+
+const getFormValue = (user, keys, fallback = '') => {
+  for (const key of keys) {
+    if (hasOwn(user, key)) {
+      return user[key] ?? '';
+    }
+  }
+  return fallback;
+};
+
+const mapUserToForm = (user, fallback = EMPTY_FORM) => ({
+  cedula: getFormValue(user, ['cedula'], fallback.cedula),
+  nombre: getFormValue(user, ['nombre'], fallback.nombre),
+  apellido: getFormValue(user, ['apellido'], fallback.apellido),
+  email: getFormValue(user, ['email'], fallback.email),
   password: '',
-  RH: user.RH || user.rh || '',
-  facultad: user.facultad || '',
-  telefono: user.telefono || '',
-  imagen: user.imagen || '',
-  imagenQR: user.imagenQR || '',
-  rolAcademico: user.rolAcademico || user.rol || '',
-  permisoSistema: user.permisoSistema || 'Usuario',
-  estado: user.estado || 'inactivo',
+  RH: getFormValue(user, ['RH', 'rh'], fallback.RH),
+  facultad: getFormValue(user, ['facultad'], fallback.facultad),
+  telefono: getFormValue(user, ['telefono'], fallback.telefono),
+  imagen: getFormValue(user, ['imagen'], fallback.imagen),
+  imagenQR: getFormValue(user, ['imagenQR'], fallback.imagenQR),
+  rolAcademico: getFormValue(user, ['rolAcademico', 'rol'], fallback.rolAcademico),
+  permisoSistema: getFormValue(user, ['permisoSistema'], fallback.permisoSistema),
+  estado: getFormValue(user, ['estado'], fallback.estado),
+  faceRegistered: hasOwn(user, 'faceRegistered') ? user.faceRegistered === true : fallback.faceRegistered,
+  faceDescriptorUpdatedAt: getFormValue(user, ['faceDescriptorUpdatedAt'], fallback.faceDescriptorUpdatedAt),
 });
 
 const formatVisitorTicketInfo = (ticket) => {
@@ -265,10 +280,7 @@ const formatVisitorTicketInfo = (ticket) => {
 const UserDirectory = () => {
   const { token, hasPermission } = useAuth();
   const isAdmin = hasPermission(['Administrador']);
-  const canAccessVehicles = hasPermission(['Administrador', 'Celador']);
-  const canRegisterVehicles = hasPermission(['Administrador']);
   const canManageAccess = hasPermission(['Administrador', 'Celador']);
-  const navigate = useNavigate();
 
   const [users, setUsers] = useState([]);
   const [usersPagination, setUsersPagination] = useState({
@@ -283,6 +295,8 @@ const UserDirectory = () => {
   const [feedback, setFeedback] = useState('');
 
   const [viewUser, setViewUser] = useState(null);
+  const [showFaceCaptureModal, setShowFaceCaptureModal] = useState(false);
+  const [faceFeedback, setFaceFeedback] = useState(null);
 
   const [editUserId, setEditUserId] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
@@ -290,6 +304,7 @@ const UserDirectory = () => {
   const [editPasswordVisible, setEditPasswordVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [regeneratingQr, setRegeneratingQr] = useState(false);
+  const [showEditFaceCaptureModal, setShowEditFaceCaptureModal] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -299,8 +314,6 @@ const UserDirectory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [permisoFilter, setPermisoFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [userVehicleData, setUserVehicleData] = useState({});
-  const [loadingVehicleCountFor, setLoadingVehicleCountFor] = useState(null);
   const profileCardRef = useRef(null);
   const colorNormalizerRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -337,16 +350,6 @@ const UserDirectory = () => {
         hasMore: pagination.hasMore ?? currentPage < totalPages,
       });
 
-      setUserVehicleData((prev) => {
-        if (!prev || Object.keys(prev).length === 0) return prev;
-        const next = {};
-        data.forEach((user) => {
-          if (prev[user._id] !== undefined) {
-            next[user._id] = prev[user._id];
-          }
-        });
-        return next;
-      });
     } catch (err) {
       setError(err.message || 'No fue posible obtener los usuarios');
       setUsersPagination((prev) => ({ ...prev, hasMore: false }));
@@ -358,6 +361,16 @@ const UserDirectory = () => {
   useEffect(() => {
     loadUsers(1);
   }, [token, loadUsers]);
+
+  useEffect(() => {
+    if (!faceFeedback?.message) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setFaceFeedback(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [faceFeedback]);
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -391,7 +404,7 @@ const UserDirectory = () => {
   const isViewUserBlocked = viewUserEstado === 'bloqueado';
   const isViewToggling = viewUserToggleId ? togglingAccessId === viewUserToggleId : false;
   const viewDocumentData = viewUser?.documentIdentity?.extractedData || {};
-  const viewDocumentPhoto = viewUser?.documentIdentity?.photo || '';
+  const viewDocumentPhoto = resolveAssetUrl(viewUser?.documentIdentity?.photo || '');
   const viewDocumentBirthDate = viewDocumentData.fechaNacimiento
     ? formatShortDate(viewDocumentData.fechaNacimiento) || viewDocumentData.fechaNacimiento
     : null;
@@ -405,6 +418,17 @@ const UserDirectory = () => {
     Boolean(viewDocumentData.apellidos) ||
     Boolean(viewDocumentBirthDate) ||
     Boolean(viewDocumentConsentAt);
+
+  const updateUserCollections = useCallback((updatedUser) => {
+    if (!updatedUser?._id) return;
+
+    setUsers((prev) => prev.map((user) => (user._id === updatedUser._id ? { ...user, ...updatedUser } : user)));
+    setViewUser((prev) => (prev && prev._id === updatedUser._id ? { ...prev, ...updatedUser } : prev));
+
+    if (editUserId === updatedUser._id) {
+      setEditForm((prev) => mapUserToForm(updatedUser, prev));
+    }
+  }, [editUserId]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -425,7 +449,7 @@ const UserDirectory = () => {
 
   const openImagePreview = (src, alt = 'Imagen seleccionada') => {
     if (!src) return;
-    setImagePreview({ src, alt });
+    setImagePreview({ src: resolveAssetUrl(src), alt });
   };
 
   const closeImagePreview = () => setImagePreview(null);
@@ -459,7 +483,6 @@ const UserDirectory = () => {
       'Rol academico',
       'Telefono',
       'Facultad',
-      'Vehiculos registrados',
     ];
 
     const rows = users.map((user) => [
@@ -472,7 +495,6 @@ const UserDirectory = () => {
       user.rolAcademico || '',
       user.telefono || '',
       user.facultad || '',
-      typeof userVehicleData[user._id]?.count === 'number' ? userVehicleData[user._id].count : '',
     ]);
 
     const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
@@ -482,44 +504,13 @@ const UserDirectory = () => {
     setFeedback('Archivo de usuarios exportado correctamente.');
   };
 
-  const fetchVehicleData = async (userId) => {
-    if (!token || !userId) return { count: 0, types: [] };
-    if (loadingVehicleCountFor === userId) return userVehicleData[userId] ?? { count: 0, types: [] };
-
-    setLoadingVehicleCountFor(userId);
-    try {
-      const response = await apiRequest(`/users/${userId}/vehicles`, { token });
-      const data = Array.isArray(response) ? response : response?.data || [];
-      const info = {
-        count: data.length,
-        types: data
-          .map((vehicle) => (vehicle.type || vehicle.tipo || '').toLowerCase())
-          .filter(Boolean),
-      };
-      setUserVehicleData((prev) => ({ ...prev, [userId]: info }));
-      return info;
-    } catch (err) {
-      const fallback = { count: 0, types: [] };
-      setUserVehicleData((prev) => ({ ...prev, [userId]: fallback }));
-      return fallback;
-    } finally {
-      setLoadingVehicleCountFor(null);
-    }
-  };
-
   const handleViewUser = (user) => {
+    setFaceFeedback(null);
+    setShowFaceCaptureModal(false);
     setViewUser(user);
-    if (user?._id && userVehicleData[user._id] === undefined) {
-      fetchVehicleData(user._id);
-    }
     if (user?._id && (!user.imagenQR || !user.documentIdentity?.photo)) {
       fetchUserDetail(user._id);
     }
-  };
-
-  const getVehicleInfo = (userId) => {
-    if (!userId) return null;
-    return userVehicleData[userId] ?? null;
   };
 
   const fetchUserDetail = useCallback(
@@ -529,8 +520,7 @@ const UserDirectory = () => {
         const response = await apiRequest(`/users/${userId}/detail`, { token });
         const detail = response?.user || response;
         if (detail && detail._id) {
-          setUsers((prev) => prev.map((u) => (u._id === detail._id ? { ...u, ...detail } : u)));
-          setViewUser((prev) => (prev && prev._id === detail._id ? { ...prev, ...detail } : prev));
+          updateUserCollections(detail);
         }
         return detail;
       } catch (err) {
@@ -538,69 +528,9 @@ const UserDirectory = () => {
         return null;
       }
     },
-    [token]
+    [token, updateUserCollections]
   );
 
-  useEffect(() => {
-    if (!canAccessVehicles || !filteredUsers.length) return undefined;
-
-    const missingUserIds = filteredUsers
-      .map((user) => user._id)
-      .filter((id) => id && userVehicleData[id] === undefined);
-
-    if (!missingUserIds.length) return undefined;
-
-    const timers = missingUserIds.map((userId, index) =>
-      setTimeout(() => {
-        fetchVehicleData(userId);
-      }, index * 120)
-    );
-
-    return () => {
-      timers.forEach((timerId) => clearTimeout(timerId));
-    };
-  }, [filteredUsers, canAccessVehicles, userVehicleData, fetchVehicleData]);
-
-  const handleVehicleNavigation = async (user) => {
-    if (!user?._id) return;
-    let info = userVehicleData[user._id];
-    if (info === undefined) {
-      info = await fetchVehicleData(user._id);
-    }
-    openVehiclesPage(user, (info?.count || 0) > 0, 'list');
-  };
-
-  const getVehicleIconByType = (type) => {
-    const normalized = (type || '').toLowerCase();
-    const commonClasses = 'h-5 w-5';
-    if (normalized.includes('moto')) {
-      return <FaMotorcycle className={`${commonClasses} text-[#0f766e]`} />;
-    }
-    if (normalized.includes('bicicleta') || normalized.includes('bici')) {
-      return <GrBike className={`${commonClasses} text-[#0f766e]`} />;
-    }
-    return <FaCarAlt className={`${commonClasses} text-[#0f766e]`} />;
-  };
-
-const openVehiclesPage = (user, hasVehicles, view = 'list') => {
-  if (!user?._id) return;
-  const params = new URLSearchParams();
-  if (view) {
-    params.set('view', view);
-  }
-  if (view === 'list') {
-    params.set('owner', user._id);
-  }
-  const search = params.toString() ? `?${params.toString()}` : '';
-  navigate(`/dashboard/vehicles${search}`, {
-    state: {
-      user,
-      hasVehicles,
-      from: 'directory',
-      intent: view,
-    },
-  });
-};
 
   const openEditModal = (user) => {
     setEditUserId(user._id);
@@ -609,6 +539,15 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     setFeedback('');
     setEditPasswordVisible(false);
     setRegeneratingQr(false);
+    setShowEditFaceCaptureModal(false);
+
+    if (user?._id && !user.imagenQR) {
+      fetchUserDetail(user._id).then((detail) => {
+        if (detail?._id === user._id) {
+          setEditForm((prev) => mapUserToForm(detail, prev));
+        }
+      });
+    }
   };
 
   const closeEditModal = () => {
@@ -618,6 +557,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     setSaving(false);
     setEditPasswordVisible(false);
     setRegeneratingQr(false);
+    setShowEditFaceCaptureModal(false);
   };
 
   const handleEditChange = (event) => {
@@ -657,7 +597,11 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         delete next[name];
         return next;
       });
-    } catch (err) {
+    } catch {
+      setEditErrors((prev) => ({
+        ...prev,
+        [name]: 'No fue posible procesar la imagen seleccionada.',
+      }));
     }
   };
 
@@ -708,7 +652,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         imagenQR: qrDataUrl,
       }));
       setFeedback('QR regenerado correctamente.');
-    } catch (err) {
+    } catch {
       setEditErrors((prev) => ({
         ...prev,
         imagenQR: 'No fue posible regenerar el QR. Intenta nuevamente.',
@@ -731,7 +675,16 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const buildUpdatePayload = () => {
+  const buildUpdatePayload = async () => {
+    const uploadedProfileImage = await uploadImageSource('profile', editForm.imagen, {
+      token,
+      fileName: `${editForm.cedula || editForm.nombre || 'usuario'}-perfil.jpg`,
+    });
+    const uploadedQrImage = await uploadImageSource('qr', editForm.imagenQR, {
+      token,
+      fileName: `${editForm.cedula || editForm.nombre || 'usuario'}-qr.png`,
+    });
+
     const payload = {
       cedula: editForm.cedula.trim(),
       nombre: editForm.nombre.trim(),
@@ -740,8 +693,8 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       RH: editForm.RH.trim().toUpperCase(),
       facultad: editForm.facultad.trim(),
       telefono: editForm.telefono.trim(),
-      imagen: editForm.imagen,
-      imagenQR: editForm.imagenQR,
+      imagen: uploadedProfileImage,
+      imagenQR: uploadedQrImage,
       rolAcademico: editForm.rolAcademico.trim(),
       permisoSistema: editForm.permisoSistema,
       estado: editForm.estado,
@@ -763,7 +716,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     setFeedback('');
 
     try {
-      const payload = buildUpdatePayload();
+      const payload = await buildUpdatePayload();
       const response = await apiRequest(`/users/${editUserId}`, {
         method: 'PUT',
         token,
@@ -771,17 +724,11 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       });
 
       const updatedUser = response.user || response.data || null;
-      if (updatedUser) {
-        setUsers((prev) =>
-          prev.map((user) => (user._id === editUserId ? updatedUser : user))
-        );
-
-        if (viewUser?._id === editUserId) {
-          setViewUser(updatedUser);
+        if (updatedUser) {
+          updateUserCollections(updatedUser);
+        } else {
+          await loadUsers();
         }
-      } else {
-        await loadUsers();
-      }
 
       setFeedback('Usuario actualizado correctamente.');
       closeEditModal();
@@ -814,13 +761,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
         setViewUser(null);
       }
 
-      setUserVehicleCounts((prev) => {
-        if (!prev || !(deleteTarget._id in prev)) return prev;
-        const next = { ...prev };
-        delete next[deleteTarget._id];
-        return next;
-      });
-
       setFeedback('Usuario eliminado correctamente.');
       setDeleteTarget(null);
     } catch (err) {
@@ -828,6 +768,48 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleFaceEnrollSuccess = (data) => {
+    const updatedUser = data?.user || null;
+    if (updatedUser?._id) {
+      updateUserCollections(updatedUser);
+    }
+
+    setFaceFeedback({
+      type: 'success',
+      message: 'Rostro registrado correctamente para este usuario.',
+    });
+    setShowFaceCaptureModal(false);
+  };
+
+  const handleEditFaceEnrollSuccess = (data) => {
+    const updatedUser = data?.user || null;
+    if (updatedUser?._id) {
+      updateUserCollections(updatedUser);
+    }
+
+    setFaceFeedback({
+      type: 'success',
+      message: 'Rostro actualizado correctamente para este usuario.',
+    });
+    setShowEditFaceCaptureModal(false);
+  };
+
+  const handleFaceEnrollError = (faceError) => {
+    const message = faceError?.details?.message || faceError?.message || 'No fue posible registrar el rostro.';
+    setFaceFeedback({
+      type: 'error',
+      message,
+    });
+  };
+
+  const handleEditFaceEnrollError = (faceError) => {
+    const message = faceError?.details?.message || faceError?.message || 'No fue posible actualizar el rostro.';
+    setFaceFeedback({
+      type: 'error',
+      message,
+    });
   };
 
   const handleReactivateTicket = async (userId) => {
@@ -990,7 +972,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
       const filename = `carnet-${viewUser?.cedula || viewUser?.nombre || 'usuario'}.pdf`;
       pdf.save(filename);
       setFeedback('Carnet descargado correctamente.');
-    } catch (error) {
+    } catch {
       setFeedback('No fue posible descargar el carnet. Intentalo nuevamente.');
     } finally {
       restoreSnapshotStyles();
@@ -1115,11 +1097,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
             {filteredUsers.map((user) => {
               const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
               const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
-              const canReactivateTicket = visitorTicketInfo.status !== 'active';
-              const vehicleInfo = getVehicleInfo(user._id);
-              const vehicleCount = vehicleInfo?.count ?? 0;
-              const vehicleTypes = vehicleInfo?.types ?? [];
-              const hasVehicles = vehicleCount > 0;
               const estado = (user.estado || '').toLowerCase() || 'desconocido';
               const isBlocked = estado === 'bloqueado';
               const estadoBadgeClasses =
@@ -1146,28 +1123,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 Boolean(birthDate) ||
                 Boolean(consentAcceptedAt);
               const iconBadges = [];
-
-              if (hasVehicles) {
-                const primaryType = vehicleTypes[0] || 'carro';
-                iconBadges.push(
-                  <div
-                    key={`${user._id}-vehicle`}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-[#0f172a]"
-                    title={
-                      vehicleCount === 1
-                        ? 'Vehiculo registrado'
-                        : `${vehicleCount} vehiculos registrados`
-                    }
-                  >
-                    {getVehicleIconByType(primaryType)}
-                    {vehicleCount > 1 && (
-                      <span className="ml-1 text-[10px] font-semibold text-[#0f172a]">
-                        +{vehicleCount - 1}
-                      </span>
-                    )}
-                  </div>
-                );
-              }
 
               if (isVisitor) {
                 const isTicketActive = visitorTicketInfo.status === 'active';
@@ -1327,7 +1282,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-2xl font-semibold text-[#0f172a]">Detalle del usuario</h3>
-                  <p className="text-sm text-[#475569]">Información general, ticket temporal y accesos de vehículos.</p>
+                  <p className="text-sm text-[#475569]">Informacion general del usuario y ticket temporal.</p>
                   {viewUser?.estado && (
                     <p className={`text-xs font-semibold ${isViewUserBlocked ? 'text-[#b91c1c]' : 'text-[#0f766e]'}`}>
                       Estado actual: {viewUser.estado}
@@ -1349,15 +1304,54 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                       {isViewToggling ? 'Actualizando...' : isViewUserBlocked ? 'Desbloquear usuario' : 'Bloquear usuario'}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setViewUser(null)}
-                    className="rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
-                  >
-                    Cerrar
+                  {canManageAccess && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (viewUser?.faceRegistered) {
+                          setFaceFeedback({
+                            type: 'error',
+                            message: 'Este usuario ya tiene un rostro registrado.',
+                          });
+                          return;
+                        }
+                        setFaceFeedback(null);
+                        setShowFaceCaptureModal(true);
+                      }}
+                      disabled={Boolean(viewUser?.faceRegistered)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        viewUser?.faceRegistered
+                          ? 'bg-slate-100 text-[#475569]'
+                          : 'bg-[#B5A160]/20 text-[#8c7030] hover:bg-[#B5A160]/30'
+                      }`}
+                    >
+                      {viewUser?.faceRegistered ? 'Rostro ya registrado' : 'Registrar rostro'}
+                    </button>
+                  )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowFaceCaptureModal(false);
+                        setFaceFeedback(null);
+                        setViewUser(null);
+                      }}
+                      className="rounded-full bg-[#b91c1c] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#991b1b]"
+                    >
+                      Cerrar
                   </button>
                 </div>
               </div>
+              {faceFeedback?.message && (
+                <div
+                  className={`mt-4 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                    faceFeedback.type === 'error'
+                      ? 'border-[#fecaca] bg-[#fee2e2] text-[#b91c1c]'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {faceFeedback.message}
+                </div>
+              )}
               <div className="mt-4 grid gap-6 lg:grid-cols-[1.25fr_0.85fr]">
                 <div className="space-y-4">
                   <div ref={profileCardRef}>
@@ -1449,46 +1443,6 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                       </dl>
                     </div>
                   )}
-                  {canAccessVehicles && viewUser?._id && (() => {
-                    const vehicleInfo = getVehicleInfo(viewUser._id);
-                    const vehicleCount = vehicleInfo?.count || 0;
-                    const hasVehicles = vehicleCount > 0;
-                    const isLoadingVehicles = loadingVehicleCountFor === viewUser._id;
-                    return (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#0f172a]">
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[#0f172a]">Vehículos</p>
-                          <p className="text-xs text-[#475569]">
-                            {isLoadingVehicles
-                              ? 'Cargando información...'
-                              : hasVehicles
-                                ? `${vehicleCount} vehículo${vehicleCount === 1 ? '' : 's'} registrados.`
-                                : 'Sin vehículos registrados.'}
-                          </p>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {hasVehicles && (
-                            <button
-                              type="button"
-                              onClick={() => handleVehicleNavigation(viewUser)}
-                              className="inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
-                            >
-                              Ver vehículos
-                            </button>
-                          )}
-                          {canRegisterVehicles && (
-                            <button
-                              type="button"
-                              onClick={() => openVehiclesPage(viewUser, hasVehicles, 'register')}
-                              className="inline-flex items-center rounded-md border border-slate-200 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100"
-                            >
-                              Registrar vehículo
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
             </div>
@@ -1677,7 +1631,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                     </label>
                     {editForm.imagen && (
                       <>
-                        <img src={editForm.imagen} alt="Preview perfil" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <img src={resolveAssetUrl(editForm.imagen)} alt="Preview perfil" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
                         <button
                           type="button"
                           onClick={() => removeImageField('imagen')}
@@ -1717,7 +1671,7 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                     </button>
                     {editForm.imagenQR && (
                       <>
-                        <img src={editForm.imagenQR} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
+                        <img src={resolveAssetUrl(editForm.imagenQR)} alt="Preview QR" className="h-12 w-12 rounded-lg object-cover shadow-sm" />
                         <button
                           type="button"
                           onClick={() => removeImageField('imagenQR')}
@@ -1742,6 +1696,44 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-slate-200 bg-[#f8fafc] p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Rostro del usuario</p>
+                    <h3 className="mt-2 text-base font-semibold text-[#0f172a]">Actualizacion de embedding facial</h3>
+                    <p className="mt-1 text-sm text-[#475569]">
+                      Captura una nueva foto del rostro para forzar el re-enrolamiento y reemplazar el embedding actual.
+                    </p>
+                    {editForm.faceDescriptorUpdatedAt && (
+                      <p className="mt-2 text-xs text-[#64748b]">
+                        Ultima actualizacion facial:{' '}
+                        {new Date(editForm.faceDescriptorUpdatedAt).toLocaleString('es-CO')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-start gap-3 sm:items-end">
+                    <span
+                      className={clsx(
+                        'inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold',
+                        editForm.faceRegistered
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-slate-200 bg-white text-[#475569]'
+                      )}
+                    >
+                      {editForm.faceRegistered ? 'Rostro registrado' : 'Sin rostro registrado'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditFaceCaptureModal(true)}
+                      disabled={!editUserId}
+                      className="inline-flex items-center justify-center rounded-lg border border-[#0f766e]/30 bg-white px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {editForm.faceRegistered ? 'Actualizar rostro' : 'Capturar rostro'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
@@ -1759,6 +1751,81 @@ const openVehiclesPage = (user, hasVehicles, view = 'list') => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showFaceCaptureModal && viewUser && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowFaceCaptureModal(false)}
+        >
+          <div className="w-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#B5A160]">Registro facial</p>
+                  <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Captura el rostro del usuario</h3>
+                  <p className="mt-2 text-sm text-[#475569]">
+                    Asegurate de que solo aparezca un rostro dentro del marco antes de capturar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFaceCaptureModal(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <FaceCapture
+                mode="enroll"
+                userId={viewUser._id}
+                enableAutoBlink={false}
+                onResult={handleFaceEnrollSuccess}
+                onError={handleFaceEnrollError}
+                onCancel={() => setShowFaceCaptureModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditFaceCaptureModal && editUserId && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowEditFaceCaptureModal(false)}
+        >
+          <div className="w-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#B5A160]">Re-enrolamiento facial</p>
+                  <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Actualiza el rostro del usuario</h3>
+                  <p className="mt-2 text-sm text-[#475569]">
+                    Esta captura reemplazara el embedding facial actual del usuario para futuras validaciones.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditFaceCaptureModal(false)}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <FaceCapture
+                mode="enroll"
+                userId={editUserId}
+                enableAutoBlink={false}
+                enrollOptions={{ force: true }}
+                onResult={handleEditFaceEnrollSuccess}
+                onError={handleEditFaceEnrollError}
+                onCancel={() => setShowEditFaceCaptureModal(false)}
+              />
+            </div>
           </div>
         </div>
       )}

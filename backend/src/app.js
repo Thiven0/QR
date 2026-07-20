@@ -1,8 +1,11 @@
 const express = require("express");
 const cors = require("cors");
+const { UPLOAD_PUBLIC_PREFIX, UPLOAD_ROOT, ensureUploadDirectories } = require("./utils/uploads");
 
 const createApp = () => {
   const app = express();
+
+  ensureUploadDirectories();
 
   // Allow only the origins listed in CORS_ALLOWED_ORIGINS (comma-separated) or everyone when set to "*".
   const rawAllowedOrigins = process.env.CORS_ALLOWED_ORIGINS || "*";
@@ -34,12 +37,14 @@ const createApp = () => {
   app.options("*", cors(corsOptions));
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  app.use(UPLOAD_PUBLIC_PREFIX, express.static(UPLOAD_ROOT));
 
   app.use("/api/auth", require("./routes/auth.routes"));
+  app.use("/api/face", require("./routes/face.routes"));
+  app.use("/api/upload", require("./routes/upload.routes"));
   app.use("/api/users", require("./routes/user.routes"));
   app.use("/api/exitEntry", require("./routes/entry-exit.routes"));
   app.use("/api/visitors", require("./routes/visitor.routes"));
-  app.use("/api/vehicles", require("./routes/vehicle.routes"));
 
   app.get("/ruta-prueba", (req, res) => {
     res.status(200).json({

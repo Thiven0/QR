@@ -5,7 +5,6 @@ import GuardLogin from '../modules/auth/pages/GuardLogin';
 import DashboardLayout from '../modules/dashboard/layouts/DashboardLayout';
 import DashboardOverview from '../modules/dashboard/pages/DashboardOverview';
 import DashboardStats from '../modules/dashboard/pages/DashboardStats';
-import UserVehicles from '../modules/dashboard/pages/UserVehicles';
 import QRScannerPage from '../modules/dashboard/components/QRScanner';
 import RegisterUser from '../modules/dashboard/pages/RegisterUser';
 import RegisterGuard from '../modules/dashboard/pages/RegisterGuard';
@@ -46,14 +45,6 @@ export const Routing = () => {
             }
           >
             <Route index element={<DashboardHome />} />
-            <Route
-              path="vehicles"
-              element={
-                <ProtectedRoute allowed={['Administrador', 'Celador']}>
-                  <UserVehicles />
-                </ProtectedRoute>
-              }
-            />
             <Route
               path="qr"
               element={

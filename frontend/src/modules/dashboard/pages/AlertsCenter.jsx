@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiAlertTriangle, FiCheck, FiRefreshCcw, FiClock } from 'react-icons/fi';
+import { FiCheck, FiRefreshCcw, FiClock } from 'react-icons/fi';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
 

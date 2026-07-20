@@ -51,6 +51,13 @@ const formatDurationValue = (value) => {
   return normalized;
 };
 
+const formatScanMethod = (value) => {
+  const normalized = String(value || 'manual').trim().toLowerCase();
+  if (normalized === 'face') return 'Reconocimiento facial';
+  if (normalized === 'qr') return 'Escaneo QR';
+  return 'Registro manual';
+};
+
 const getRegistroTimestamp = (registro, candidates = []) => {
   if (!registro) return undefined;
 
@@ -103,16 +110,6 @@ const formatTimeForPayload = (date) =>
         hour12: false,
       })
     : undefined;
-
-const formatMinutesLabel = (minutes) => {
-  if (!Number.isFinite(minutes) || minutes <= 0) return '<1 min';
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  if (hours <= 0) {
-    return `${minutes} min`;
-  }
-  return `${hours}h ${String(Math.round(remaining)).padStart(2, '0')}m`;
-};
 
 const RegistroDirectory = () => {
   const { token } = useAuth();
@@ -468,8 +465,6 @@ const RegistroDirectory = () => {
       'Usuario',
       'Correo',
       'Rol',
-      'Vehiculo',
-      'Placa vehiculo',
       'Porteria',
       'Entrada',
       'Hora entrada',
@@ -482,13 +477,10 @@ const RegistroDirectory = () => {
     const rows = filteredRegistros.map((registro) => {
       const usuario = registro.usuario || {};
       const administrador = registro.administrador || {};
-      const vehiculo = registro.vehiculo || {};
       return [
         `${usuario.nombre || ''} ${usuario.apellido || ''}`.trim(),
         usuario.email || '',
         usuario.rolAcademico || '',
-        vehiculo.type || '',
-        vehiculo.plate || '',
         administrador.nombre || '',
         formatDateTime(registro.fechaEntrada),
         formatTime(registro.horaEntrada),
@@ -836,14 +828,11 @@ const RegistroDirectory = () => {
           </div>
 
           <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[1100px] divide-y divide-slate-200">
+            <table className="min-w-[980px] divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Usuario
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
-                    Vehiculo
                   </th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#475569]">
                     Porteria
@@ -918,25 +907,6 @@ const RegistroDirectory = () => {
                             >
                               <FiAlertTriangle className="h-3.5 w-3.5" />
                               {alertStatus === 'pending' ? 'Alerta' : 'En revisión'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {registro.vehiculo ? (
-                            <div className="flex flex-col">
-                              <span className="text-sm font-semibold text-[#0f172a]">
-                                {registro.vehiculo.type || 'Vehiculo'}
-                              </span>
-                              <span className="text-xs text-[#475569]">
-                                Placa: {registro.vehiculo.plate || 'Sin placa'}
-                              </span>
-                              <span className="mt-1 inline-flex w-fit items-center rounded-full bg-[#0f766e]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f766e]">
-                                Con vehiculo
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs font-semibold uppercase tracking-wide text-[#94a3b8]">
-                              Sin vehiculo
                             </span>
                           )}
                         </td>
@@ -1354,30 +1324,6 @@ const RegistroDirectory = () => {
                 </div>
               </section>
 
-              <section className="md:col-span-2">
-                <h4 className="text-sm font-semibold uppercase tracking-wide text-[#0f766e]">Vehiculo asociado</h4>
-                {selected.vehiculo ? (
-                  <div className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-[#f8fafc] p-4 text-sm text-[#475569] sm:grid-cols-2">
-                    <p>
-                      <span className="font-semibold text-[#0f172a]">Tipo:</span> {selected.vehiculo.type || 'Sin tipo'}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-[#0f172a]">Placa:</span> {selected.vehiculo.plate || 'Sin placa'}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-[#0f172a]">Color:</span> {selected.vehiculo.color || 'Sin color'}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-[#0f172a]">Estado:</span>{' '}
-                      <span className="capitalize">{selected.vehiculo.estado || 'desconocido'}</span>
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white px-4 py-2 text-sm text-[#94a3b8]">
-                    Este registro no tiene un vehiculo asociado.
-                  </p>
-                )}
-              </section>
             </div>
 
             <section className="mt-6">
@@ -1403,6 +1349,39 @@ const RegistroDirectory = () => {
                   <span className="font-semibold">Duracion de la sesion:</span>{' '}
                   {formatDurationValue(selected.duracionSesion)}
                 </p>
+                <p className="mt-1">
+                  <span className="font-semibold">Metodo de ingreso:</span>{' '}
+                  {formatScanMethod(selected.scanMethod)}
+                </p>
+                {selected.faceRecognitionLog && (
+                  <div className="mt-3 rounded-lg border border-[#0f766e]/15 bg-white/80 p-3 text-xs text-[#0f172a]">
+                    <p>
+                      <span className="font-semibold">Score facial:</span>{' '}
+                      {typeof selected.faceRecognitionLog.score === 'number'
+                        ? selected.faceRecognitionLog.score.toFixed(4)
+                        : 'Sin score'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Detection score:</span>{' '}
+                      {typeof selected.faceRecognitionLog.detectionScore === 'number'
+                        ? selected.faceRecognitionLog.detectionScore.toFixed(4)
+                        : 'Sin dato'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Threshold:</span>{' '}
+                      {typeof selected.faceRecognitionLog.threshold === 'number'
+                        ? selected.faceRecognitionLog.threshold.toFixed(2)
+                        : 'Sin dato'}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Perfiles comparados:</span>{' '}
+                      {selected.faceRecognitionLog.comparedProfiles ?? 'Sin dato'}
+                    </p>
+                    <p className="mt-1 text-[#0f172a]/70">
+                      Log facial: {formatDateTime(selected.faceRecognitionLog.createdAt)}
+                    </p>
+                  </div>
+                )}
                 {selected.cierreForzado && (
                   <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#b45309]">
                     Cierre por ticket expirado

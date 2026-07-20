@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { FaFacebook, FaInstagram, FaYoutube } from 'react-icons/fa';
-import escudoBlanco from '../../../img/escudo_blanco.png';
+import escudo from '../../../img/escudo.png';
 
 const externalLinks = [
   {
@@ -60,7 +60,7 @@ const PublicNavbar = () => {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:flex-nowrap sm:px-6">
         <div className="flex w-full items-center justify-between sm:w-auto">
           <NavLink to="/" className="flex items-center gap-3" aria-label="Ir al inicio" onClick={closeMenu}>
-            <img src={escudoBlanco} className="h-9" alt="Unitropico" />
+            <img src={escudo} className="h-9" alt="Escudo de Unitropico" />
             <span className="text-xl font-semibold text-[#0f172a]">Unitropico</span>
           </NavLink>
           <button

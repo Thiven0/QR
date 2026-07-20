@@ -26,8 +26,8 @@ const Content = () => {
   const navigate = useNavigate();
   const { token, hasPermission } = useAuth();
   const [userSummary, setUserSummary] = useState(null);
-  const [userSummaryLoading, setUserSummaryLoading] = useState(false);
-  const [userSummaryError, setUserSummaryError] = useState('');
+  const [, setUserSummaryLoading] = useState(false);
+  const [, setUserSummaryError] = useState('');
   const [entriesToday, setEntriesToday] = useState(0);
   const [entryStatsLoading, setEntryStatsLoading] = useState(false);
   const [entryStatsError, setEntryStatsError] = useState('');
@@ -216,7 +216,7 @@ const formatElapsedMinutes = (value) => {
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const formatDateTime = (value) => {
+  const formatDateTime = useCallback((value) => {
     const date = ensureDate(value);
     if (!date) return 'Sin registro';
     return date.toLocaleString('es-CO', {
@@ -225,7 +225,7 @@ const formatElapsedMinutes = (value) => {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
+  }, []);
 
   const attendanceSummaryData = useMemo(() => {
     const now = new Date();
@@ -276,7 +276,7 @@ const formatElapsedMinutes = (value) => {
         delta: `${uniqueUsers.size} usuario${uniqueUsers.size === 1 ? '' : 's'} único${uniqueUsers.size === 1 ? '' : 's'}`,
       };
     });
-  }, [entryRecords, totalUsersCount]);
+  }, [entryRecords, totalUsersCount, formatDateTime]);
 
   const facultyHighlightsData = useMemo(() => {
     const faculties = Array.isArray(userSummary?.facultyStats) ? userSummary.facultyStats : [];
@@ -382,7 +382,7 @@ const formatElapsedMinutes = (value) => {
       });
 
     return pending;
-  }, [entryRecords]);
+  }, [entryRecords, formatDateTime]);
 
         const configShortcutsData = useMemo(() => {
     const permissions = userSummary?.permisoCounts || null;
@@ -461,34 +461,6 @@ const formatElapsedMinutes = (value) => {
       };
     });
   }, [entryRecords]);
-
-  const userBreakdownData = useMemo(() => {
-    const roles = Array.isArray(userSummary?.roleStats) ? userSummary.roleStats : [];
-
-    if (!roles.length) {
-      return [
-        {
-          segment: 'Sin registros',
-          count: '0',
-          status: 'Activos 0%',
-        },
-      ];
-    }
-
-    return roles
-      .filter((item) => item?.total)
-      .sort((a, b) => (b?.total || 0) - (a?.total || 0))
-      .map((item) => {
-        const total = item?.total || 0;
-        const active = item?.active || 0;
-        const ratio = total ? (active / total) * 100 : 0;
-        return {
-          segment: item?.label || 'Sin rol',
-          count: total.toLocaleString('es-CO'),
-          status: `Activos ${formatPercentage(ratio)}`,
-        };
-      });
-  }, [userSummary]);
 
   const lastSevenDaysTrend = useMemo(() => {
     const days = [];
@@ -663,7 +635,7 @@ const formatElapsedMinutes = (value) => {
     [entryRecords]
   );
 
-  const parseDurationToMinutes = (record) => {
+  const parseDurationToMinutes = useCallback((record) => {
     if (record?.duracionSesion) {
       const parts = String(record.duracionSesion).split(':').map(Number);
       if (parts.length >= 2 && parts.every((value) => Number.isFinite(value))) {
@@ -683,7 +655,7 @@ const formatElapsedMinutes = (value) => {
     }
 
     return null;
-  };
+  }, []);
 
   const topVisitorsData = useMemo(() => {
     if (!entryRecords.length) return [];
@@ -756,51 +728,11 @@ const formatElapsedMinutes = (value) => {
       median: formatMinutes(medianMinutes),
       count: durations.length,
     };
-  }, [entryRecords]);
+  }, [entryRecords, parseDurationToMinutes]);
 
   const openSessionsCount = useMemo(() => {
     if (!entryRecords.length) return 0;
     return entryRecords.reduce((count, record) => (!record?.fechaSalida ? count + 1 : count), 0);
-  }, [entryRecords]);
-
-  const vehicleUsageSummary = useMemo(() => {
-    if (!entryRecords.length) {
-      return {
-        total: 0,
-        active: 0,
-        missing: 0,
-      };
-    }
-
-    const uniqueVehicles = new Set();
-    let active = 0;
-    let missing = 0;
-
-    entryRecords.forEach((record) => {
-      const vehicle = record?.vehiculo;
-      const vehicleId =
-        (typeof vehicle === 'string' && vehicle) ||
-        vehicle?._id ||
-        vehicle?.id ||
-        vehicle?.plate ||
-        vehicle?.placa ||
-        null;
-
-      if (vehicleId) {
-        uniqueVehicles.add(vehicleId);
-        if (!record?.fechaSalida) {
-          active += 1;
-        }
-      } else if (!record?.fechaSalida) {
-        missing += 1;
-      }
-    });
-
-    return {
-      total: uniqueVehicles.size,
-      active,
-      missing,
-    };
   }, [entryRecords]);
 
   const newUsersLastWeek = useMemo(() => {
@@ -808,33 +740,6 @@ const formatElapsedMinutes = (value) => {
   }, [userSummary]);
 
   const recentAccessPreview = useMemo(() => accessFeedItems.slice(0, 3), [accessFeedItems]);
-
-  const vehicleActivityPreview = useMemo(() => {
-    if (!entryRecords.length) return [];
-
-    return entryRecords
-      .filter((record) => record?.vehiculo)
-      .slice(0, 4)
-      .map((record) => {
-        const vehicle = record?.vehiculo || {};
-        const identifier =
-          vehicle?.plate ||
-          vehicle?.placa ||
-          vehicle?.type ||
-          vehicle?.tipo ||
-          vehicle?._id ||
-          (typeof record?.vehiculo === 'string' ? record.vehiculo : 'Vehículo sin dato');
-        const userDoc = record?.usuario || {};
-        const owner = [userDoc?.nombre, userDoc?.apellido].filter(Boolean).join(' ') || 'Sin propietario';
-
-        return {
-          id: identifier,
-          owner,
-          status: record?.fechaSalida ? 'Fuera del campus' : 'En campus',
-          time: formatDateTime(record?.updatedAt || record?.fechaEntrada),
-        };
-      });
-  }, [entryRecords]);
 
   const lastSevenDaysTotals = useMemo(() => {
     const items = Array.isArray(lastSevenDaysTrend?.items) ? lastSevenDaysTrend.items : [];
@@ -849,22 +754,8 @@ const formatElapsedMinutes = (value) => {
     };
   }, [lastSevenDaysTrend]);
 
-  const busiestHour = useMemo(() => {
-    const items = Array.isArray(hourlyDistributionData?.items) ? hourlyDistributionData.items : [];
-    if (!items.length) {
-      return { label: 'Sin datos', value: 0 };
-    }
-    return items.reduce((prev, current) => (current.value > prev.value ? current : prev), items[0]);
-  }, [hourlyDistributionData]);
-
-  const activeHourBlocks = useMemo(() => {
-    const items = Array.isArray(hourlyDistributionData?.items) ? hourlyDistributionData.items : [];
-    return items.filter((item) => item.value > 0).length;
-  }, [hourlyDistributionData]);
-
   const attendanceSemanal = attendanceSummaryData.find((item) => item.period === 'Semanal') || attendanceSummaryData[0];
   const topFaculty = facultyHighlightsData[0];
-  const frequentVisitor = topVisitorsData[0];
   const lastAccessEvent = accessFeedItems[0] || null;
 
   const facultyDistributionPreview = useMemo(() => {
@@ -919,24 +810,6 @@ const formatElapsedMinutes = (value) => {
       value: formatCount(totalUsersCount),
       description: 'Registros totales en el sistema',
       footnote: `Activos ${formatCount(activeUsersCount)} · Inactivos ${formatCount(inactiveUsersCount)}`,
-    },
-    {
-      id: 'vehicles',
-      anchor: 'vehicles',
-      badge: 'Vehiculos',
-      title: 'Monitoreo vehicular',
-      value: formatCount(vehicleUsageSummary.total),
-      description: 'Vehiculos detectados en accesos',
-      footnote: `${formatCount(vehicleUsageSummary.active)} en movimiento`,
-    },
-    {
-      id: 'vehicle-register',
-      anchor: 'vehicle-register',
-      badge: 'Registro',
-      title: 'Registrar vehículo',
-      value: formatCount(vehicleUsageSummary.missing),
-      description: 'Ingresos pendientes por asociar vehículo',
-      footnote: vehicleUsageSummary.missing ? 'Prioriza actualizarlos hoy' : 'Sin pendientes',
     },
     {
       id: 'statistics',
@@ -1450,146 +1323,6 @@ const formatElapsedMinutes = (value) => {
             </ul>
           </article>
         </section>
-
-        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-
-        <section id="vehicles" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[#0f172a]">Vehiculos monitoreados</h2>
-                <p className="text-sm text-[#64748b]">Seguimiento de identificaciones detectadas en accesos.</p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#0f172a]/60">Actualizado hoy</span>
-            </div>
-            <dl className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Vehiculos identificados</dt>
-                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.total)}</dd>
-                <p className="mt-1 text-xs text-[#475569]">Basados en registros recientes</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">En campus</dt>
-                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.active)}</dd>
-                <p className="mt-1 text-xs text-[#475569]">Movimientos abiertos</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-center">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Sin asociar</dt>
-                <dd className="mt-2 text-2xl font-semibold text-[#0f172a]">{formatCount(vehicleUsageSummary.missing)}</dd>
-                <p className="mt-1 text-xs text-[#475569]">Registros que requieren placa</p>
-              </div>
-            </dl>
-            <ul className="space-y-3 text-sm text-[#475569]">
-              <li className="flex items-start gap-3">
-                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#00594e]" aria-hidden="true" />
-                Verifica que cada ingreso vehicular tenga placa y tipo asignado.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-[#B5A160]" aria-hidden="true" />
-                Si un usuario cambia de vehículo, actualiza sus datos antes de confirmar la salida.
-              </li>
-            </ul>
-            <div className="mt-auto flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => handleNavigate('/dashboard/vehicles?view=list')}
-                className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
-              >
-                Ir a vehículos
-                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleNavigate('/dashboard/vehicles?view=register')}
-                className="inline-flex items-center gap-2 rounded-md border border-[#00594e]/40 px-4 py-2 text-sm font-semibold text-[#00594e] transition hover:bg-[#00594e]/10 focus:outline-none focus:ring-2 focus:ring-[#00594e]/40 focus:ring-offset-2"
-              >
-                Registrar nuevo
-              </button>
-            </div>
-          </article>
-          <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <h3 className="text-lg font-semibold text-[#0f172a]">Actividad vehicular</h3>
-              <p className="text-sm text-[#64748b]">Resumen rapido de los ultimos registros con placa.</p>
-            </div>
-            <ul className="space-y-3 text-sm text-[#475569]">
-              {vehicleActivityPreview.length ? (
-                vehicleActivityPreview.map((item) => (
-                  <li key={`${item.id}-${item.time}`} className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-sm font-semibold text-[#0f172a]">{item.id}</p>
-                    <p className="text-xs text-[#64748b]">Usuario: {item.owner}</p>
-                    <p className="text-xs text-[#94a3b8]">
-                      {item.status} · {item.time}
-                    </p>
-                  </li>
-                ))
-              ) : (
-                <li className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-[#94a3b8]">
-                  Todavía no se han registrado vehículos en los accesos recientes.
-                </li>
-              )}
-            </ul>
-          </article>
-        </section>
-
-        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-
-        <section id="vehicle-register" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Registrar vehículo</h2>
-              <p className="text-sm text-[#64748b]">Agrega nuevos vehículos y asígnalos al propietario correcto.</p>
-            </div>
-            <ol className="space-y-3 text-sm text-[#475569]">
-              <li className="flex items-start gap-3">
-                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#00594e] text-xs font-semibold text-white">
-                  1
-                </span>
-                Selecciona el usuario responsable del vehículo antes de completar el formulario.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#B5A160] text-xs font-semibold text-white">
-                  2
-                </span>
-                Registra tipo, placa, color y evidencia fotografica para facilitar la verificacion visual.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-[3px] inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#0f172a] text-xs font-semibold text-white">
-                  3
-                </span>
-                Confirma el estado (activo/inactivo) para evitar que vehículos antiguos aparezcan disponibles.
-              </li>
-            </ol>
-            <p className="text-xs text-[#94a3b8]">
-              Estos datos alimentan al escáner de QR para bloquear el acceso cuando el vehículo no coincide.
-            </p>
-            <button
-              type="button"
-              onClick={() => handleNavigate('/dashboard/vehicles?view=register')}
-              className="mt-auto inline-flex items-center justify-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2"
-            >
-              Abrir registro de vehículos
-            </button>
-          </article>
-          <article className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-[#0f172a]">Pendientes por asociar</h3>
-            <p className="text-sm text-[#64748b]">
-              Registros abiertos sin vehículo asignado. Revísalos y actualiza antes de cerrar la jornada.
-            </p>
-            <div className="rounded-lg border border-dashed border-[#00594e]/40 bg-[#00594e]/5 p-4 text-sm text-[#0f172a]">
-              {vehicleUsageSummary.missing
-                ? `${formatCount(vehicleUsageSummary.missing)} ingresos requieren asignación de vehículo.`
-                : 'Todos los ingresos recientes cuentan con vehículo definido.'}
-            </div>
-            <p className="text-xs text-[#94a3b8]">
-              Cuando confirmes la salida desde el escáner, verifica que la placa corresponda al activo registrado.
-            </p>
-          </article>
-        </section>
-
-        <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
         <section id="records-history" className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
           <article className="rounded-xl border border-slate-200 bg-white shadow-sm">

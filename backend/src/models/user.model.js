@@ -58,6 +58,18 @@ const userSchema = new Schema(
       enum: USER_ESTADOS,
       default: "inactivo",
     },
+    faceDescriptor: {
+      type: [Number],
+      select: false,
+      default: undefined,
+    },
+    faceRegistered: {
+      type: Boolean,
+      default: false,
+    },
+    faceDescriptorUpdatedAt: {
+      type: Date,
+    },
     documentIdentity: { type: documentIdentitySchema, default: undefined },
     dataConsent: { type: dataConsentSchema, default: undefined },
   },
@@ -68,6 +80,7 @@ const userSchema = new Schema(
 
 userSchema.index({ cedula: 1 }, { unique: true, sparse: true });
 userSchema.index({ permisoSistema: 1, estado: 1 });
+userSchema.index({ faceRegistered: 1 });
 userSchema.index({ rolAcademico: 1 });
 userSchema.index({ facultad: 1 });
 userSchema.index({ created_at: -1 });

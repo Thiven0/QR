@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Embedding Plot - Samuel Torres Rodriguez</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --line: #0f766e;
+      --line-soft: rgba(15, 118, 110, 0.16);
+      --border: #e2e8f0;
+      --accent: #b5a160;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef6f5 100%);
+      color: var(--text);
+    }
+    .page {
+      width: min(1200px, calc(100vw - 32px));
+      margin: 32px auto;
+      display: grid;
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+    }
+    .hero h1 {
+      margin: 8px 0 0;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+    }
+    .eyebrow {
+      color: var(--line);
+      text-transform: uppercase;
+      letter-spacing: 0.28em;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .muted { color: var(--muted); }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      background: #fbfdfd;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+    .chart-title {
+      margin: 0 0 6px;
+      font-size: 1.1rem;
+    }
+    .chart-subtitle {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .line-chart {
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+      padding: 8px;
+    }
+    svg { display: block; width: 100%; min-width: 820px; height: auto; }
+    .grid-line { stroke: #dbe7e7; stroke-width: 1; }
+    .plot-line { fill: none; stroke: var(--line); stroke-width: 2.5; }
+    .plot-area { fill: var(--line-soft); stroke: none; }
+    .axis-label { fill: #64748b; font-size: 12px; }
+    .histogram {
+      display: grid;
+      grid-template-columns: repeat(16, minmax(18px, 1fr));
+      gap: 10px;
+      align-items: end;
+      min-height: 220px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 16px 10px;
+      background: linear-gradient(180deg, #ffffff 0%, #faf8ef 100%);
+    }
+    .bar-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      height: 100%;
+      justify-content: end;
+    }
+    .bar {
+      width: 100%;
+      min-height: 6px;
+      border-radius: 999px 999px 6px 6px;
+      background: linear-gradient(180deg, #b5a160 0%, #0f766e 100%);
+    }
+    .bar-label {
+      font-size: 11px;
+      color: #64748b;
+    }
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(10px, 1fr));
+      gap: 4px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      padding: 14px;
+    }
+    .heat-cell {
+      height: 28px;
+      border-radius: 6px;
+    }
+    .two-col {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.92rem;
+    }
+    th { background: #f8fafc; }
+    tbody tr:last-child td { border-bottom: none; }
+    @media (max-width: 900px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card hero">
+      <p class="eyebrow">Embedding Visualizer</p>
+      <h1>Samuel Torres Rodriguez</h1>
+      <p class="muted">Fuente: mongodb userId=6a302ce477b63a675669c28a (email=samuel.torres638@correo.test, cedula=81088638, rol=Estudiante, facultad=Contaduria Publica, estado=inactivo). Tipo de fuente: mongodb-user. Visualizacion aislada para explorar como se veria un embedding facial sin tocar el proyecto principal.</p>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Dimensiones</div><div class="stat-value">512</div></div>
+        <div class="stat"><div class="stat-label">Minimo</div><div class="stat-value">-0.126706</div></div>
+        <div class="stat"><div class="stat-label">Maximo</div><div class="stat-value">0.111496</div></div>
+        <div class="stat"><div class="stat-label">Promedio</div><div class="stat-value">-0.001726</div></div>
+        <div class="stat"><div class="stat-label">Desv. estandar</div><div class="stat-value">0.04416</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="chart-title">Grafico de linea</h2>
+      <p class="chart-subtitle">Cada punto representa el valor de una dimension del embedding.</p>
+      <div class="line-chart">
+        <svg viewBox="0 0 960 320" role="img" aria-label="Grafico de linea del embedding">
+          <line class="grid-line" x1="48" y1="20" x2="48" y2="284"></line>
+          <line class="grid-line" x1="48" y1="284" x2="944" y2="284"></line>
+          <line class="grid-line" x1="48" y1="152" x2="944" y2="152"></line>
+          <path class="plot-line" d="M 48 217.73 L 49.75 256.41 L 51.51 161.47 L 53.26 188.95 L 55.01 183.64 L 56.77 257.21 L 58.52 188.22 L 60.27 103.97 L 62.03 166.35 L 63.78 141.69 L 65.53 123.75 L 67.29 139.27 L 69.04 52.04 L 70.79 96.67 L 72.55 208.65 L 74.3 142.5 L 76.05 135.94 L 77.81 214.64 L 79.56 168.89 L 81.32 176.23 L 83.07 165.41 L 84.82 151.98 L 86.58 165.35 L 88.33 189.63 L 90.08 166.02 L 91.84 54.1 L 93.59 143.46 L 95.34 121.49 L 97.1 46.78 L 98.85 105.15 L 100.6 183.64 L 102.36 81.27 L 104.11 108.51 L 105.86 41.86 L 107.62 80.93 L 109.37 164.22 L 111.12 103.72 L 112.88 150.51 L 114.63 122.62 L 116.38 164.58 L 118.14 200.68 L 119.89 182.75 L 121.64 158.58 L 123.4 118.46 L 125.15 163.12 L 126.9 112.52 L 128.66 138.53 L 130.41 60.74 L 132.16 197.47 L 133.92 104.74 L 135.67 123.2 L 137.42 163.77 L 139.18 113.4 L 140.93 91.91 L 142.68 136.86 L 144.44 182.22 L 146.19 177.75 L 147.95 109.12 L 149.7 149.87 L 151.45 101.21 L 153.21 131.99 L 154.96 119.08 L 156.71 160.73 L 158.47 167.19 L 160.22 138.15 L 161.97 170.98 L 163.73 105.33 L 165.48 117.9 L 167.23 81.29 L 168.99 151.32 L 170.74 59.56 L 172.49 20.35 L 174.25 125.17 L 176 165.08 L 177.75 50.57 L 179.51 129.47 L 181.26 258.42 L 183.01 86.25 L 184.77 152.06 L 186.52 111.83 L 188.27 145.7 L 190.03 161.9 L 191.78 186.02 L 193.53 33.87 L 195.29 150.6 L 197.04 68.77 L 198.79 98.94 L 200.55 134.4 L 202.3 189.44 L 204.05 221.88 L 205.81 82.55 L 207.56 145.57 L 209.32 200.08 L 211.07 121.3 L 212.82 183.42 L 214.58 43.86 L 216.33 176.01 L 218.08 63.62 L 219.84 198.45 L 221.59 107.01 L 223.34 208.54 L 225.1 181.8 L 226.85 171.79 L 228.6 141.03 L 230.36 183.6 L 232.11 182.95 L 233.86 72.08 L 235.62 132.8 L 237.37 127.82 L 239.12 63 L 240.88 215.98 L 242.63 100.65 L 244.38 159.6 L 246.14 138.94 L 247.89 162.41 L 249.64 170.41 L 251.4 161.9 L 253.15 209.8 L 254.9 65.05 L 256.66 84.13 L 258.41 168.64 L 260.16 225.47 L 261.92 90.36 L 263.67 111.24 L 265.42 182.69 L 267.18 116.64 L 268.93 155.15 L 270.68 205.5 L 272.44 75.8 L 274.19 119.05 L 275.95 89.3 L 277.7 117.74 L 279.45 218.73 L 281.21 82.84 L 282.96 192.47 L 284.71 165.69 L 286.47 123.41 L 288.22 139.18 L 289.97 219.08 L 291.73 67.27 L 293.48 81.47 L 295.23 76.82 L 296.99 90.01 L 298.74 119.94 L 300.49 184.99 L 302.25 142.09 L 304 203.52 L 305.75 147.04 L 307.51 122.22 L 309.26 145.31 L 311.01 182.32 L 312.77 58.24 L 314.52 101.7 L 316.27 132.06 L 318.03 93.35 L 319.78 221.46 L 321.53 181.64 L 323.29 99.63 L 325.04 112.17 L 326.79 96.32 L 328.55 150.21 L 330.3 102.14 L 332.05 132.69 L 333.81 192.12 L 335.56 146.81 L 337.32 108.42 L 339.07 156.18 L 340.82 138.77 L 342.58 92.66 L 344.33 184.11 L 346.08 223.57 L 347.84 122.19 L 349.59 230.03 L 351.34 77 L 353.1 88.71 L 354.85 142.04 L 356.6 164.11 L 358.36 105.22 L 360.11 151.17 L 361.86 163.52 L 363.62 43.17 L 365.37 140.75 L 367.12 140.73 L 368.88 25.14 L 370.63 88.45 L 372.38 79.75 L 374.14 169.53 L 375.89 174.41 L 377.64 105.67 L 379.4 177.52 L 381.15 145.23 L 382.9 118.52 L 384.66 140.58 L 386.41 208.04 L 388.16 227.65 L 389.92 107.63 L 391.67 135.25 L 393.42 232.71 L 395.18 104.75 L 396.93 158.49 L 398.68 121.37 L 400.44 123.9 L 402.19 149.92 L 403.95 174.91 L 405.7 81.49 L 407.45 114.97 L 409.21 117.89 L 410.96 229.06 L 412.71 170.98 L 414.47 187.52 L 416.22 137.54 L 417.97 232.27 L 419.73 167.34 L 421.48 114.75 L 423.23 188.13 L 424.99 116.97 L 426.74 132.74 L 428.49 232.72 L 430.25 138.29 L 432 113.41 L 433.75 179.88 L 435.51 123.5 L 437.26 210.9 L 439.01 48.49 L 440.77 133.06 L 442.52 130.98 L 444.27 200.32 L 446.03 119.57 L 447.78 113.31 L 449.53 196.79 L 451.29 225.16 L 453.04 165.31 L 454.79 71.57 L 456.55 129.93 L 458.3 225.95 L 460.05 190.73 L 461.81 134.47 L 463.56 183.3 L 465.32 63.74 L 467.07 38.41 L 468.82 134.38 L 470.58 107.01 L 472.33 159.08 L 474.08 209.24 L 475.84 188.08 L 477.59 162.48 L 479.34 172.78 L 481.1 103.38 L 482.85 175.3 L 484.6 211.27 L 486.36 130.22 L 488.11 208.11 L 489.86 172.98 L 491.62 88.68 L 493.37 203.96 L 495.12 159.68 L 496.88 184.19 L 498.63 179.26 L 500.38 196.21 L 502.14 191.68 L 503.89 63.54 L 505.64 97.42 L 507.4 181.8 L 509.15 268.97 L 510.9 141.9 L 512.66 187.16 L 514.41 125.4 L 516.16 93.79 L 517.92 162.34 L 519.67 191.25 L 521.42 120.41 L 523.18 122.81 L 524.93 145.7 L 526.68 179.14 L 528.44 284 L 530.19 126.66 L 531.95 77.96 L 533.7 193.14 L 535.45 188.86 L 537.21 154.65 L 538.96 118.29 L 540.71 121.46 L 542.47 114.23 L 544.22 149.68 L 545.97 145.24 L 547.73 122.22 L 549.48 96.05 L 551.23 130.61 L 552.99 124.49 L 554.74 94.96 L 556.49 260.81 L 558.25 184.62 L 560 237.15 L 561.75 142.2 L 563.51 164.06 L 565.26 124.94 L 567.01 146.3 L 568.77 159.41 L 570.52 175.15 L 572.27 168.29 L 574.03 145 L 575.78 134.92 L 577.53 186.05 L 579.29 166.13 L 581.04 166.53 L 582.79 161.28 L 584.55 127.85 L 586.3 47.09 L 588.05 153.2 L 589.81 155.84 L 591.56 165.5 L 593.32 176.1 L 595.07 117.12 L 596.82 146.26 L 598.58 223.82 L 600.33 166.3 L 602.08 239.51 L 603.84 88.24 L 605.59 109.23 L 607.34 138.48 L 609.1 186.8 L 610.85 31.92 L 612.6 151.8 L 614.36 180.65 L 616.11 118.11 L 617.86 131.25 L 619.62 88.35 L 621.37 124.89 L 623.12 75.49 L 624.88 40.69 L 626.63 172.85 L 628.38 168.89 L 630.14 66.67 L 631.89 199.26 L 633.64 146.18 L 635.4 263.74 L 637.15 109.93 L 638.9 143.86 L 640.66 201.17 L 642.41 115.79 L 644.16 98.34 L 645.92 106.8 L 647.67 219.37 L 649.42 116.33 L 651.18 169.72 L 652.93 124.21 L 654.68 141.59 L 656.44 140.31 L 658.19 103.87 L 659.95 185.22 L 661.7 193.79 L 663.45 88.24 L 665.21 199.38 L 666.96 170.11 L 668.71 223.68 L 670.47 74.7 L 672.22 80.07 L 673.97 146.92 L 675.73 119.26 L 677.48 198.49 L 679.23 113.65 L 680.99 131.63 L 682.74 181.77 L 684.49 118.54 L 686.25 144.72 L 688 127.43 L 689.75 229.76 L 691.51 107.16 L 693.26 180.59 L 695.01 83.43 L 696.77 75.14 L 698.52 176.28 L 700.27 178.15 L 702.03 149.15 L 703.78 113.23 L 705.53 159.97 L 707.29 66.31 L 709.04 174.92 L 710.79 52.31 L 712.55 90.9 L 714.3 139.41 L 716.05 148.08 L 717.81 247.34 L 719.56 228.67 L 721.32 208.64 L 723.07 144.12 L 724.82 196.17 L 726.58 199.32 L 728.33 156.33 L 730.08 116.35 L 731.84 170.53 L 733.59 228.51 L 735.34 84.68 L 737.1 173.39 L 738.85 99.66 L 740.6 90.2 L 742.36 122.38 L 744.11 124.72 L 745.86 107.67 L 747.62 168.95 L 749.37 225.78 L 751.12 217.55 L 752.88 177.09 L 754.63 101.22 L 756.38 144.53 L 758.14 204.69 L 759.89 190.75 L 761.64 94.2 L 763.4 66.64 L 765.15 70.87 L 766.9 86.67 L 768.66 182.4 L 770.41 129.44 L 772.16 165.72 L 773.92 206.51 L 775.67 135.65 L 777.42 151.92 L 779.18 190.01 L 780.93 204.85 L 782.68 97.95 L 784.44 135.61 L 786.19 91.53 L 787.95 166.9 L 789.7 143.81 L 791.45 166.51 L 793.21 116.63 L 794.96 137.27 L 796.71 190.7 L 798.47 108.37 L 800.22 245.83 L 801.97 171.25 L 803.73 197.28 L 805.48 187.34 L 807.23 199.72 L 808.99 113.76 L 810.74 156.33 L 812.49 135.9 L 814.25 122.13 L 816 212.4 L 817.75 210.73 L 819.51 75.68 L 821.26 128.75 L 823.01 197.47 L 824.77 157.37 L 826.52 199.45 L 828.27 171.62 L 830.03 152.35 L 831.78 162.64 L 833.53 80.88 L 835.29 160.36 L 837.04 93.47 L 838.79 116.04 L 840.55 71.22 L 842.3 185.72 L 844.05 195.67 L 845.81 151.04 L 847.56 143.34 L 849.32 204.36 L 851.07 94.38 L 852.82 191.9 L 854.58 138.95 L 856.33 99.42 L 858.08 110.2 L 859.84 133.51 L 861.59 160.66 L 863.34 113.26 L 865.1 210.96 L 866.85 185.49 L 868.6 20 L 870.36 167.39 L 872.11 100.36 L 873.86 89.32 L 875.62 142.63 L 877.37 105.69 L 879.12 158.62 L 880.88 104.27 L 882.63 123.22 L 884.38 172.71 L 886.14 91.2 L 887.89 127.72 L 889.64 128.86 L 891.4 111.65 L 893.15 194.04 L 894.9 195.62 L 896.66 127.53 L 898.41 95.27 L 900.16 243.48 L 901.92 260.36 L 903.67 214.79 L 905.42 147.79 L 907.18 93.69 L 908.93 176.68 L 910.68 132.55 L 912.44 100.31 L 914.19 154.59 L 915.95 137.67 L 917.7 210.98 L 919.45 144.69 L 921.21 204.19 L 922.96 104.87 L 924.71 120.44 L 926.47 115.59 L 928.22 213.9 L 929.97 46.3 L 931.73 186.69 L 933.48 92.8 L 935.23 266.56 L 936.99 185.42 L 938.74 250.03 L 940.49 169.62 L 942.25 142.21 L 944 148.42"></path>
+          <text class="axis-label" x="48" y="304">0</text>
+          <text class="axis-label" x="912" y="304">511</text>
+          <text class="axis-label" x="8" y="26">0.111496</text>
+          <text class="axis-label" x="8" y="156">-0.007605</text>
+          <text class="axis-label" x="8" y="288">-0.126706</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="two-col">
+      <section class="card">
+        <h2 class="chart-title">Histograma</h2>
+        <p class="chart-subtitle">Distribucion de valores del embedding agrupada en 16 buckets.</p>
+        <div class="histogram">
+        <div class="bar-group" title="-0.126706 a -0.111818: 2">
+          <div class="bar" style="height:2.9%"></div>
+          <span class="bar-label">1</span>
+        </div>
+        <div class="bar-group" title="-0.111818 a -0.09693: 7">
+          <div class="bar" style="height:10.14%"></div>
+          <span class="bar-label">2</span>
+        </div>
+        <div class="bar-group" title="-0.09693 a -0.082043: 6">
+          <div class="bar" style="height:8.7%"></div>
+          <span class="bar-label">3</span>
+        </div>
+        <div class="bar-group" title="-0.082043 a -0.067155: 21">
+          <div class="bar" style="height:30.43%"></div>
+          <span class="bar-label">4</span>
+        </div>
+        <div class="bar-group" title="-0.067155 a -0.052268: 27">
+          <div class="bar" style="height:39.13%"></div>
+          <span class="bar-label">5</span>
+        </div>
+        <div class="bar-group" title="-0.052268 a -0.03738: 49">
+          <div class="bar" style="height:71.01%"></div>
+          <span class="bar-label">6</span>
+        </div>
+        <div class="bar-group" title="-0.03738 a -0.022492: 58">
+          <div class="bar" style="height:84.06%"></div>
+          <span class="bar-label">7</span>
+        </div>
+        <div class="bar-group" title="-0.022492 a -0.007605: 55">
+          <div class="bar" style="height:79.71%"></div>
+          <span class="bar-label">8</span>
+        </div>
+        <div class="bar-group" title="-0.007605 a 0.007283: 69">
+          <div class="bar" style="height:100%"></div>
+          <span class="bar-label">9</span>
+        </div>
+        <div class="bar-group" title="0.007283 a 0.02217: 60">
+          <div class="bar" style="height:86.96%"></div>
+          <span class="bar-label">10</span>
+        </div>
+        <div class="bar-group" title="0.02217 a 0.037058: 58">
+          <div class="bar" style="height:84.06%"></div>
+          <span class="bar-label">11</span>
+        </div>
+        <div class="bar-group" title="0.037058 a 0.051946: 44">
+          <div class="bar" style="height:63.77%"></div>
+          <span class="bar-label">12</span>
+        </div>
+        <div class="bar-group" title="0.051946 a 0.066833: 25">
+          <div class="bar" style="height:36.23%"></div>
+          <span class="bar-label">13</span>
+        </div>
+        <div class="bar-group" title="0.066833 a 0.081721: 14">
+          <div class="bar" style="height:20.29%"></div>
+          <span class="bar-label">14</span>
+        </div>
+        <div class="bar-group" title="0.081721 a 0.096609: 12">
+          <div class="bar" style="height:17.39%"></div>
+          <span class="bar-label">15</span>
+        </div>
+        <div class="bar-group" title="0.096609 a 0.111496: 5">
+          <div class="bar" style="height:7.25%"></div>
+          <span class="bar-label">16</span>
+        </div></div>
+      </section>
+
+      <section class="card">
+        <h2 class="chart-title">Fuente y metadatos</h2>
+        <p class="chart-subtitle">Referencia explicita del origen del embedding usado para esta visualizacion.</p>
+        <table style="margin-bottom:20px">
+          <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
+          <tbody>
+            <tr><td>source</td><td>mongodb userId=6a302ce477b63a675669c28a (email=samuel.torres638@correo.test, cedula=81088638, rol=Estudiante, facultad=Contaduria Publica, estado=inactivo)</td></tr>
+            <tr><td>sourceType</td><td>mongodb-user</td></tr>
+            <tr><td>userId</td><td>6a302ce477b63a675669c28a</td></tr><tr><td>nombre</td><td>Samuel</td></tr><tr><td>apellido</td><td>Torres Rodriguez</td></tr><tr><td>email</td><td>samuel.torres638@correo.test</td></tr><tr><td>cedula</td><td>81088638</td></tr><tr><td>rolAcademico</td><td>Estudiante</td></tr><tr><td>facultad</td><td>Contaduria Publica</td></tr><tr><td>estado</td><td>inactivo</td></tr><tr><td>faceRegistered</td><td>true</td></tr><tr><td>faceDescriptorUpdatedAt</td><td>2026-06-15T16:48:36.689Z</td></tr>
+          </tbody>
+        </table>
+
+        <h2 class="chart-title">Muestra de dimensiones</h2>
+        <p class="chart-subtitle">Primeras 24 dimensiones para inspeccion rapida.</p>
+        <table>
+          <thead><tr><th>Indice</th><th>Valor</th></tr></thead>
+          <tbody><tr><td>0</td><td>-0.066908</td></tr><tr><td>1</td><td>-0.101808</td></tr><tr><td>2</td><td>-0.016149</td></tr><tr><td>3</td><td>-0.040946</td></tr><tr><td>4</td><td>-0.036154</td></tr><tr><td>5</td><td>-0.102538</td></tr><tr><td>6</td><td>-0.040285</td></tr><tr><td>7</td><td>0.035735</td></tr><tr><td>8</td><td>-0.020556</td></tr><tr><td>9</td><td>0.001694</td></tr><tr><td>10</td><td>0.017882</td></tr><tr><td>11</td><td>0.003878</td></tr><tr><td>12</td><td>0.082591</td></tr><tr><td>13</td><td>0.042322</td></tr><tr><td>14</td><td>-0.058721</td></tr><tr><td>15</td><td>0.000963</td></tr><tr><td>16</td><td>0.006887</td></tr><tr><td>17</td><td>-0.06412</td></tr><tr><td>18</td><td>-0.022841</td></tr><tr><td>19</td><td>-0.029466</td></tr><tr><td>20</td><td>-0.019703</td></tr><tr><td>21</td><td>-0.007585</td></tr><tr><td>22</td><td>-0.019646</td></tr><tr><td>23</td><td>-0.041554</td></tr></tbody>
+        </table>
+      </section>
+    </section>
+
+    <section class="card">
+      <h2 class="chart-title">Heatmap lineal</h2>
+      <p class="chart-subtitle">Cada celda representa una dimension del embedding coloreada segun su intensidad relativa.</p>
+      <div class="heatmap">
+        <div class="heat-cell" title="dim 0: -0.066908" style="background:hsl(173.58 78% 39.53%)"></div>
+        <div class="heat-cell" title="dim 1: -0.101808" style="background:hsl(197.75 78% 35.14%)"></div>
+        <div class="heat-cell" title="dim 2: -0.016149" style="background:hsl(138.42 78% 45.92%)"></div>
+        <div class="heat-cell" title="dim 3: -0.040946" style="background:hsl(155.6 78% 42.8%)"></div>
+        <div class="heat-cell" title="dim 4: -0.036154" style="background:hsl(152.28 78% 43.4%)"></div>
+        <div class="heat-cell" title="dim 5: -0.102538" style="background:hsl(198.26 78% 35.04%)"></div>
+        <div class="heat-cell" title="dim 6: -0.040285" style="background:hsl(155.14 78% 42.88%)"></div>
+        <div class="heat-cell" title="dim 7: 0.035735" style="background:hsl(102.48 78% 52.46%)"></div>
+        <div class="heat-cell" title="dim 8: -0.020556" style="background:hsl(141.47 78% 45.37%)"></div>
+        <div class="heat-cell" title="dim 9: 0.001694" style="background:hsl(126.06 78% 48.17%)"></div>
+        <div class="heat-cell" title="dim 10: 0.017882" style="background:hsl(114.85 78% 50.21%)"></div>
+        <div class="heat-cell" title="dim 11: 0.003878" style="background:hsl(124.55 78% 48.45%)"></div>
+        <div class="heat-cell" title="dim 12: 0.082591" style="background:hsl(70.02 78% 58.36%)"></div>
+        <div class="heat-cell" title="dim 13: 0.042322" style="background:hsl(97.92 78% 53.29%)"></div>
+        <div class="heat-cell" title="dim 14: -0.058721" style="background:hsl(167.91 78% 40.56%)"></div>
+        <div class="heat-cell" title="dim 15: 0.000963" style="background:hsl(126.57 78% 48.08%)"></div>
+        <div class="heat-cell" title="dim 16: 0.006887" style="background:hsl(122.46 78% 48.83%)"></div>
+        <div class="heat-cell" title="dim 17: -0.06412" style="background:hsl(171.65 78% 39.88%)"></div>
+        <div class="heat-cell" title="dim 18: -0.022841" style="background:hsl(143.05 78% 45.08%)"></div>
+        <div class="heat-cell" title="dim 19: -0.029466" style="background:hsl(147.64 78% 44.25%)"></div>
+        <div class="heat-cell" title="dim 20: -0.019703" style="background:hsl(140.88 78% 45.48%)"></div>
+        <div class="heat-cell" title="dim 21: -0.007585" style="background:hsl(132.49 78% 47%)"></div>
+        <div class="heat-cell" title="dim 22: -0.019646" style="background:hsl(140.84 78% 45.48%)"></div>
+        <div class="heat-cell" title="dim 23: -0.041554" style="background:hsl(156.02 78% 42.72%)"></div>
+        <div class="heat-cell" title="dim 24: -0.020258" style="background:hsl(141.26 78% 45.41%)"></div>
+        <div class="heat-cell" title="dim 25: 0.080728" style="background:hsl(71.31 78% 58.12%)"></div>
+        <div class="heat-cell" title="dim 26: 0.000101" style="background:hsl(127.16 78% 47.97%)"></div>
+        <div class="heat-cell" title="dim 27: 0.019925" style="background:hsl(113.43 78% 50.47%)"></div>
+        <div class="heat-cell" title="dim 28: 0.087329" style="background:hsl(66.74 78% 58.96%)"></div>
+        <div class="heat-cell" title="dim 29: 0.034667" style="background:hsl(103.22 78% 52.32%)"></div>
+        <div class="heat-cell" title="dim 30: -0.036156" style="background:hsl(152.28 78% 43.4%)"></div>
+        <div class="heat-cell" title="dim 31: 0.056213" style="background:hsl(88.29 78% 55.04%)"></div>
+        <div class="heat-cell" title="dim 32: 0.031633" style="background:hsl(105.32 78% 51.94%)"></div>
+        <div class="heat-cell" title="dim 33: 0.09177" style="background:hsl(63.66 78% 59.52%)"></div>
+        <div class="heat-cell" title="dim 34: 0.056517" style="background:hsl(88.08 78% 55.08%)"></div>
+        <div class="heat-cell" title="dim 35: -0.018626" style="background:hsl(140.13 78% 45.61%)"></div>
+        <div class="heat-cell" title="dim 36: 0.035954" style="background:hsl(102.33 78% 52.49%)"></div>
+        <div class="heat-cell" title="dim 37: -0.006256" style="background:hsl(131.57 78% 47.17%)"></div>
+        <div class="heat-cell" title="dim 38: 0.0189" style="background:hsl(114.14 78% 50.34%)"></div>
+        <div class="heat-cell" title="dim 39: -0.018951" style="background:hsl(140.36 78% 45.57%)"></div>
+        <div class="heat-cell" title="dim 40: -0.051531" style="background:hsl(162.93 78% 41.47%)"></div>
+        <div class="heat-cell" title="dim 41: -0.03535" style="background:hsl(151.72 78% 43.51%)"></div>
+        <div class="heat-cell" title="dim 42: -0.01354" style="background:hsl(136.61 78% 46.25%)"></div>
+        <div class="heat-cell" title="dim 43: 0.022662" style="background:hsl(111.53 78% 50.81%)"></div>
+        <div class="heat-cell" title="dim 44: -0.017638" style="background:hsl(139.45 78% 45.74%)"></div>
+        <div class="heat-cell" title="dim 45: 0.028014" style="background:hsl(107.83 78% 51.49%)"></div>
+        <div class="heat-cell" title="dim 46: 0.004546" style="background:hsl(124.08 78% 48.53%)"></div>
+        <div class="heat-cell" title="dim 47: 0.074739" style="background:hsl(75.46 78% 57.37%)"></div>
+        <div class="heat-cell" title="dim 48: -0.04863" style="background:hsl(160.92 78% 41.83%)"></div>
+        <div class="heat-cell" title="dim 49: 0.035037" style="background:hsl(102.96 78% 52.37%)"></div>
+        <div class="heat-cell" title="dim 50: 0.01838" style="background:hsl(114.5 78% 50.27%)"></div>
+        <div class="heat-cell" title="dim 51: -0.018225" style="background:hsl(139.86 78% 45.66%)"></div>
+        <div class="heat-cell" title="dim 52: 0.027226" style="background:hsl(108.37 78% 51.39%)"></div>
+        <div class="heat-cell" title="dim 53: 0.046614" style="background:hsl(94.94 78% 53.83%)"></div>
+        <div class="heat-cell" title="dim 54: 0.006058" style="background:hsl(123.04 78% 48.72%)"></div>
+        <div class="heat-cell" title="dim 55: -0.034871" style="background:hsl(151.39 78% 43.57%)"></div>
+        <div class="heat-cell" title="dim 56: -0.030835" style="background:hsl(148.59 78% 44.07%)"></div>
+        <div class="heat-cell" title="dim 57: 0.031084" style="background:hsl(105.7 78% 51.87%)"></div>
+        <div class="heat-cell" title="dim 58: -0.005686" style="background:hsl(131.17 78% 47.24%)"></div>
+        <div class="heat-cell" title="dim 59: 0.038219" style="background:hsl(100.76 78% 52.77%)"></div>
+        <div class="heat-cell" title="dim 60: 0.010452" style="background:hsl(119.99 78% 49.27%)"></div>
+        <div class="heat-cell" title="dim 61: 0.022095" style="background:hsl(111.93 78% 50.74%)"></div>
+        <div class="heat-cell" title="dim 62: -0.015478" style="background:hsl(137.95 78% 46.01%)"></div>
+        <div class="heat-cell" title="dim 63: -0.021309" style="background:hsl(141.99 78% 45.27%)"></div>
+        <div class="heat-cell" title="dim 64: 0.004889" style="background:hsl(123.85 78% 48.57%)"></div>
+        <div class="heat-cell" title="dim 65: -0.024734" style="background:hsl(144.37 78% 44.84%)"></div>
+        <div class="heat-cell" title="dim 66: 0.034502" style="background:hsl(103.33 78% 52.3%)"></div>
+        <div class="heat-cell" title="dim 67: 0.023167" style="background:hsl(111.18 78% 50.88%)"></div>
+        <div class="heat-cell" title="dim 68: 0.0562" style="background:hsl(88.3 78% 55.04%)"></div>
+        <div class="heat-cell" title="dim 69: -0.00699" style="background:hsl(132.07 78% 47.08%)"></div>
+        <div class="heat-cell" title="dim 70: 0.075799" style="background:hsl(74.73 78% 57.5%)"></div>
+        <div class="heat-cell" title="dim 71: 0.111177" style="background:hsl(50.22 78% 61.96%)"></div>
+        <div class="heat-cell" title="dim 72: 0.016606" style="background:hsl(115.73 78% 50.05%)"></div>
+        <div class="heat-cell" title="dim 73: -0.019406" style="background:hsl(140.67 78% 45.51%)"></div>
+        <div class="heat-cell" title="dim 74: 0.083912" style="background:hsl(69.11 78% 58.53%)"></div>
+        <div class="heat-cell" title="dim 75: 0.012726" style="background:hsl(118.42 78% 49.56%)"></div>
+        <div class="heat-cell" title="dim 76: -0.103627" style="background:hsl(199.01 78% 34.91%)"></div>
+        <div class="heat-cell" title="dim 77: 0.051716" style="background:hsl(91.41 78% 54.47%)"></div>
+        <div class="heat-cell" title="dim 78: -0.007657" style="background:hsl(132.54 78% 46.99%)"></div>
+        <div class="heat-cell" title="dim 79: 0.028638" style="background:hsl(107.4 78% 51.56%)"></div>
+        <div class="heat-cell" title="dim 80: -0.001925" style="background:hsl(128.57 78% 47.72%)"></div>
+        <div class="heat-cell" title="dim 81: -0.016533" style="background:hsl(138.68 78% 45.88%)"></div>
+        <div class="heat-cell" title="dim 82: -0.038302" style="background:hsl(153.76 78% 43.13%)"></div>
+        <div class="heat-cell" title="dim 83: 0.098977" style="background:hsl(58.67 78% 60.42%)"></div>
+        <div class="heat-cell" title="dim 84: -0.006345" style="background:hsl(131.63 78% 47.16%)"></div>
+        <div class="heat-cell" title="dim 85: 0.067491" style="background:hsl(80.48 78% 56.46%)"></div>
+        <div class="heat-cell" title="dim 86: 0.040267" style="background:hsl(99.34 78% 53.03%)"></div>
+        <div class="heat-cell" title="dim 87: 0.008273" style="background:hsl(121.5 78% 49%)"></div>
+        <div class="heat-cell" title="dim 88: -0.041387" style="background:hsl(155.9 78% 42.75%)"></div>
+        <div class="heat-cell" title="dim 89: -0.070657" style="background:hsl(176.18 78% 39.06%)"></div>
+        <div class="heat-cell" title="dim 90: 0.055056" style="background:hsl(89.1 78% 54.89%)"></div>
+        <div class="heat-cell" title="dim 91: -0.001803" style="background:hsl(128.48 78% 47.73%)"></div>
+        <div class="heat-cell" title="dim 92: -0.050983" style="background:hsl(162.55 78% 41.54%)"></div>
+        <div class="heat-cell" title="dim 93: 0.020092" style="background:hsl(113.31 78% 50.49%)"></div>
+        <div class="heat-cell" title="dim 94: -0.035953" style="background:hsl(152.14 78% 43.43%)"></div>
+        <div class="heat-cell" title="dim 95: 0.089965" style="background:hsl(64.91 78% 59.29%)"></div>
+        <div class="heat-cell" title="dim 96: -0.029266" style="background:hsl(147.5 78% 44.27%)"></div>
+        <div class="heat-cell" title="dim 97: 0.072139" style="background:hsl(77.26 78% 57.04%)"></div>
+        <div class="heat-cell" title="dim 98: -0.049515" style="background:hsl(161.53 78% 41.72%)"></div>
+        <div class="heat-cell" title="dim 99: 0.032989" style="background:hsl(104.38 78% 52.11%)"></div>
+        <div class="heat-cell" title="dim 100: -0.058618" style="background:hsl(167.84 78% 40.58%)"></div>
+        <div class="heat-cell" title="dim 101: -0.03449" style="background:hsl(151.12 78% 43.61%)"></div>
+        <div class="heat-cell" title="dim 102: -0.025456" style="background:hsl(144.87 78% 44.75%)"></div>
+        <div class="heat-cell" title="dim 103: 0.002292" style="background:hsl(125.64 78% 48.25%)"></div>
+        <div class="heat-cell" title="dim 104: -0.036119" style="background:hsl(152.25 78% 43.41%)"></div>
+        <div class="heat-cell" title="dim 105: -0.035527" style="background:hsl(151.84 78% 43.48%)"></div>
+        <div class="heat-cell" title="dim 106: 0.064507" style="background:hsl(82.55 78% 56.08%)"></div>
+        <div class="heat-cell" title="dim 107: 0.009723" style="background:hsl(120.5 78% 49.18%)"></div>
+        <div class="heat-cell" title="dim 108: 0.014216" style="background:hsl(117.38 78% 49.75%)"></div>
+        <div class="heat-cell" title="dim 109: 0.072695" style="background:hsl(76.88 78% 57.11%)"></div>
+        <div class="heat-cell" title="dim 110: -0.065333" style="background:hsl(172.49 78% 39.73%)"></div>
+        <div class="heat-cell" title="dim 111: 0.038731" style="background:hsl(100.4 78% 52.84%)"></div>
+        <div class="heat-cell" title="dim 112: -0.014459" style="background:hsl(137.25 78% 46.14%)"></div>
+        <div class="heat-cell" title="dim 113: 0.004179" style="background:hsl(124.34 78% 48.48%)"></div>
+        <div class="heat-cell" title="dim 114: -0.017001" style="background:hsl(139.01 78% 45.82%)"></div>
+        <div class="heat-cell" title="dim 115: -0.024217" style="background:hsl(144.01 78% 44.91%)"></div>
+        <div class="heat-cell" title="dim 116: -0.01654" style="background:hsl(138.69 78% 45.87%)"></div>
+        <div class="heat-cell" title="dim 117: -0.059756" style="background:hsl(168.62 78% 40.43%)"></div>
+        <div class="heat-cell" title="dim 118: 0.070852" style="background:hsl(78.15 78% 56.88%)"></div>
+        <div class="heat-cell" title="dim 119: 0.053634" style="background:hsl(90.08 78% 54.71%)"></div>
+        <div class="heat-cell" title="dim 120: -0.022618" style="background:hsl(142.9 78% 45.11%)"></div>
+        <div class="heat-cell" title="dim 121: -0.073893" style="background:hsl(178.42 78% 38.65%)"></div>
+        <div class="heat-cell" title="dim 122: 0.048008" style="background:hsl(93.98 78% 54%)"></div>
+        <div class="heat-cell" title="dim 123: 0.029174" style="background:hsl(107.02 78% 51.63%)"></div>
+        <div class="heat-cell" title="dim 124: -0.035294" style="background:hsl(151.68 78% 43.51%)"></div>
+        <div class="heat-cell" title="dim 125: 0.024301" style="background:hsl(110.4 78% 51.02%)"></div>
+        <div class="heat-cell" title="dim 126: -0.01045" style="background:hsl(134.47 78% 46.64%)"></div>
+        <div class="heat-cell" title="dim 127: -0.055873" style="background:hsl(165.93 78% 40.92%)"></div>
+        <div class="heat-cell" title="dim 128: 0.061147" style="background:hsl(84.88 78% 55.66%)"></div>
+        <div class="heat-cell" title="dim 129: 0.022127" style="background:hsl(111.91 78% 50.74%)"></div>
+        <div class="heat-cell" title="dim 130: 0.048967" style="background:hsl(93.31 78% 54.12%)"></div>
+        <div class="heat-cell" title="dim 131: 0.023305" style="background:hsl(111.09 78% 50.89%)"></div>
+        <div class="heat-cell" title="dim 132: -0.067814" style="background:hsl(174.21 78% 39.42%)"></div>
+        <div class="heat-cell" title="dim 133: 0.0548" style="background:hsl(89.27 78% 54.86%)"></div>
+        <div class="heat-cell" title="dim 134: -0.044116" style="background:hsl(157.79 78% 42.4%)"></div>
+        <div class="heat-cell" title="dim 135: -0.01996" style="background:hsl(141.06 78% 45.44%)"></div>
+        <div class="heat-cell" title="dim 136: 0.018196" style="background:hsl(114.63 78% 50.25%)"></div>
+        <div class="heat-cell" title="dim 137: 0.003967" style="background:hsl(124.48 78% 48.46%)"></div>
+        <div class="heat-cell" title="dim 138: -0.068133" style="background:hsl(174.43 78% 39.38%)"></div>
+        <div class="heat-cell" title="dim 139: 0.068845" style="background:hsl(79.54 78% 56.63%)"></div>
+        <div class="heat-cell" title="dim 140: 0.056037" style="background:hsl(88.42 78% 55.02%)"></div>
+        <div class="heat-cell" title="dim 141: 0.060226" style="background:hsl(85.51 78% 55.54%)"></div>
+        <div class="heat-cell" title="dim 142: 0.048325" style="background:hsl(93.76 78% 54.04%)"></div>
+        <div class="heat-cell" title="dim 143: 0.021326" style="background:hsl(112.46 78% 50.64%)"></div>
+        <div class="heat-cell" title="dim 144: -0.037373" style="background:hsl(153.12 78% 43.25%)"></div>
+        <div class="heat-cell" title="dim 145: 0.001339" style="background:hsl(126.3 78% 48.13%)"></div>
+        <div class="heat-cell" title="dim 146: -0.054088" style="background:hsl(164.7 78% 41.15%)"></div>
+        <div class="heat-cell" title="dim 147: -0.003129" style="background:hsl(129.4 78% 47.56%)"></div>
+        <div class="heat-cell" title="dim 148: 0.019265" style="background:hsl(113.89 78% 50.38%)"></div>
+        <div class="heat-cell" title="dim 149: -0.001566" style="background:hsl(128.32 78% 47.76%)"></div>
+        <div class="heat-cell" title="dim 150: -0.034965" style="background:hsl(151.45 78% 43.55%)"></div>
+        <div class="heat-cell" title="dim 151: 0.076995" style="background:hsl(73.9 78% 57.65%)"></div>
+        <div class="heat-cell" title="dim 152: 0.037779" style="background:hsl(101.06 78% 52.72%)"></div>
+        <div class="heat-cell" title="dim 153: 0.010383" style="background:hsl(120.04 78% 49.27%)"></div>
+        <div class="heat-cell" title="dim 154: 0.045315" style="background:hsl(95.84 78% 53.66%)"></div>
+        <div class="heat-cell" title="dim 155: -0.070274" style="background:hsl(175.91 78% 39.11%)"></div>
+        <div class="heat-cell" title="dim 156: -0.034352" style="background:hsl(151.03 78% 43.63%)"></div>
+        <div class="heat-cell" title="dim 157: 0.03965" style="background:hsl(99.77 78% 52.95%)"></div>
+        <div class="heat-cell" title="dim 158: 0.028336" style="background:hsl(107.6 78% 51.53%)"></div>
+        <div class="heat-cell" title="dim 159: 0.042635" style="background:hsl(97.7 78% 53.33%)"></div>
+        <div class="heat-cell" title="dim 160: -0.005994" style="background:hsl(131.38 78% 47.2%)"></div>
+        <div class="heat-cell" title="dim 161: 0.03738" style="background:hsl(101.34 78% 52.67%)"></div>
+        <div class="heat-cell" title="dim 162: 0.009821" style="background:hsl(120.43 78% 49.19%)"></div>
+        <div class="heat-cell" title="dim 163: -0.043803" style="background:hsl(157.57 78% 42.44%)"></div>
+        <div class="heat-cell" title="dim 164: -0.002923" style="background:hsl(129.26 78% 47.59%)"></div>
+        <div class="heat-cell" title="dim 165: 0.031715" style="background:hsl(105.26 78% 51.95%)"></div>
+        <div class="heat-cell" title="dim 166: -0.011375" style="background:hsl(135.11 78% 46.53%)"></div>
+        <div class="heat-cell" title="dim 167: 0.004333" style="background:hsl(124.23 78% 48.5%)"></div>
+        <div class="heat-cell" title="dim 168: 0.045933" style="background:hsl(95.42 78% 53.74%)"></div>
+        <div class="heat-cell" title="dim 169: -0.036573" style="background:hsl(152.57 78% 43.35%)"></div>
+        <div class="heat-cell" title="dim 170: -0.07218" style="background:hsl(177.23 78% 38.87%)"></div>
+        <div class="heat-cell" title="dim 171: 0.019292" style="background:hsl(113.87 78% 50.39%)"></div>
+        <div class="heat-cell" title="dim 172: -0.078009" style="background:hsl(181.27 78% 38.13%)"></div>
+        <div class="heat-cell" title="dim 173: 0.060065" style="background:hsl(85.63 78% 55.52%)"></div>
+        <div class="heat-cell" title="dim 174: 0.049502" style="background:hsl(92.94 78% 54.19%)"></div>
+        <div class="heat-cell" title="dim 175: 0.001386" style="background:hsl(126.27 78% 48.13%)"></div>
+        <div class="heat-cell" title="dim 176: -0.018528" style="background:hsl(140.07 78% 45.62%)"></div>
+        <div class="heat-cell" title="dim 177: 0.034602" style="background:hsl(103.26 78% 52.32%)"></div>
+        <div class="heat-cell" title="dim 178: -0.006852" style="background:hsl(131.98 78% 47.09%)"></div>
+        <div class="heat-cell" title="dim 179: -0.018003" style="background:hsl(139.7 78% 45.69%)"></div>
+        <div class="heat-cell" title="dim 180: 0.090595" style="background:hsl(64.48 78% 59.37%)"></div>
+        <div class="heat-cell" title="dim 181: 0.002542" style="background:hsl(125.47 78% 48.28%)"></div>
+        <div class="heat-cell" title="dim 182: 0.00256" style="background:hsl(125.46 78% 48.28%)"></div>
+        <div class="heat-cell" title="dim 183: 0.106857" style="background:hsl(53.21 78% 61.42%)"></div>
+        <div class="heat-cell" title="dim 184: 0.049734" style="background:hsl(92.78 78% 54.22%)"></div>
+        <div class="heat-cell" title="dim 185: 0.057581" style="background:hsl(87.35 78% 55.21%)"></div>
+        <div class="heat-cell" title="dim 186: -0.023425" style="background:hsl(143.46 78% 45.01%)"></div>
+        <div class="heat-cell" title="dim 187: -0.027822" style="background:hsl(146.5 78% 44.45%)"></div>
+        <div class="heat-cell" title="dim 188: 0.034194" style="background:hsl(103.55 78% 52.26%)"></div>
+        <div class="heat-cell" title="dim 189: -0.030629" style="background:hsl(148.45 78% 44.1%)"></div>
+        <div class="heat-cell" title="dim 190: -0.001499" style="background:hsl(128.27 78% 47.77%)"></div>
+        <div class="heat-cell" title="dim 191: 0.022607" style="background:hsl(111.57 78% 50.8%)"></div>
+        <div class="heat-cell" title="dim 192: 0.002701" style="background:hsl(125.36 78% 48.3%)"></div>
+        <div class="heat-cell" title="dim 193: -0.058164" style="background:hsl(167.52 78% 40.63%)"></div>
+        <div class="heat-cell" title="dim 194: -0.075859" style="background:hsl(179.78 78% 38.4%)"></div>
+        <div class="heat-cell" title="dim 195: 0.032432" style="background:hsl(104.77 78% 52.04%)"></div>
+        <div class="heat-cell" title="dim 196: 0.007504" style="background:hsl(122.03 78% 48.9%)"></div>
+        <div class="heat-cell" title="dim 197: -0.08043" style="background:hsl(182.95 78% 37.83%)"></div>
+        <div class="heat-cell" title="dim 198: 0.035032" style="background:hsl(102.97 78% 52.37%)"></div>
+        <div class="heat-cell" title="dim 199: -0.013462" style="background:hsl(136.56 78% 46.26%)"></div>
+        <div class="heat-cell" title="dim 200: 0.020031" style="background:hsl(113.36 78% 50.48%)"></div>
+        <div class="heat-cell" title="dim 201: 0.017748" style="background:hsl(114.94 78% 50.19%)"></div>
+        <div class="heat-cell" title="dim 202: -0.005726" style="background:hsl(131.2 78% 47.24%)"></div>
+        <div class="heat-cell" title="dim 203: -0.028275" style="background:hsl(146.82 78% 44.4%)"></div>
+        <div class="heat-cell" title="dim 204: 0.056016" style="background:hsl(88.43 78% 55.01%)"></div>
+        <div class="heat-cell" title="dim 205: 0.025807" style="background:hsl(109.36 78% 51.21%)"></div>
+        <div class="heat-cell" title="dim 206: 0.023175" style="background:hsl(111.18 78% 50.88%)"></div>
+        <div class="heat-cell" title="dim 207: -0.077134" style="background:hsl(180.66 78% 38.24%)"></div>
+        <div class="heat-cell" title="dim 208: -0.02473" style="background:hsl(144.36 78% 44.84%)"></div>
+        <div class="heat-cell" title="dim 209: -0.039657" style="background:hsl(154.7 78% 42.96%)"></div>
+        <div class="heat-cell" title="dim 210: 0.005444" style="background:hsl(123.46 78% 48.64%)"></div>
+        <div class="heat-cell" title="dim 211: -0.08003" style="background:hsl(182.67 78% 37.88%)"></div>
+        <div class="heat-cell" title="dim 212: -0.021447" style="background:hsl(142.09 78% 45.26%)"></div>
+        <div class="heat-cell" title="dim 213: 0.026008" style="background:hsl(109.22 78% 51.23%)"></div>
+        <div class="heat-cell" title="dim 214: -0.040201" style="background:hsl(155.08 78% 42.89%)"></div>
+        <div class="heat-cell" title="dim 215: 0.024007" style="background:hsl(110.6 78% 50.98%)"></div>
+        <div class="heat-cell" title="dim 216: 0.009774" style="background:hsl(120.46 78% 49.19%)"></div>
+        <div class="heat-cell" title="dim 217: -0.080436" style="background:hsl(182.95 78% 37.83%)"></div>
+        <div class="heat-cell" title="dim 218: 0.004765" style="background:hsl(123.93 78% 48.56%)"></div>
+        <div class="heat-cell" title="dim 219: 0.027215" style="background:hsl(108.38 78% 51.39%)"></div>
+        <div class="heat-cell" title="dim 220: -0.03276" style="background:hsl(149.92 78% 43.83%)"></div>
+        <div class="heat-cell" title="dim 221: 0.018108" style="background:hsl(114.69 78% 50.24%)"></div>
+        <div class="heat-cell" title="dim 222: -0.060745" style="background:hsl(169.31 78% 40.31%)"></div>
+        <div class="heat-cell" title="dim 223: 0.085792" style="background:hsl(67.8 78% 58.76%)"></div>
+        <div class="heat-cell" title="dim 224: 0.009486" style="background:hsl(120.66 78% 49.15%)"></div>
+        <div class="heat-cell" title="dim 225: 0.011363" style="background:hsl(119.36 78% 49.39%)"></div>
+        <div class="heat-cell" title="dim 226: -0.051199" style="background:hsl(162.7 78% 41.51%)"></div>
+        <div class="heat-cell" title="dim 227: 0.021653" style="background:hsl(112.23 78% 50.68%)"></div>
+        <div class="heat-cell" title="dim 228: 0.0273" style="background:hsl(108.32 78% 51.4%)"></div>
+        <div class="heat-cell" title="dim 229: -0.048016" style="background:hsl(160.49 78% 41.91%)"></div>
+        <div class="heat-cell" title="dim 230: -0.073618" style="background:hsl(178.23 78% 38.69%)"></div>
+        <div class="heat-cell" title="dim 231: -0.019611" style="background:hsl(140.82 78% 45.49%)"></div>
+        <div class="heat-cell" title="dim 232: 0.064967" style="background:hsl(82.23 78% 56.14%)"></div>
+        <div class="heat-cell" title="dim 233: 0.012311" style="background:hsl(118.7 78% 49.51%)"></div>
+        <div class="heat-cell" title="dim 234: -0.074332" style="background:hsl(178.72 78% 38.6%)"></div>
+        <div class="heat-cell" title="dim 235: -0.042551" style="background:hsl(156.71 78% 42.6%)"></div>
+        <div class="heat-cell" title="dim 236: 0.00821" style="background:hsl(121.54 78% 48.99%)"></div>
+        <div class="heat-cell" title="dim 237: -0.035851" style="background:hsl(152.07 78% 43.44%)"></div>
+        <div class="heat-cell" title="dim 238: 0.07203" style="background:hsl(77.34 78% 57.03%)"></div>
+        <div class="heat-cell" title="dim 239: 0.094882" style="background:hsl(61.51 78% 59.91%)"></div>
+        <div class="heat-cell" title="dim 240: 0.00829" style="background:hsl(121.49 78% 49%)"></div>
+        <div class="heat-cell" title="dim 241: 0.032986" style="background:hsl(104.38 78% 52.11%)"></div>
+        <div class="heat-cell" title="dim 242: -0.013997" style="background:hsl(136.93 78% 46.19%)"></div>
+        <div class="heat-cell" title="dim 243: -0.059249" style="background:hsl(168.27 78% 40.5%)"></div>
+        <div class="heat-cell" title="dim 244: -0.040162" style="background:hsl(155.05 78% 42.9%)"></div>
+        <div class="heat-cell" title="dim 245: -0.017059" style="background:hsl(139.05 78% 45.81%)"></div>
+        <div class="heat-cell" title="dim 246: -0.026357" style="background:hsl(145.49 78% 44.64%)"></div>
+        <div class="heat-cell" title="dim 247: 0.036263" style="background:hsl(102.11 78% 52.52%)"></div>
+        <div class="heat-cell" title="dim 248: -0.028625" style="background:hsl(147.06 78% 44.35%)"></div>
+        <div class="heat-cell" title="dim 249: -0.061083" style="background:hsl(169.54 78% 40.26%)"></div>
+        <div class="heat-cell" title="dim 250: 0.012048" style="background:hsl(118.89 78% 49.48%)"></div>
+        <div class="heat-cell" title="dim 251: -0.058231" style="background:hsl(167.57 78% 40.62%)"></div>
+        <div class="heat-cell" title="dim 252: -0.026533" style="background:hsl(145.61 78% 44.62%)"></div>
+        <div class="heat-cell" title="dim 253: 0.049523" style="background:hsl(92.93 78% 54.19%)"></div>
+        <div class="heat-cell" title="dim 254: -0.054486" style="background:hsl(164.97 78% 41.1%)"></div>
+        <div class="heat-cell" title="dim 255: -0.014533" style="background:hsl(137.3 78% 46.13%)"></div>
+        <div class="heat-cell" title="dim 256: -0.036651" style="background:hsl(152.62 78% 43.34%)"></div>
+        <div class="heat-cell" title="dim 257: -0.032199" style="background:hsl(149.54 78% 43.9%)"></div>
+        <div class="heat-cell" title="dim 258: -0.04749" style="background:hsl(160.13 78% 41.98%)"></div>
+        <div class="heat-cell" title="dim 259: -0.043409" style="background:hsl(157.3 78% 42.49%)"></div>
+        <div class="heat-cell" title="dim 260: 0.072208" style="background:hsl(77.21 78% 57.05%)"></div>
+        <div class="heat-cell" title="dim 261: 0.04164" style="background:hsl(98.39 78% 53.2%)"></div>
+        <div class="heat-cell" title="dim 262: -0.034492" style="background:hsl(151.12 78% 43.61%)"></div>
+        <div class="heat-cell" title="dim 263: -0.11314" style="background:hsl(205.6 78% 33.71%)"></div>
+        <div class="heat-cell" title="dim 264: 0.001511" style="background:hsl(126.19 78% 48.15%)"></div>
+        <div class="heat-cell" title="dim 265: -0.039326" style="background:hsl(154.47 78% 43%)"></div>
+        <div class="heat-cell" title="dim 266: 0.0164" style="background:hsl(115.87 78% 50.02%)"></div>
+        <div class="heat-cell" title="dim 267: 0.044919" style="background:hsl(96.12 78% 53.62%)"></div>
+        <div class="heat-cell" title="dim 268: -0.016935" style="background:hsl(138.96 78% 45.82%)"></div>
+        <div class="heat-cell" title="dim 269: -0.043017" style="background:hsl(157.03 78% 42.54%)"></div>
+        <div class="heat-cell" title="dim 270: 0.0209" style="background:hsl(112.76 78% 50.59%)"></div>
+        <div class="heat-cell" title="dim 271: 0.018731" style="background:hsl(114.26 78% 50.32%)"></div>
+        <div class="heat-cell" title="dim 272: -0.001924" style="background:hsl(128.56 78% 47.72%)"></div>
+        <div class="heat-cell" title="dim 273: -0.032091" style="background:hsl(149.46 78% 43.92%)"></div>
+        <div class="heat-cell" title="dim 274: -0.126706" style="background:hsl(215 78% 32%)"></div>
+        <div class="heat-cell" title="dim 275: 0.015262" style="background:hsl(116.66 78% 49.88%)"></div>
+        <div class="heat-cell" title="dim 276: 0.059196" style="background:hsl(86.23 78% 55.41%)"></div>
+        <div class="heat-cell" title="dim 277: -0.044725" style="background:hsl(158.21 78% 42.32%)"></div>
+        <div class="heat-cell" title="dim 278: -0.040859" style="background:hsl(155.53 78% 42.81%)"></div>
+        <div class="heat-cell" title="dim 279: -0.009993" style="background:hsl(134.15 78% 46.7%)"></div>
+        <div class="heat-cell" title="dim 280: 0.02281" style="background:hsl(111.43 78% 50.83%)"></div>
+        <div class="heat-cell" title="dim 281: 0.019954" style="background:hsl(113.41 78% 50.47%)"></div>
+        <div class="heat-cell" title="dim 282: 0.026472" style="background:hsl(108.9 78% 51.29%)"></div>
+        <div class="heat-cell" title="dim 283: -0.00551" style="background:hsl(131.05 78% 47.26%)"></div>
+        <div class="heat-cell" title="dim 284: -0.001504" style="background:hsl(128.27 78% 47.77%)"></div>
+        <div class="heat-cell" title="dim 285: 0.019268" style="background:hsl(113.89 78% 50.38%)"></div>
+        <div class="heat-cell" title="dim 286: 0.042878" style="background:hsl(97.53 78% 53.36%)"></div>
+        <div class="heat-cell" title="dim 287: 0.011694" style="background:hsl(119.13 78% 49.43%)"></div>
+        <div class="heat-cell" title="dim 288: 0.017218" style="background:hsl(115.31 78% 50.13%)"></div>
+        <div class="heat-cell" title="dim 289: 0.043866" style="background:hsl(96.85 78% 53.48%)"></div>
+        <div class="heat-cell" title="dim 290: -0.105779" style="background:hsl(200.5 78% 34.64%)"></div>
+        <div class="heat-cell" title="dim 291: -0.037034" style="background:hsl(152.89 78% 43.29%)"></div>
+        <div class="heat-cell" title="dim 292: -0.08443" style="background:hsl(185.72 78% 37.32%)"></div>
+        <div class="heat-cell" title="dim 293: 0.001237" style="background:hsl(126.38 78% 48.11%)"></div>
+        <div class="heat-cell" title="dim 294: -0.018484" style="background:hsl(140.04 78% 45.63%)"></div>
+        <div class="heat-cell" title="dim 295: 0.016808" style="background:hsl(115.59 78% 50.07%)"></div>
+        <div class="heat-cell" title="dim 296: -0.002458" style="background:hsl(128.93 78% 47.65%)"></div>
+        <div class="heat-cell" title="dim 297: -0.014291" style="background:hsl(137.13 78% 46.16%)"></div>
+        <div class="heat-cell" title="dim 298: -0.028492" style="background:hsl(146.97 78% 44.37%)"></div>
+        <div class="heat-cell" title="dim 299: -0.022307" style="background:hsl(142.68 78% 45.15%)"></div>
+        <div class="heat-cell" title="dim 300: -0.001289" style="background:hsl(128.13 78% 47.8%)"></div>
+        <div class="heat-cell" title="dim 301: 0.007807" style="background:hsl(121.82 78% 48.94%)"></div>
+        <div class="heat-cell" title="dim 302: -0.038324" style="background:hsl(153.78 78% 43.13%)"></div>
+        <div class="heat-cell" title="dim 303: -0.020357" style="background:hsl(141.33 78% 45.39%)"></div>
+        <div class="heat-cell" title="dim 304: -0.020713" style="background:hsl(141.58 78% 45.35%)"></div>
+        <div class="heat-cell" title="dim 305: -0.015975" style="background:hsl(138.3 78% 45.95%)"></div>
+        <div class="heat-cell" title="dim 306: 0.014187" style="background:hsl(117.41 78% 49.74%)"></div>
+        <div class="heat-cell" title="dim 307: 0.087056" style="background:hsl(66.93 78% 58.92%)"></div>
+        <div class="heat-cell" title="dim 308: -0.008687" style="background:hsl(133.25 78% 46.86%)"></div>
+        <div class="heat-cell" title="dim 309: -0.011069" style="background:hsl(134.9 78% 46.56%)"></div>
+        <div class="heat-cell" title="dim 310: -0.019783" style="background:hsl(140.94 78% 45.47%)"></div>
+        <div class="heat-cell" title="dim 311: -0.029354" style="background:hsl(147.57 78% 44.26%)"></div>
+        <div class="heat-cell" title="dim 312: 0.023865" style="background:hsl(110.7 78% 50.96%)"></div>
+        <div class="heat-cell" title="dim 313: -0.002423" style="background:hsl(128.91 78% 47.65%)"></div>
+        <div class="heat-cell" title="dim 314: -0.072407" style="background:hsl(177.39 78% 38.84%)"></div>
+        <div class="heat-cell" title="dim 315: -0.020507" style="background:hsl(141.44 78% 45.38%)"></div>
+        <div class="heat-cell" title="dim 316: -0.086559" style="background:hsl(187.19 78% 37.06%)"></div>
+        <div class="heat-cell" title="dim 317: 0.049925" style="background:hsl(92.65 78% 54.25%)"></div>
+        <div class="heat-cell" title="dim 318: 0.030989" style="background:hsl(105.77 78% 51.86%)"></div>
+        <div class="heat-cell" title="dim 319: 0.004598" style="background:hsl(124.05 78% 48.54%)"></div>
+        <div class="heat-cell" title="dim 320: -0.039005" style="background:hsl(154.25 78% 43.05%)"></div>
+        <div class="heat-cell" title="dim 321: 0.100745" style="background:hsl(57.45 78% 60.65%)"></div>
+        <div class="heat-cell" title="dim 322: -0.007422" style="background:hsl(132.37 78% 47.02%)"></div>
+        <div class="heat-cell" title="dim 323: -0.033454" style="background:hsl(150.41 78% 43.74%)"></div>
+        <div class="heat-cell" title="dim 324: 0.022969" style="background:hsl(111.32 78% 50.85%)"></div>
+        <div class="heat-cell" title="dim 325: 0.011118" style="background:hsl(119.53 78% 49.36%)"></div>
+        <div class="heat-cell" title="dim 326: 0.049823" style="background:hsl(92.72 78% 54.23%)"></div>
+        <div class="heat-cell" title="dim 327: 0.016856" style="background:hsl(115.56 78% 50.08%)"></div>
+        <div class="heat-cell" title="dim 328: 0.061432" style="background:hsl(84.68 78% 55.69%)"></div>
+        <div class="heat-cell" title="dim 329: 0.092831" style="background:hsl(62.93 78% 59.65%)"></div>
+        <div class="heat-cell" title="dim 330: -0.02642" style="background:hsl(145.53 78% 44.63%)"></div>
+        <div class="heat-cell" title="dim 331: -0.022841" style="background:hsl(143.05 78% 45.08%)"></div>
+        <div class="heat-cell" title="dim 332: 0.069388" style="background:hsl(79.17 78% 56.7%)"></div>
+        <div class="heat-cell" title="dim 333: -0.050243" style="background:hsl(162.04 78% 41.63%)"></div>
+        <div class="heat-cell" title="dim 334: -0.00235" style="background:hsl(128.86 78% 47.66%)"></div>
+        <div class="heat-cell" title="dim 335: -0.108426" style="background:hsl(202.34 78% 34.3%)"></div>
+        <div class="heat-cell" title="dim 336: 0.030355" style="background:hsl(106.21 78% 51.78%)"></div>
+        <div class="heat-cell" title="dim 337: -0.000256" style="background:hsl(127.41 78% 47.93%)"></div>
+        <div class="heat-cell" title="dim 338: -0.051972" style="background:hsl(163.23 78% 41.41%)"></div>
+        <div class="heat-cell" title="dim 339: 0.025068" style="background:hsl(109.87 78% 51.11%)"></div>
+        <div class="heat-cell" title="dim 340: 0.040808" style="background:hsl(98.97 78% 53.1%)"></div>
+        <div class="heat-cell" title="dim 341: 0.033178" style="background:hsl(104.25 78% 52.14%)"></div>
+        <div class="heat-cell" title="dim 342: -0.068395" style="background:hsl(174.61 78% 39.34%)"></div>
+        <div class="heat-cell" title="dim 343: 0.024579" style="background:hsl(110.21 78% 51.05%)"></div>
+        <div class="heat-cell" title="dim 344: -0.023591" style="background:hsl(143.57 78% 44.99%)"></div>
+        <div class="heat-cell" title="dim 345: 0.017468" style="background:hsl(115.13 78% 50.16%)"></div>
+        <div class="heat-cell" title="dim 346: 0.001792" style="background:hsl(125.99 78% 48.18%)"></div>
+        <div class="heat-cell" title="dim 347: 0.002946" style="background:hsl(125.19 78% 48.33%)"></div>
+        <div class="heat-cell" title="dim 348: 0.035825" style="background:hsl(102.42 78% 52.47%)"></div>
+        <div class="heat-cell" title="dim 349: -0.037581" style="background:hsl(153.26 78% 43.22%)"></div>
+        <div class="heat-cell" title="dim 350: -0.045312" style="background:hsl(158.62 78% 42.25%)"></div>
+        <div class="heat-cell" title="dim 351: 0.049923" style="background:hsl(92.65 78% 54.25%)"></div>
+        <div class="heat-cell" title="dim 352: -0.050355" style="background:hsl(162.11 78% 41.62%)"></div>
+        <div class="heat-cell" title="dim 353: -0.023947" style="background:hsl(143.82 78% 44.94%)"></div>
+        <div class="heat-cell" title="dim 354: -0.072279" style="background:hsl(177.3 78% 38.85%)"></div>
+        <div class="heat-cell" title="dim 355: 0.062143" style="background:hsl(84.19 78% 55.78%)"></div>
+        <div class="heat-cell" title="dim 356: 0.057295" style="background:hsl(87.54 78% 55.17%)"></div>
+        <div class="heat-cell" title="dim 357: -0.003025" style="background:hsl(129.33 78% 47.58%)"></div>
+        <div class="heat-cell" title="dim 358: 0.021937" style="background:hsl(112.04 78% 50.72%)"></div>
+        <div class="heat-cell" title="dim 359: -0.049551" style="background:hsl(161.56 78% 41.72%)"></div>
+        <div class="heat-cell" title="dim 360: 0.026994" style="background:hsl(108.53 78% 51.36%)"></div>
+        <div class="heat-cell" title="dim 361: 0.010779" style="background:hsl(119.77 78% 49.32%)"></div>
+        <div class="heat-cell" title="dim 362: -0.034462" style="background:hsl(151.1 78% 43.62%)"></div>
+        <div class="heat-cell" title="dim 363: 0.022587" style="background:hsl(111.59 78% 50.8%)"></div>
+        <div class="heat-cell" title="dim 364: -0.001039" style="background:hsl(127.95 78% 47.83%)"></div>
+        <div class="heat-cell" title="dim 365: 0.014568" style="background:hsl(117.14 78% 49.79%)"></div>
+        <div class="heat-cell" title="dim 366: -0.077764" style="background:hsl(181.1 78% 38.16%)"></div>
+        <div class="heat-cell" title="dim 367: 0.032854" style="background:hsl(104.47 78% 52.1%)"></div>
+        <div class="heat-cell" title="dim 368: -0.033404" style="background:hsl(150.37 78% 43.75%)"></div>
+        <div class="heat-cell" title="dim 369: 0.054262" style="background:hsl(89.65 78% 54.79%)"></div>
+        <div class="heat-cell" title="dim 370: 0.061746" style="background:hsl(84.46 78% 55.73%)"></div>
+        <div class="heat-cell" title="dim 371: -0.029515" style="background:hsl(147.68 78% 44.24%)"></div>
+        <div class="heat-cell" title="dim 372: -0.0312" style="background:hsl(148.84 78% 44.03%)"></div>
+        <div class="heat-cell" title="dim 373: -0.005036" style="background:hsl(130.72 78% 47.32%)"></div>
+        <div class="heat-cell" title="dim 374: 0.027372" style="background:hsl(108.27 78% 51.41%)"></div>
+        <div class="heat-cell" title="dim 375: -0.014796" style="background:hsl(137.48 78% 46.09%)"></div>
+        <div class="heat-cell" title="dim 376: 0.069714" style="background:hsl(78.94 78% 56.74%)"></div>
+        <div class="heat-cell" title="dim 377: -0.028286" style="background:hsl(146.83 78% 44.4%)"></div>
+        <div class="heat-cell" title="dim 378: 0.082347" style="background:hsl(70.19 78% 58.33%)"></div>
+        <div class="heat-cell" title="dim 379: 0.047524" style="background:hsl(94.31 78% 53.94%)"></div>
+        <div class="heat-cell" title="dim 380: 0.003757" style="background:hsl(124.63 78% 48.43%)"></div>
+        <div class="heat-cell" title="dim 381: -0.004068" style="background:hsl(130.05 78% 47.45%)"></div>
+        <div class="heat-cell" title="dim 382: -0.093632" style="background:hsl(192.09 78% 36.17%)"></div>
+        <div class="heat-cell" title="dim 383: -0.076784" style="background:hsl(180.42 78% 38.29%)"></div>
+        <div class="heat-cell" title="dim 384: -0.058709" style="background:hsl(167.9 78% 40.56%)"></div>
+        <div class="heat-cell" title="dim 385: -0.000492" style="background:hsl(127.57 78% 47.9%)"></div>
+        <div class="heat-cell" title="dim 386: -0.047454" style="background:hsl(160.1 78% 41.98%)"></div>
+        <div class="heat-cell" title="dim 387: -0.0503" style="background:hsl(162.07 78% 41.62%)"></div>
+        <div class="heat-cell" title="dim 388: -0.011516" style="background:hsl(135.21 78% 46.51%)"></div>
+        <div class="heat-cell" title="dim 389: 0.024559" style="background:hsl(110.22 78% 51.05%)"></div>
+        <div class="heat-cell" title="dim 390: -0.024321" style="background:hsl(144.08 78% 44.89%)"></div>
+        <div class="heat-cell" title="dim 391: -0.07664" style="background:hsl(180.32 78% 38.31%)"></div>
+        <div class="heat-cell" title="dim 392: 0.053137" style="background:hsl(90.42 78% 54.65%)"></div>
+        <div class="heat-cell" title="dim 393: -0.026905" style="background:hsl(145.87 78% 44.57%)"></div>
+        <div class="heat-cell" title="dim 394: 0.039621" style="background:hsl(99.79 78% 52.95%)"></div>
+        <div class="heat-cell" title="dim 395: 0.048156" style="background:hsl(93.88 78% 54.02%)"></div>
+        <div class="heat-cell" title="dim 396: 0.019117" style="background:hsl(113.99 78% 50.37%)"></div>
+        <div class="heat-cell" title="dim 397: 0.017006" style="background:hsl(115.45 78% 50.1%)"></div>
+        <div class="heat-cell" title="dim 398: 0.03239" style="background:hsl(104.8 78% 52.04%)"></div>
+        <div class="heat-cell" title="dim 399: -0.022895" style="background:hsl(143.09 78% 45.07%)"></div>
+        <div class="heat-cell" title="dim 400: -0.074179" style="background:hsl(178.61 78% 38.62%)"></div>
+        <div class="heat-cell" title="dim 401: -0.066752" style="background:hsl(173.47 78% 39.55%)"></div>
+        <div class="heat-cell" title="dim 402: -0.03024" style="background:hsl(148.18 78% 44.15%)"></div>
+        <div class="heat-cell" title="dim 403: 0.038216" style="background:hsl(100.76 78% 52.77%)"></div>
+        <div class="heat-cell" title="dim 404: -0.000865" style="background:hsl(127.83 78% 47.85%)"></div>
+        <div class="heat-cell" title="dim 405: -0.055146" style="background:hsl(165.43 78% 41.01%)"></div>
+        <div class="heat-cell" title="dim 406: -0.042567" style="background:hsl(156.72 78% 42.6%)"></div>
+        <div class="heat-cell" title="dim 407: 0.044546" style="background:hsl(96.38 78% 53.57%)"></div>
+        <div class="heat-cell" title="dim 408: 0.069418" style="background:hsl(79.15 78% 56.7%)"></div>
+        <div class="heat-cell" title="dim 409: 0.065601" style="background:hsl(81.79 78% 56.22%)"></div>
+        <div class="heat-cell" title="dim 410: 0.051342" style="background:hsl(91.67 78% 54.42%)"></div>
+        <div class="heat-cell" title="dim 411: -0.035036" style="background:hsl(151.5 78% 43.55%)"></div>
+        <div class="heat-cell" title="dim 412: 0.012755" style="background:hsl(118.4 78% 49.56%)"></div>
+        <div class="heat-cell" title="dim 413: -0.019982" style="background:hsl(141.07 78% 45.44%)"></div>
+        <div class="heat-cell" title="dim 414: -0.056785" style="background:hsl(166.57 78% 40.81%)"></div>
+        <div class="heat-cell" title="dim 415: 0.007146" style="background:hsl(122.28 78% 48.86%)"></div>
+        <div class="heat-cell" title="dim 416: -0.007534" style="background:hsl(132.45 78% 47.01%)"></div>
+        <div class="heat-cell" title="dim 417: -0.041898" style="background:hsl(156.25 78% 42.68%)"></div>
+        <div class="heat-cell" title="dim 418: -0.055287" style="background:hsl(165.53 78% 40.99%)"></div>
+        <div class="heat-cell" title="dim 419: 0.041168" style="background:hsl(98.72 78% 53.14%)"></div>
+        <div class="heat-cell" title="dim 420: 0.007182" style="background:hsl(122.26 78% 48.86%)"></div>
+        <div class="heat-cell" title="dim 421: 0.046954" style="background:hsl(94.71 78% 53.87%)"></div>
+        <div class="heat-cell" title="dim 422: -0.021047" style="background:hsl(141.81 78% 45.31%)"></div>
+        <div class="heat-cell" title="dim 423: -0.000215" style="background:hsl(127.38 78% 47.93%)"></div>
+        <div class="heat-cell" title="dim 424: -0.020695" style="background:hsl(141.57 78% 45.35%)"></div>
+        <div class="heat-cell" title="dim 425: 0.024311" style="background:hsl(110.39 78% 51.02%)"></div>
+        <div class="heat-cell" title="dim 426: 0.005687" style="background:hsl(123.29 78% 48.67%)"></div>
+        <div class="heat-cell" title="dim 427: -0.042526" style="background:hsl(156.69 78% 42.6%)"></div>
+        <div class="heat-cell" title="dim 428: 0.031764" style="background:hsl(105.23 78% 51.96%)"></div>
+        <div class="heat-cell" title="dim 429: -0.092267" style="background:hsl(191.14 78% 36.34%)"></div>
+        <div class="heat-cell" title="dim 430: -0.024976" style="background:hsl(144.53 78% 44.81%)"></div>
+        <div class="heat-cell" title="dim 431: -0.048458" style="background:hsl(160.8 78% 41.85%)"></div>
+        <div class="heat-cell" title="dim 432: -0.039488" style="background:hsl(154.59 78% 42.98%)"></div>
+        <div class="heat-cell" title="dim 433: -0.05066" style="background:hsl(162.32 78% 41.58%)"></div>
+        <div class="heat-cell" title="dim 434: 0.026896" style="background:hsl(108.6 78% 51.35%)"></div>
+        <div class="heat-cell" title="dim 435: -0.011509" style="background:hsl(135.2 78% 46.51%)"></div>
+        <div class="heat-cell" title="dim 436: 0.006924" style="background:hsl(122.44 78% 48.83%)"></div>
+        <div class="heat-cell" title="dim 437: 0.01935" style="background:hsl(113.83 78% 50.39%)"></div>
+        <div class="heat-cell" title="dim 438: -0.062105" style="background:hsl(170.25 78% 40.14%)"></div>
+        <div class="heat-cell" title="dim 439: -0.060594" style="background:hsl(169.21 78% 40.33%)"></div>
+        <div class="heat-cell" title="dim 440: 0.061256" style="background:hsl(84.8 78% 55.67%)"></div>
+        <div class="heat-cell" title="dim 441: 0.013376" style="background:hsl(117.97 78% 49.64%)"></div>
+        <div class="heat-cell" title="dim 442: -0.048634" style="background:hsl(160.92 78% 41.83%)"></div>
+        <div class="heat-cell" title="dim 443: -0.012453" style="background:hsl(135.86 78% 46.39%)"></div>
+        <div class="heat-cell" title="dim 444: -0.050417" style="background:hsl(162.16 78% 41.61%)"></div>
+        <div class="heat-cell" title="dim 445: -0.025304" style="background:hsl(144.76 78% 44.77%)"></div>
+        <div class="heat-cell" title="dim 446: -0.007916" style="background:hsl(132.72 78% 46.96%)"></div>
+        <div class="heat-cell" title="dim 447: -0.017205" style="background:hsl(139.15 78% 45.79%)"></div>
+        <div class="heat-cell" title="dim 448: 0.056563" style="background:hsl(88.05 78% 55.08%)"></div>
+        <div class="heat-cell" title="dim 449: -0.015151" style="background:hsl(137.73 78% 46.05%)"></div>
+        <div class="heat-cell" title="dim 450: 0.045207" style="background:hsl(95.92 78% 53.65%)"></div>
+        <div class="heat-cell" title="dim 451: 0.024842" style="background:hsl(110.02 78% 51.09%)"></div>
+        <div class="heat-cell" title="dim 452: 0.065286" style="background:hsl(82.01 78% 56.18%)"></div>
+        <div class="heat-cell" title="dim 453: -0.038029" style="background:hsl(153.57 78% 43.17%)"></div>
+        <div class="heat-cell" title="dim 454: -0.047011" style="background:hsl(159.8 78% 42.04%)"></div>
+        <div class="heat-cell" title="dim 455: -0.00674" style="background:hsl(131.9 78% 47.11%)"></div>
+        <div class="heat-cell" title="dim 456: 0.000208" style="background:hsl(127.09 78% 47.98%)"></div>
+        <div class="heat-cell" title="dim 457: -0.054844" style="background:hsl(165.22 78% 41.05%)"></div>
+        <div class="heat-cell" title="dim 458: 0.044383" style="background:hsl(96.49 78% 53.55%)"></div>
+        <div class="heat-cell" title="dim 459: -0.043603" style="background:hsl(157.44 78% 42.47%)"></div>
+        <div class="heat-cell" title="dim 460: 0.004166" style="background:hsl(124.35 78% 48.48%)"></div>
+        <div class="heat-cell" title="dim 461: 0.039839" style="background:hsl(99.64 78% 52.98%)"></div>
+        <div class="heat-cell" title="dim 462: 0.030108" style="background:hsl(106.38 78% 51.75%)"></div>
+        <div class="heat-cell" title="dim 463: 0.009082" style="background:hsl(120.94 78% 49.1%)"></div>
+        <div class="heat-cell" title="dim 464: -0.015418" style="background:hsl(137.91 78% 46.02%)"></div>
+        <div class="heat-cell" title="dim 465: 0.027347" style="background:hsl(108.29 78% 51.4%)"></div>
+        <div class="heat-cell" title="dim 466: -0.060805" style="background:hsl(169.35 78% 40.3%)"></div>
+        <div class="heat-cell" title="dim 467: -0.037823" style="background:hsl(153.43 78% 43.19%)"></div>
+        <div class="heat-cell" title="dim 468: 0.111496" style="background:hsl(50 78% 62%)"></div>
+        <div class="heat-cell" title="dim 469: -0.021493" style="background:hsl(142.12 78% 45.25%)"></div>
+        <div class="heat-cell" title="dim 470: 0.038989" style="background:hsl(100.23 78% 52.87%)"></div>
+        <div class="heat-cell" title="dim 471: 0.048952" style="background:hsl(93.32 78% 54.12%)"></div>
+        <div class="heat-cell" title="dim 472: 0.000848" style="background:hsl(126.65 78% 48.06%)"></div>
+        <div class="heat-cell" title="dim 473: 0.03418" style="background:hsl(103.56 78% 52.26%)"></div>
+        <div class="heat-cell" title="dim 474: -0.013579" style="background:hsl(136.64 78% 46.25%)"></div>
+        <div class="heat-cell" title="dim 475: 0.035458" style="background:hsl(102.67 78% 52.42%)"></div>
+        <div class="heat-cell" title="dim 476: 0.018365" style="background:hsl(114.51 78% 50.27%)"></div>
+        <div class="heat-cell" title="dim 477: -0.026293" style="background:hsl(145.45 78% 44.65%)"></div>
+        <div class="heat-cell" title="dim 478: 0.047254" style="background:hsl(94.5 78% 53.91%)"></div>
+        <div class="heat-cell" title="dim 479: 0.014304" style="background:hsl(117.32 78% 49.76%)"></div>
+        <div class="heat-cell" title="dim 480: 0.013277" style="background:hsl(118.04 78% 49.63%)"></div>
+        <div class="heat-cell" title="dim 481: 0.028805" style="background:hsl(107.28 78% 51.59%)"></div>
+        <div class="heat-cell" title="dim 482: -0.045537" style="background:hsl(158.78 78% 42.22%)"></div>
+        <div class="heat-cell" title="dim 483: -0.046963" style="background:hsl(159.76 78% 42.04%)"></div>
+        <div class="heat-cell" title="dim 484: 0.014474" style="background:hsl(117.21 78% 49.78%)"></div>
+        <div class="heat-cell" title="dim 485: 0.043578" style="background:hsl(97.05 78% 53.45%)"></div>
+        <div class="heat-cell" title="dim 486: -0.090147" style="background:hsl(189.68 78% 36.6%)"></div>
+        <div class="heat-cell" title="dim 487: -0.105378" style="background:hsl(200.23 78% 34.69%)"></div>
+        <div class="heat-cell" title="dim 488: -0.064261" style="background:hsl(171.75 78% 39.86%)"></div>
+        <div class="heat-cell" title="dim 489: -0.003803" style="background:hsl(129.87 78% 47.48%)"></div>
+        <div class="heat-cell" title="dim 490: 0.045009" style="background:hsl(96.05 78% 53.63%)"></div>
+        <div class="heat-cell" title="dim 491: -0.029876" style="background:hsl(147.93 78% 44.2%)"></div>
+        <div class="heat-cell" title="dim 492: 0.009943" style="background:hsl(120.34 78% 49.21%)"></div>
+        <div class="heat-cell" title="dim 493: 0.039034" style="background:hsl(100.19 78% 52.87%)"></div>
+        <div class="heat-cell" title="dim 494: -0.009944" style="background:hsl(134.12 78% 46.71%)"></div>
+        <div class="heat-cell" title="dim 495: 0.005323" style="background:hsl(123.54 78% 48.63%)"></div>
+        <div class="heat-cell" title="dim 496: -0.060822" style="background:hsl(169.36 78% 40.3%)"></div>
+        <div class="heat-cell" title="dim 497: -0.001012" style="background:hsl(127.93 78% 47.83%)"></div>
+        <div class="heat-cell" title="dim 498: -0.054694" style="background:hsl(165.12 78% 41.07%)"></div>
+        <div class="heat-cell" title="dim 499: 0.034916" style="background:hsl(103.05 78% 52.36%)"></div>
+        <div class="heat-cell" title="dim 500: 0.020867" style="background:hsl(112.78 78% 50.59%)"></div>
+        <div class="heat-cell" title="dim 501: 0.025252" style="background:hsl(109.74 78% 51.14%)"></div>
+        <div class="heat-cell" title="dim 502: -0.063458" style="background:hsl(171.19 78% 39.97%)"></div>
+        <div class="heat-cell" title="dim 503: 0.087764" style="background:hsl(66.44 78% 59.01%)"></div>
+        <div class="heat-cell" title="dim 504: -0.038901" style="background:hsl(154.18 78% 43.06%)"></div>
+        <div class="heat-cell" title="dim 505: 0.045814" style="background:hsl(95.5 78% 53.73%)"></div>
+        <div class="heat-cell" title="dim 506: -0.110972" style="background:hsl(204.1 78% 33.98%)"></div>
+        <div class="heat-cell" title="dim 507: -0.037762" style="background:hsl(153.39 78% 43.2%)"></div>
+        <div class="heat-cell" title="dim 508: -0.096054" style="background:hsl(193.77 78% 35.86%)"></div>
+        <div class="heat-cell" title="dim 509: -0.0235" style="background:hsl(143.51 78% 45%)"></div>
+        <div class="heat-cell" title="dim 510: 0.001228" style="background:hsl(126.38 78% 48.11%)"></div>
+        <div class="heat-cell" title="dim 511: -0.004371" style="background:hsl(130.26 78% 47.41%)"></div></div>
+    </section>
+  </main>
+</body>
+</html>
