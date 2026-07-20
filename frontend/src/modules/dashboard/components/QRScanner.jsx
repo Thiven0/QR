@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiUserCheck } from 'react-icons/fi';
+import { FiUserCheck, FiUserPlus } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest, resolveAssetUrl } from '../../../services/apiClient';
+import ModalDialog from '../../../shared/components/ModalDialog';
+import VisitorRegistrationWorkflow from '../../public/components/VisitorRegistrationWorkflow';
 import FaceCapture from './FaceCapture';
 
 const MOVEMENT_OPTIONS = [
@@ -232,6 +234,7 @@ const QRScannerPage = () => {
   const audioContextRef = useRef(null);
   const faceFallbackTimeoutRef = useRef(null);
   const faceAttemptsRef = useRef(0);
+  const scannerBeforeVisitorRef = useRef({ resumeQr: false, resumeFace: false });
 
   const [scanData, setScanData] = useState(null);
   const [error, setError] = useState('');
@@ -248,6 +251,9 @@ const QRScannerPage = () => {
   const [faceRetrying, setFaceRetrying] = useState(false);
   const [faceRetryMessage, setFaceRetryMessage] = useState('');
   const [faceIdentified, setFaceIdentified] = useState(false);
+  const [showVisitorRegistration, setShowVisitorRegistration] = useState(false);
+  const [visitorRegistrationBusy, setVisitorRegistrationBusy] = useState(false);
+  const [visitorRegistrationDirty, setVisitorRegistrationDirty] = useState(false);
 
   const resetState = () => {
     setScanData(null);
@@ -275,6 +281,54 @@ const QRScannerPage = () => {
     setFaceRetrying(false);
     setFaceRetryMessage('');
     setFaceIdentified(false);
+  }, []);
+
+  const handleOpenVisitorRegistration = useCallback(() => {
+    if (processing || confirmingMovement) return;
+
+    scannerBeforeVisitorRef.current = {
+      resumeQr: scanMode === 'qr' && cameraActive,
+      resumeFace: scanMode === 'face' && !faceIdentified,
+    };
+
+    clearFaceFallback();
+    setCameraActive(false);
+    setFaceRetrying(false);
+    setFaceRetryMessage('');
+    setShowVisitorRegistration(true);
+  }, [cameraActive, clearFaceFallback, confirmingMovement, faceIdentified, processing, scanMode]);
+
+  const closeVisitorRegistration = useCallback(() => {
+    const { resumeQr, resumeFace } = scannerBeforeVisitorRef.current;
+    setShowVisitorRegistration(false);
+    setVisitorRegistrationBusy(false);
+    setVisitorRegistrationDirty(false);
+
+    if (resumeQr) {
+      setCameraActive(true);
+      setScannerKey((prev) => prev + 1);
+    }
+    if (resumeFace) {
+      setFaceCaptureKey((prev) => prev + 1);
+    }
+
+    scannerBeforeVisitorRef.current = { resumeQr: false, resumeFace: false };
+  }, []);
+
+  const handleRequestCloseVisitorRegistration = useCallback(() => {
+    if (visitorRegistrationBusy) return;
+    if (visitorRegistrationDirty) {
+      const shouldDiscard = window.confirm('Hay informacion sin guardar. Deseas cerrar y descartar el registro?');
+      if (!shouldDiscard) return;
+    }
+    closeVisitorRegistration();
+  }, [closeVisitorRegistration, visitorRegistrationBusy, visitorRegistrationDirty]);
+
+  const handleVisitorRegistered = useCallback((response) => {
+    setFeedback({
+      type: 'success',
+      message: response?.message || 'Visitante registrado correctamente. Revisa el ticket antes de cerrar.',
+    });
   }, []);
 
   const restartFaceCapture = useCallback((message) => {
@@ -652,14 +706,25 @@ const QRScannerPage = () => {
       <section className="min-h-screen bg-[#f8fafc] px-4 py-8 sm:py-12">
         <div className="mx-auto flex max-w-6xl flex-col gap-6">
           <div className="rounded-2xl border border-[#00594e]/15 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-4 rounded-xl border-2 border-[#00594e] bg-[#00594e]/5 px-4 py-4">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0f766e]/10 text-[#0f766e]">
-                <FiUserCheck className="h-6 w-6" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-[#0f172a]">Escanear usuario</p>
-                <p className="text-xs text-[#475569]">Registra ingresos y salidas.</p>
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-[#00594e] bg-[#00594e]/5 px-4 py-4">
+              <div className="flex items-center gap-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0f766e]/10 text-[#0f766e]">
+                  <FiUserCheck className="h-6 w-6" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[#0f172a]">Escanear usuario</p>
+                  <p className="text-xs text-[#475569]">Registra ingresos y salidas.</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={handleOpenVisitorRegistration}
+                disabled={processing || confirmingMovement}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#00594e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#00483f] focus:outline-none focus:ring-2 focus:ring-[#00594e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiUserPlus className="h-4 w-4" aria-hidden="true" />
+                Crear visitante
+              </button>
             </div>
           </div>
 
@@ -727,7 +792,11 @@ const QRScannerPage = () => {
               </div>
 
               <div className="mt-6">
-                {scanMode === 'qr' ? (
+                {showVisitorRegistration ? (
+                  <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-slate-200 bg-[#0f172a] px-6 text-center text-white/80">
+                    <p className="text-sm font-medium">Camara pausada durante el registro del visitante.</p>
+                  </div>
+                ) : scanMode === 'qr' ? (
                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
                     <div className="relative aspect-[4/3] w-full">
                       {cameraActive ? (
@@ -818,6 +887,24 @@ const QRScannerPage = () => {
           </div>
         </div>
       </section>
+
+      <ModalDialog
+        isOpen={showVisitorRegistration}
+        title="Crear visitante"
+        description="Completa los datos, captura el documento y registra el rostro antes de generar el ticket temporal."
+        onClose={handleRequestCloseVisitorRegistration}
+        closeDisabled={visitorRegistrationBusy}
+      >
+        {showVisitorRegistration && (
+          <VisitorRegistrationWorkflow
+            presentation="modal"
+            onBusyChange={setVisitorRegistrationBusy}
+            onDirtyChange={setVisitorRegistrationDirty}
+            onRegistered={handleVisitorRegistered}
+            onCloseAfterSuccess={closeVisitorRegistration}
+          />
+        )}
+      </ModalDialog>
 
       {showConfirmation && scanData?.user && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
