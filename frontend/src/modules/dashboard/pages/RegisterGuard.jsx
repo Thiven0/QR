@@ -834,14 +834,14 @@ const RegisterGuard = () => {
 
                   <div>
                     <label className="block space-y-2">
-                      <span className="text-sm font-medium text-[#00594e]">Facultad</span>
+                      <span className="text-sm font-medium text-[#00594e]">Programa</span>
                       <select
                         name="facultad"
                         value={form.facultad}
                         onChange={handleChange}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
                       >
-                        <option value="">Seleccione una facultad</option>
+                        <option value="">Seleccione un programa</option>
                         {FACULTADES.map((facultad) => (
                           <option key={facultad} value={facultad}>
                             {facultad}

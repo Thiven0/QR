@@ -18,6 +18,23 @@ import { FiEdit2, FiTrash2, FiPlusCircle, FiAlertTriangle } from 'react-icons/fi
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
+const DEFAULT_REGISTROS_PAGE_SIZE = 10;
+
+const buildRegistrosQuery = ({ page, limit, search, status, startDate, endDate }) => {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.set('search', search);
+  if (status && status !== 'todos') params.set('status', status);
+
+  if (startDate) {
+    params.set('from', new Date(`${startDate}T00:00:00`).toISOString());
+  }
+  if (endDate) {
+    params.set('to', new Date(`${endDate}T23:59:59.999`).toISOString());
+  }
+
+  return params.toString();
+};
+
 const formatDateTime = (value) => {
   if (!value) return 'Sin registrar';
   try {
@@ -116,6 +133,14 @@ const RegistroDirectory = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [registros, setRegistros] = useState([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    total: 0,
+    limit: DEFAULT_REGISTROS_PAGE_SIZE,
+    hasMore: false,
+  });
+  const [summary, setSummary] = useState({ total: 0, open: 0, closed: 0 });
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +148,7 @@ const RegistroDirectory = () => {
   const [statusFilter, setStatusFilter] = useState('todos');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({
     cedula: '',
@@ -150,6 +176,7 @@ const RegistroDirectory = () => {
   const [deleting, setDeleting] = useState(false);
   const pendingRegistroIdRef = useRef(location.state?.registroId || null);
   const pendingSearchTermRef = useRef(location.state?.searchTerm || null);
+  const fetchRequestIdRef = useRef(0);
 
   const resetCreateForm = useCallback(() => {
     setCreateForm({
@@ -185,22 +212,65 @@ const RegistroDirectory = () => {
     }
   }, [token]);
 
-  const fetchRegistros = useCallback(async () => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  const fetchRegistros = useCallback(async (requestedPage = 1) => {
     if (!token) return;
 
+    const requestId = fetchRequestIdRef.current + 1;
+    fetchRequestIdRef.current = requestId;
     setLoading(true);
     setError('');
 
     try {
-      const response = await apiRequest('/exitEntry', { token });
+      const query = buildRegistrosQuery({
+        page: requestedPage,
+        limit: DEFAULT_REGISTROS_PAGE_SIZE,
+        search: debouncedSearchTerm,
+        status: statusFilter,
+        startDate,
+        endDate,
+      });
+      const response = await apiRequest(`/exitEntry?${query}`, { token });
       const data = Array.isArray(response) ? response : response?.data || [];
+      if (requestId !== fetchRequestIdRef.current) return;
+
+      const responsePagination = response?.pagination || {};
+      const limit = responsePagination.limit || DEFAULT_REGISTROS_PAGE_SIZE;
+      const total = responsePagination.total ?? data.length;
+      const totalPages = responsePagination.totalPages || Math.max(1, Math.ceil(total / limit));
+      const page = responsePagination.page || requestedPage;
+      const responseSummary = response?.summary;
+      const visibleOpen = data.filter((registro) => !registro?.fechaSalida).length;
+
       setRegistros(data);
+      setPagination({
+        page,
+        totalPages,
+        total,
+        limit,
+        hasMore: responsePagination.hasMore ?? page < totalPages,
+      });
+      setSummary({
+        total: responseSummary?.total ?? total,
+        open: responseSummary?.open ?? visibleOpen,
+        closed: responseSummary?.closed ?? Math.max(0, total - visibleOpen),
+      });
     } catch (err) {
+      if (requestId !== fetchRequestIdRef.current) return;
       setError(err.message || 'No fue posible obtener los registros');
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [token]);
+  }, [debouncedSearchTerm, endDate, startDate, statusFilter, token]);
 
   useEffect(() => {
     fetchRegistros();
@@ -268,44 +338,7 @@ const RegistroDirectory = () => {
     });
   }, [registros]);
 
-  const filteredRegistros = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
-    if (end) {
-      end.setHours(23, 59, 59, 999);
-    }
-
-    return sortedRegistros.filter((registro) => {
-      const usuario = registro.usuario || {};
-      const administrador = registro.administrador || {};
-
-      const matchesSearch =
-        !normalizedSearch ||
-        [
-          usuario.nombre,
-          usuario.apellido,
-          usuario.email,
-          usuario.cedula,
-          administrador.nombre,
-          administrador.email,
-        ]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(normalizedSearch));
-
-      const entrada = registro.fechaEntrada ? new Date(registro.fechaEntrada) : null;
-      const matchesStart = start ? (entrada ? entrada >= start : false) : true;
-      const matchesEnd = end ? (entrada ? entrada <= end : false) : true;
-
-      const isOpen = !registro?.fechaSalida;
-      const matchesStatus =
-        statusFilter === 'todos' ||
-        (statusFilter === 'abiertos' && isOpen) ||
-        (statusFilter === 'cerrados' && !isOpen);
-
-      return matchesSearch && matchesStart && matchesEnd && matchesStatus;
-    });
-  }, [sortedRegistros, searchTerm, statusFilter, startDate, endDate]);
+  const filteredRegistros = sortedRegistros;
 
   useEffect(() => {
     const targetId = pendingRegistroIdRef.current;
@@ -542,9 +575,18 @@ const RegistroDirectory = () => {
 
   const refreshDisabled = loading;
   const exportDisabled = !filteredRegistros.length;
-  const totalRegistros = filteredRegistros.length;
-  const openCount = filteredRegistros.filter((registro) => !registro?.fechaSalida).length;
-  const closedCount = totalRegistros - openCount;
+  const totalRegistros = summary.total;
+  const openCount = summary.open;
+  const closedCount = summary.closed;
+  const pageStart = pagination.total ? (pagination.page - 1) * pagination.limit + 1 : 0;
+  const pageEnd = Math.min(pagination.page * pagination.limit, pagination.total);
+  const paginationPages = useMemo(() => {
+    const visiblePageCount = 5;
+    let firstPage = Math.max(1, pagination.page - Math.floor(visiblePageCount / 2));
+    const lastPage = Math.min(pagination.totalPages, firstPage + visiblePageCount - 1);
+    firstPage = Math.max(1, lastPage - visiblePageCount + 1);
+    return Array.from({ length: lastPage - firstPage + 1 }, (_, index) => firstPage + index);
+  }, [pagination.page, pagination.totalPages]);
 
   const resolveRegistroKey = (registro, fallback) => {
     if (!registro) return fallback;
@@ -567,6 +609,12 @@ const RegistroDirectory = () => {
     setStartDate('');
     setEndDate('');
     setSelected(null);
+  };
+
+  const handleRegistroPageChange = (page) => {
+    if (loading || page < 1 || page > pagination.totalPages || page === pagination.page) return;
+    setSelected(null);
+    fetchRegistros(page);
   };
 
   const handleCreateSubmit = async (event) => {
@@ -611,7 +659,7 @@ const RegistroDirectory = () => {
         data: payload,
       });
       closeCreateModal();
-      fetchRegistros();
+      fetchRegistros(1);
     } catch (err) {
       setCreateErrors({ api: err.message || 'No fue posible crear el registro' });
     } finally {
@@ -662,7 +710,7 @@ const RegistroDirectory = () => {
         data: payload,
       });
       closeEditModal();
-      fetchRegistros();
+      fetchRegistros(pagination.page);
     } catch (err) {
       setEditErrors({ api: err.message || 'No fue posible actualizar el registro' });
     } finally {
@@ -678,8 +726,11 @@ const RegistroDirectory = () => {
         method: 'DELETE',
         token,
       });
+      const nextPage = registros.length === 1 && pagination.page > 1
+        ? pagination.page - 1
+        : pagination.page;
       closeDeleteModal();
-      fetchRegistros();
+      fetchRegistros(nextPage);
     } catch (err) {
       setError(err.message || 'No fue posible eliminar el registro');
     } finally {
@@ -766,7 +817,7 @@ const RegistroDirectory = () => {
               </button>
               <button
                 type="button"
-                onClick={fetchRegistros}
+                onClick={() => fetchRegistros(pagination.page)}
                 disabled={refreshDisabled}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5b55] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
               >
@@ -789,12 +840,12 @@ const RegistroDirectory = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-[#0f172a]">Actividad por fecha</h3>
                   <p className="text-sm text-[#475569]">
-                    Total de {chartTotal} {chartTotal === 1 ? 'registro' : 'registros'} en el periodo seleccionado.
+                    {chartTotal} {chartTotal === 1 ? 'registro visible' : 'registros visibles'} en esta pagina.
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-2 rounded-full bg-[#0f766e]/10 px-3 py-1 text-xs font-semibold text-[#0f766e]">
                   <span className="h-2 w-2 rounded-full bg-[#0f766e]" />
-                  {chartTotal} en total
+                  {chartTotal} en pagina
                 </span>
               </div>
               <div className="mt-4 h-64">
@@ -967,6 +1018,50 @@ const RegistroDirectory = () => {
               </tbody>
             </table>
           </div>
+
+          <nav
+            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+            aria-label="Paginacion del historial de registros"
+          >
+            <p className="text-xs font-semibold text-[#64748b]">
+              Mostrando {pageStart}-{pageEnd} de {pagination.total.toLocaleString('es-CO')} registros
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleRegistroPageChange(pagination.page - 1)}
+                disabled={loading || pagination.page <= 1}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              {paginationPages.map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => handleRegistroPageChange(page)}
+                  disabled={loading}
+                  aria-current={page === pagination.page ? 'page' : undefined}
+                  aria-label={`Ir a la pagina ${page}`}
+                  className={`h-9 min-w-9 rounded-lg px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    page === pagination.page
+                      ? 'bg-[#00594e] text-white shadow-sm'
+                      : 'border border-slate-200 text-[#0f172a] hover:bg-slate-100'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleRegistroPageChange(pagination.page + 1)}
+                disabled={loading || pagination.page >= pagination.totalPages}
+                className="rounded-lg bg-[#00594e] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#00483f] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </nav>
         </section>
       </div>
 

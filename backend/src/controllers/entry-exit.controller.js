@@ -168,6 +168,16 @@ const sanitizeString = (value) => (typeof value === 'string' ? value.trim() : ''
 
 const sanitizeCedula = (value) => (typeof value === 'string' ? value.replace(/\D/g, '') : '');
 
+const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const OPEN_REGISTRO_FILTER = {
+  $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
+};
+
+const CLOSED_REGISTRO_FILTER = {
+  fechaSalida: { $exists: true, $ne: null },
+};
+
 const ensureRegistroPermission = (requester) => {
   if (!requester) {
     return {
@@ -594,14 +604,52 @@ exports.getRegistros = async (req, res) => {
     const page = parsePositiveInt(req.query.page, 1);
     const limit = parseQueryLimit(req.query.limit, DEFAULT_REGISTROS_LIMIT, MAX_REGISTROS_LIMIT);
     const skip = (page - 1) * limit;
+    const search = sanitizeString(req.query.search).slice(0, 100);
+    const requestedStatus = sanitizeString(req.query.status).toLowerCase();
+    const status = activeOnly || requestedStatus === 'abiertos'
+      ? 'abiertos'
+      : requestedStatus === 'cerrados'
+        ? 'cerrados'
+        : 'todos';
 
     const filters = {};
+    const filterClauses = [];
     const fechaEntradaFilter = buildFechaEntradaFilter({ from: fromDate, to: toDate, rangeDays });
     if (fechaEntradaFilter) {
       filters.fechaEntrada = fechaEntradaFilter;
     }
-    if (activeOnly) {
-      filters.$or = [{ fechaSalida: null }, { fechaSalida: { $exists: false } }];
+    if (status === 'abiertos') {
+      filterClauses.push(OPEN_REGISTRO_FILTER);
+    } else if (status === 'cerrados') {
+      filterClauses.push(CLOSED_REGISTRO_FILTER);
+    }
+
+    if (search) {
+      const searchTokens = search.split(/\s+/).filter(Boolean).slice(0, 5);
+      const matchingUsers = await User.find({
+        $and: searchTokens.map((token) => {
+          const regex = new RegExp(escapeRegExp(token), 'i');
+          return {
+            $or: [
+              { nombre: regex },
+              { apellido: regex },
+              { email: regex },
+              { cedula: regex },
+            ],
+          };
+        }),
+      }).select('_id').lean();
+      const matchingUserIds = matchingUsers.map((user) => user._id);
+      filterClauses.push({
+        $or: [
+          { usuario: { $in: matchingUserIds } },
+          { administrador: { $in: matchingUserIds } },
+        ],
+      });
+    }
+
+    if (filterClauses.length) {
+      filters.$and = filterClauses;
     }
 
     const query = Registro.find(filters)
@@ -613,7 +661,11 @@ exports.getRegistros = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const [registros, total] = await Promise.all([query.lean(), Registro.countDocuments(filters)]);
+    const [registros, total, openTotal] = await Promise.all([
+      query.lean(),
+      Registro.countDocuments(filters),
+      Registro.countDocuments({ $and: [filters, OPEN_REGISTRO_FILTER] }),
+    ]);
     const data = registros.map((registro) => normalizeAlertMetadata(registro));
     const pagination = {
       page,
@@ -627,11 +679,18 @@ exports.getRegistros = async (req, res) => {
       status: 'success',
       data,
       pagination,
+      summary: {
+        total,
+        open: openTotal,
+        closed: Math.max(0, total - openTotal),
+      },
       filters: {
         rangeDays: rangeDays || null,
         from: fromDate ? fromDate.toISOString() : null,
         to: toDate ? toDate.toISOString() : null,
         activeOnly,
+        search: search || null,
+        status,
       },
     });
   } catch (error) {
