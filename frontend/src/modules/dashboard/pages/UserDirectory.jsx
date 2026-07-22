@@ -312,31 +312,45 @@ const UserDirectory = () => {
   const [togglingAccessId, setTogglingAccessId] = useState(null);
   const [downloadingCard, setDownloadingCard] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [permisoFilter, setPermisoFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
   const profileCardRef = useRef(null);
   const colorNormalizerRef = useRef(null);
+  const loadUsersRequestIdRef = useRef(0);
   const [imagePreview, setImagePreview] = useState(null);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   const loadUsers = useCallback(async (page = 1) => {
     if (!token) return;
 
+    const requestId = loadUsersRequestIdRef.current + 1;
+    loadUsersRequestIdRef.current = requestId;
     setLoading(true);
     setError('');
 
     try {
       const params = new URLSearchParams();
       params.set('page', page);
-      params.set('limit', usersPagination.limit || DEFAULT_USERS_PAGE_SIZE);
-      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      params.set('limit', DEFAULT_USERS_PAGE_SIZE);
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm);
       if (permisoFilter) params.set('permiso', permisoFilter);
       if (estadoFilter) params.set('estado', estadoFilter);
       params.set('includeVisitorTicket', 'true');
 
       const response = await apiRequest(`/users?${params.toString()}`, { token });
       const data = Array.isArray(response) ? response : response?.data || [];
+      if (requestId !== loadUsersRequestIdRef.current) return;
+
       const pagination = response?.pagination || {};
-      const limit = pagination.limit || usersPagination.limit || DEFAULT_USERS_PAGE_SIZE;
+      const limit = pagination.limit || DEFAULT_USERS_PAGE_SIZE;
       const total = pagination.total ?? data.length;
       const totalPages = pagination.totalPages || Math.max(1, Math.ceil(total / limit));
       const currentPage = pagination.page || page;
@@ -351,12 +365,15 @@ const UserDirectory = () => {
       });
 
     } catch (err) {
+      if (requestId !== loadUsersRequestIdRef.current) return;
       setError(err.message || 'No fue posible obtener los usuarios');
       setUsersPagination((prev) => ({ ...prev, hasMore: false }));
     } finally {
-      setLoading(false);
+      if (requestId === loadUsersRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [token, usersPagination.limit, searchTerm, permisoFilter, estadoFilter]);
+  }, [debouncedSearchTerm, estadoFilter, permisoFilter, token]);
 
   useEffect(() => {
     loadUsers(1);
@@ -372,33 +389,19 @@ const UserDirectory = () => {
     return () => window.clearTimeout(timeoutId);
   }, [faceFeedback]);
 
-  const filteredUsers = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return users.filter((user) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        [
-          user.nombre,
-          user.apellido,
-          `${user.nombre || ''} ${user.apellido || ''}`,
-          user.email,
-          user.cedula,
-        ]
-          .filter(Boolean)
-          .some((value) => value.toLowerCase().includes(normalizedSearch));
-
-      const matchesPermiso =
-        !permisoFilter || (user.permisoSistema || '').toLowerCase() === permisoFilter.toLowerCase();
-
-      const matchesEstado =
-        !estadoFilter || (user.estado || '').toLowerCase() === estadoFilter.toLowerCase();
-
-      return matchesSearch && matchesPermiso && matchesEstado;
-    });
-  }, [users, searchTerm, permisoFilter, estadoFilter]);
+  const paginationPages = useMemo(() => {
+    const visiblePageCount = 5;
+    let firstPage = Math.max(1, usersPagination.page - Math.floor(visiblePageCount / 2));
+    const lastPage = Math.min(usersPagination.totalPages, firstPage + visiblePageCount - 1);
+    firstPage = Math.max(1, lastPage - visiblePageCount + 1);
+    return Array.from({ length: lastPage - firstPage + 1 }, (_, index) => firstPage + index);
+  }, [usersPagination.page, usersPagination.totalPages]);
 
   const hasActiveFilters = Boolean(searchTerm.trim() || permisoFilter || estadoFilter);
+  const pageStart = usersPagination.total
+    ? (usersPagination.page - 1) * usersPagination.limit + 1
+    : 0;
+  const pageEnd = Math.min(usersPagination.page * usersPagination.limit, usersPagination.total);
   const viewUserEstado = (viewUser?.estado || '').toLowerCase();
   const viewUserToggleId = viewUser?._id || viewUser?.id || viewUser?.cedula || null;
   const isViewUserBlocked = viewUserEstado === 'bloqueado';
@@ -432,19 +435,14 @@ const UserDirectory = () => {
 
   const clearFilters = () => {
     setSearchTerm('');
+    setDebouncedSearchTerm('');
     setPermisoFilter('');
     setEstadoFilter('');
   };
 
-  const handleUserPageChange = (direction) => {
-    const { page, totalPages } = usersPagination;
-    if (loading) return;
-    if (direction === 'next' && page < totalPages) {
-      loadUsers(page + 1);
-    }
-    if (direction === 'prev' && page > 1) {
-      loadUsers(page - 1);
-    }
+  const handleUserPageChange = (page) => {
+    if (loading || page < 1 || page > usersPagination.totalPages || page === usersPagination.page) return;
+    loadUsers(page);
   };
 
   const openImagePreview = (src, alt = 'Imagen seleccionada') => {
@@ -501,7 +499,7 @@ const UserDirectory = () => {
     const workbook = XLSXUtils.book_new();
     XLSXUtils.book_append_sheet(workbook, worksheet, 'Usuarios');
     writeXLSXFile(workbook, `directorio-usuarios-${Date.now()}.xlsx`);
-    setFeedback('Archivo de usuarios exportado correctamente.');
+    setFeedback(`Pagina ${usersPagination.page} exportada correctamente.`);
   };
 
   const handleViewUser = (user) => {
@@ -724,11 +722,10 @@ const UserDirectory = () => {
       });
 
       const updatedUser = response.user || response.data || null;
-        if (updatedUser) {
-          updateUserCollections(updatedUser);
-        } else {
-          await loadUsers();
-        }
+      if (updatedUser) {
+        updateUserCollections(updatedUser);
+      }
+      await loadUsers(usersPagination.page);
 
       setFeedback('Usuario actualizado correctamente.');
       closeEditModal();
@@ -754,13 +751,15 @@ const UserDirectory = () => {
         method: 'DELETE',
         token,
       });
-
-      setUsers((prev) => prev.filter((user) => user._id !== deleteTarget._id));
+      const nextPage = users.length === 1 && usersPagination.page > 1
+        ? usersPagination.page - 1
+        : usersPagination.page;
 
       if (viewUser?._id === deleteTarget._id) {
         setViewUser(null);
       }
 
+      await loadUsers(nextPage);
       setFeedback('Usuario eliminado correctamente.');
       setDeleteTarget(null);
     } catch (err) {
@@ -865,7 +864,7 @@ const UserDirectory = () => {
       const message = response?.message || 'Estado del usuario actualizado correctamente.';
 
       if (updatedUser && updatedUser._id) {
-        setUsers((prev) => prev.map((userItem) => (userItem._id === updatedUser._id ? updatedUser : userItem)));
+        updateUserCollections(updatedUser);
 
         if (viewUser?._id === updatedUser._id) {
           setViewUser(updatedUser);
@@ -874,9 +873,11 @@ const UserDirectory = () => {
         if (editUserId === updatedUser._id) {
           setEditForm(mapUserToForm(updatedUser));
         }
-      } else {
-        await loadUsers();
       }
+      const nextPage = users.length === 1 && usersPagination.page > 1
+        ? usersPagination.page - 1
+        : usersPagination.page;
+      await loadUsers(nextPage);
 
       setFeedback(message);
     } catch (error) {
@@ -1005,7 +1006,7 @@ const UserDirectory = () => {
                 onClick={handleExportUsers}
                 className="inline-flex items-center gap-2 rounded-lg border border-[#B5A160]/50 bg-white px-4 py-2 text-sm font-semibold text-[#8c7030] shadow-sm transition hover:bg-[#B5A160]/10 focus:outline-none focus:ring-2 focus:ring-[#B5A160] focus:ring-offset-2"
               >
-                Exportar Excel
+                Exportar pagina
               </button>
             )}
           </div>
@@ -1074,8 +1075,9 @@ const UserDirectory = () => {
           loading={loading}
           permisoLabels={PERMISOS_SISTEMA}
           estadoLabels={ESTADOS}
-          title="Distribucion del directorio"
-          description="Visualiza la composicion de usuarios por permiso y estado en tiempo real."
+          totalUsers={usersPagination.total}
+          title="Distribucion de la pagina"
+          description="Visualiza la composicion por permiso y estado de los usuarios visibles."
         />
 
         {feedback && (
@@ -1094,7 +1096,7 @@ const UserDirectory = () => {
           <p className="text-sm font-medium text-[#00594e]">Cargando usuarios...</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {filteredUsers.map((user) => {
+            {users.map((user) => {
               const isVisitor = (user.rolAcademico || '').toLowerCase() === 'visitante';
               const visitorTicketInfo = formatVisitorTicketInfo(user.visitorTicket);
               const estado = (user.estado || '').toLowerCase() || 'desconocido';
@@ -1234,7 +1236,7 @@ const UserDirectory = () => {
               );
             })}
 
-            {filteredUsers.length === 0 && !loading && (
+            {users.length === 0 && !loading && (
               <p className="text-sm text-[#475569]">
                 {hasActiveFilters
                   ? 'No se encontraron usuarios que coincidan con los filtros aplicados.'
@@ -1244,29 +1246,49 @@ const UserDirectory = () => {
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap items-center justify-end gap-3 text-sm text-[#0f172a]">
+        <nav
+          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          aria-label="Paginacion del directorio de usuarios"
+        >
           <span className="text-xs font-semibold text-[#64748b]">
-            {usersPagination.page}/{usersPagination.totalPages} · {usersPagination.total.toLocaleString('es-CO')} usuarios
+            Mostrando {pageStart}-{pageEnd} de {usersPagination.total.toLocaleString('es-CO')} usuarios
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => handleUserPageChange('prev')}
+              onClick={() => handleUserPageChange(usersPagination.page - 1)}
               disabled={loading || usersPagination.page <= 1}
-              className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              ←
+              Anterior
             </button>
+            {paginationPages.map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => handleUserPageChange(page)}
+                disabled={loading}
+                aria-current={page === usersPagination.page ? 'page' : undefined}
+                aria-label={`Ir a la pagina ${page}`}
+                className={`h-9 min-w-9 rounded-lg px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  page === usersPagination.page
+                    ? 'bg-[#00594e] text-white shadow-sm'
+                    : 'border border-slate-200 text-[#0f172a] hover:bg-slate-100'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
             <button
               type="button"
-              onClick={() => handleUserPageChange('next')}
+              onClick={() => handleUserPageChange(usersPagination.page + 1)}
               disabled={loading || usersPagination.page >= usersPagination.totalPages}
-              className="rounded-md bg-[#00594e] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-[#00594e] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              →
+              Siguiente
             </button>
           </div>
-        </div>
+        </nav>
       </div>
 
       {viewUser && (

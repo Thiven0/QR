@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { NavLink, useLocation } from 'react-router-dom';
+import { FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi';
 import { IoIosWarning, IoMdAnalytics } from 'react-icons/io';
+import { MdDashboard } from 'react-icons/md';
 import { RiQrCodeFill } from 'react-icons/ri';
 import { FaAddressBook } from 'react-icons/fa6';
 import { GiArchiveRegister } from 'react-icons/gi';
@@ -25,216 +27,254 @@ const LINK_THEMES = {
 
 const SHELL_THEMES = {
   default: {
-    container: 'bg-white/95 backdrop-blur border border-slate-200 shadow-xl',
+    container: 'bg-white/95 backdrop-blur border-slate-200 shadow-xl',
     header: 'text-[#0f172a]',
     subtext: 'text-[#64748b]',
-    closeButton: 'text-[#334155] hover:bg-[#e2f3ef]',
-    toggleButton: 'text-[#334155] hover:bg-[#e2f3ef]',
+    button: 'text-[#334155] hover:bg-[#e2f3ef]',
     accentDot: 'bg-[#00594e]',
-    handleButton: 'bg-white text-[#0f172a] border border-slate-200 hover:bg-[#e2f3ef]',
+    divider: 'border-slate-200',
+    tooltip: 'border-slate-200 bg-white text-[#0f172a]',
   },
   Celador: {
-    container: 'bg-[#0a5f53]/95 backdrop-blur border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.35)]',
+    container: 'bg-[#0a5f53]/95 backdrop-blur border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.35)]',
     header: 'text-white',
     subtext: 'text-white/70',
-    closeButton: 'text-white hover:bg-white/15',
-    toggleButton: 'text-white hover:bg-white/15',
+    button: 'text-white hover:bg-white/15',
     accentDot: 'bg-[#f2c66d]',
-    handleButton: 'bg-[#00594e] text-white border border-white/20 hover:bg-[#0a7567]',
+    divider: 'border-white/10',
+    tooltip: 'border-white/10 bg-[#073c34] text-white',
   },
   Administrador: {
-    container: 'bg-[#0a5d52]/95 backdrop-blur border border-[#f2c66d]/25 shadow-[0_26px_70px_rgba(7,60,52,0.55)]',
+    container: 'bg-[#0a5d52]/95 backdrop-blur border-[#f2c66d]/25 shadow-[0_26px_70px_rgba(7,60,52,0.45)]',
     header: 'text-[#fdf4d6]',
     subtext: 'text-[#f2c66d]/75',
-    closeButton: 'text-[#fdf4d6] hover:bg-[#f2c66d]/20',
-    toggleButton: 'text-[#fdf4d6] hover:bg-[#f2c66d]/20',
+    button: 'text-[#fdf4d6] hover:bg-[#f2c66d]/20',
     accentDot: 'bg-[#f2c66d]',
-    handleButton: 'bg-[#0b8a78] text-[#fdf4d6] border border-[#f2c66d]/40 hover:bg-[#0d9a85]',
+    divider: 'border-[#f2c66d]/20',
+    tooltip: 'border-[#f2c66d]/25 bg-[#073c34] text-[#fdf4d6]',
   },
 };
 
-const buildLinkClasses = (isActive, palette) =>
-  clsx(
-    'flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] whitespace-nowrap transition sm:gap-3 sm:px-4 sm:py-2.5 sm:text-sm sm:tracking-[0.12em]',
-    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent focus:ring-[#00594e]/20',
-    isActive ? palette.active : palette.inactive
-  );
-
-const DashboardSidebar = ({ isOpen = false, onClose, onToggle }) => {
+const DashboardSidebar = ({
+  isMobileOpen = false,
+  isCollapsed = false,
+  onMobileClose,
+  onCollapseToggle,
+}) => {
   const { hasPermission, user } = useAuth();
   const location = useLocation();
+  const previousPathRef = useRef(location.pathname);
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
+  );
+
+  const roleKey = user?.permisoSistema === 'Administrador'
+    ? 'Administrador'
+    : user?.permisoSistema === 'Celador'
+      ? 'Celador'
+      : 'default';
+  const theme = useMemo(() => SHELL_THEMES[roleKey] ?? SHELL_THEMES.default, [roleKey]);
+  const linkPalette = useMemo(() => LINK_THEMES[roleKey] ?? LINK_THEMES.default, [roleKey]);
 
   const baseItems = [
+    {
+      to: '/dashboard',
+      label: 'Inicio',
+      permissions: ['Administrador', 'Celador'],
+      end: true,
+      icon: MdDashboard,
+    },
     {
       to: '/dashboard/qr',
       label: 'Escanear QR',
       permissions: ['Administrador', 'Celador'],
-      icon: <RiQrCodeFill className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: RiQrCodeFill,
     },
     {
       to: '/dashboard/users/directory',
       label: 'Directorio',
       permissions: ['Administrador', 'Celador'],
-      icon: <FaAddressBook className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: FaAddressBook,
     },
     {
       to: '/dashboard/alerts',
       label: 'Alertas',
       permissions: ['Administrador', 'Celador'],
-      icon: <IoIosWarning className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: IoIosWarning,
     },
     {
       to: '/dashboard/statistics',
       label: 'Estadisticas',
       permissions: ['Administrador'],
-      icon: <IoMdAnalytics className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: IoMdAnalytics,
     },
     {
       to: '/dashboard/records/history',
       label: 'Historial registros',
       permissions: ['Administrador', 'Celador'],
-      icon: <GiArchiveRegister className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: GiArchiveRegister,
     },
     {
       to: '/dashboard/staff/register',
       label: 'Registrar usuario',
       permissions: ['Administrador'],
-      icon: <TiUserAdd className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />,
+      icon: TiUserAdd,
     },
   ];
 
   const visibleItems = baseItems.filter(({ permissions }) => hasPermission(permissions));
 
-  const roleKey = user?.permisoSistema === 'Administrador' ? 'Administrador' : user?.permisoSistema === 'Celador' ? 'Celador' : 'default';
-  const theme = useMemo(() => SHELL_THEMES[roleKey] ?? SHELL_THEMES.default, [roleKey]);
-  const linkPalette = useMemo(() => LINK_THEMES[roleKey] ?? LINK_THEMES.default, [roleKey]);
-
-  const previousPathRef = useRef(location.pathname);
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const isDesktop = window.matchMedia('(min-width: 640px)').matches;
-    if (isDesktop || !isOpen) {
-      document.body.style.overflow = '';
-      return undefined;
-    }
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const handleChange = (event) => setIsDesktop(event.matches);
+    setIsDesktop(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
+  useEffect(() => {
+    if (isDesktop || !isMobileOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isOpen]);
+  }, [isDesktop, isMobileOpen]);
 
   useEffect(() => {
-    if (previousPathRef.current !== location.pathname) {
-      previousPathRef.current = location.pathname;
-      if (typeof window === 'undefined' || window.matchMedia('(max-width: 639px)').matches) {
-        onClose?.();
-      }
-    }
-  }, [location.pathname, onClose]);
+    if (isDesktop || !isMobileOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') onMobileClose?.();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isDesktop, isMobileOpen, onMobileClose]);
+
+  useEffect(() => {
+    if (previousPathRef.current === location.pathname) return;
+    previousPathRef.current = location.pathname;
+    if (!isDesktop) onMobileClose?.();
+  }, [isDesktop, location.pathname, onMobileClose]);
 
   const sidebarClasses = clsx(
-    'fixed top-16 left-0 z-30 h-[calc(100vh-4rem)] w-72 overflow-y-auto px-4 py-6 transition-transform duration-300',
-    'sm:top-24 sm:h-[calc(100vh-6rem)] sm:w-80 sm:rounded-r-3xl sm:shadow-2xl',
+    'fixed bottom-0 left-0 top-16 z-30 flex w-[min(18rem,calc(100vw-2rem))] flex-col border-r px-3 py-4 shadow-2xl',
+    'overflow-y-auto transition-[width,transform,padding] duration-300 ease-out sm:top-[72px] lg:overflow-visible lg:rounded-none',
     theme.container,
-    isOpen ? 'translate-x-0 pointer-events-auto sm:translate-x-0 sm:pointer-events-auto' : '-translate-x-full pointer-events-none sm:-translate-x-[calc(100%+1.5rem)] sm:pointer-events-none'
+    isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+    isCollapsed ? 'lg:w-20 lg:px-2' : 'lg:w-72 lg:px-3'
   );
-
-  const closeButtonClasses = clsx('rounded-xl p-2 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent', theme.closeButton);
-  const toggleButtonClasses = clsx(
-    'hidden sm:inline-flex rounded-xl p-2 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent',
-    theme.toggleButton
+  const isHiddenForAssistiveTechnology = !isDesktop && !isMobileOpen;
+  const buttonClasses = clsx(
+    'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus:outline-none focus:ring-2 focus:ring-current/30',
+    theme.button
   );
-  const headerTextClasses = clsx('text-xs font-semibold uppercase tracking-[0.35em]', theme.header);
-  const headerDescriptionClasses = clsx('text-[0.65rem] font-medium uppercase tracking-[0.25em]', theme.subtext);
-  const handleButtonClasses = clsx(
-    'fixed top-28 left-3 z-20 hidden sm:flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold shadow-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent',
-    theme.handleButton
-  );
-
-  const handleNavClick = () => {
-    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches) return;
-    onClose?.();
-  };
-
-  const handleOverlayClick = () => {
-    onClose?.();
-  };
-
-  const handleToggleClick = () => {
-    onToggle?.();
-  };
 
   return (
     <>
-      {isOpen && (
+      {isMobileOpen && !isDesktop && (
         <button
           type="button"
-          className="fixed inset-0 z-20 bg-slate-900/35 backdrop-blur-[1px] sm:hidden"
-          onClick={handleOverlayClick}
-          aria-hidden="true"
+          className="fixed inset-0 z-20 bg-slate-950/45 backdrop-blur-[2px] lg:hidden"
+          onClick={onMobileClose}
+          aria-label="Cerrar menu principal"
         />
       )}
-      <aside id="dashboard-sidebar" className={sidebarClasses} aria-hidden={!isOpen}>
-        <div className="flex items-start justify-between">
-          <div>
+
+      <aside
+        id="dashboard-sidebar"
+        className={sidebarClasses}
+        aria-label="Menu principal"
+        aria-hidden={isHiddenForAssistiveTechnology}
+        {...(isHiddenForAssistiveTechnology ? { inert: '' } : {})}
+      >
+        <div className={clsx('flex min-h-12 items-center gap-2', isCollapsed ? 'lg:justify-center' : 'justify-between')}>
+          <div className={clsx('min-w-0', isCollapsed && 'lg:hidden')}>
             <div className="flex items-center gap-3">
-              <span className={clsx('inline-flex h-2 w-2 rounded-full', theme.accentDot)} />
-              <span className={headerTextClasses}>Menu principal</span>
+              <span className={clsx('inline-flex h-2 w-2 shrink-0 rounded-full', theme.accentDot)} />
+              <span className={clsx('truncate text-xs font-semibold uppercase tracking-[0.28em]', theme.header)}>
+                Menu principal
+              </span>
             </div>
-            <p className={clsx('mt-2', headerDescriptionClasses)}>Accesos rapidos</p>
+            <p className={clsx('mt-1 pl-5 text-[0.65rem] font-medium uppercase tracking-[0.2em]', theme.subtext)}>
+              Navegacion
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={handleOverlayClick} className={clsx(closeButtonClasses, 'sm:hidden')} aria-label="Cerrar menu">
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path
-                  fillRule="evenodd"
-                  d="M4.293 4.293a1 1 0 0 1 1.414 0L10 8.586l4.293-4.293a1 1 0 1 1 1.414 1.414L11.414 10l4.293 4.293a1 1 0 0 1-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 0 1-1.414-1.414L8.586 10 4.293 5.707a1 1 0 0 1 0-1.414Z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={handleToggleClick}
-              className={toggleButtonClasses}
-              aria-label={isOpen ? 'Contraer panel lateral' : 'Expandir panel lateral'}
-            >
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                {isOpen ? (
-                  <path d="M12.293 5.293a1 1 0 0 1 1.414 1.414L11.414 9l2.293 2.293a1 1 0 0 1-1.414 1.414l-3-3a1 1 0 0 1 0-1.414l3-3Z" />
-                ) : (
-                  <path d="M7.707 5.293a1 1 0 0 0-1.414 1.414L8.586 9l-2.293 2.293a1 1 0 1 0 1.414 1.414l3-3a1 1 0 0 0 0-1.414l-3-3Z" />
-                )}
-              </svg>
-            </button>
-          </div>
+
+          <button
+            type="button"
+            onClick={onMobileClose}
+            className={clsx(buttonClasses, 'lg:hidden')}
+            aria-label="Cerrar menu principal"
+          >
+            <FiX className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onCollapseToggle}
+            className={clsx(buttonClasses, 'hidden lg:inline-flex')}
+            aria-label={isCollapsed ? 'Expandir menu lateral' : 'Contraer menu lateral'}
+            aria-expanded={!isCollapsed}
+          >
+            {isCollapsed ? (
+              <FiChevronRight className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <FiChevronLeft className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
         </div>
 
-        <div className="mt-6 space-y-2">
-          {visibleItems.map(({ to, label, icon, isActiveOverride }) => (
+        <div className={clsx('my-4 border-t', theme.divider)} />
+
+        <nav className="flex min-h-0 flex-1 flex-col gap-1.5" aria-label="Secciones del dashboard">
+          {visibleItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
-              className={({ isActive }) => buildLinkClasses(isActiveOverride ?? isActive, linkPalette)}
-              onClick={handleNavClick}
+              end={end}
+              onClick={() => {
+                if (!isDesktop) onMobileClose?.();
+              }}
+              title={isDesktop && isCollapsed ? label : undefined}
+              className={({ isActive }) =>
+                clsx(
+                  'group relative flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition',
+                  'focus:outline-none focus:ring-2 focus:ring-current/30',
+                  isCollapsed && 'lg:justify-center lg:px-0',
+                  isActive ? linkPalette.active : linkPalette.inactive
+                )
+              }
             >
-              {icon}
-              <span>{label}</span>
+              <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className={clsx('truncate', isCollapsed && 'lg:sr-only')}>{label}</span>
+              {isCollapsed && (
+                <span
+                  aria-hidden="true"
+                  className={clsx(
+                    'pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold shadow-xl',
+                    'lg:group-hover:block lg:group-focus-visible:block',
+                    theme.tooltip
+                  )}
+                >
+                  {label}
+                </span>
+              )}
             </NavLink>
           ))}
+        </nav>
+
+        <div className={clsx('mt-4 border-t pt-4', theme.divider)}>
+          <div className={clsx('flex items-center gap-3 rounded-xl px-3 py-2', isCollapsed && 'lg:justify-center lg:px-0')}>
+            <span className={clsx('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold', theme.accentDot, roleKey === 'default' ? 'text-white' : 'text-[#073c34]')}>
+              {(user?.nombre || user?.permisoSistema || 'U').charAt(0).toUpperCase()}
+            </span>
+            <div className={clsx('min-w-0', isCollapsed && 'lg:hidden')}>
+              <p className={clsx('truncate text-xs font-semibold', theme.header)}>{user?.nombre || 'Usuario'}</p>
+              <p className={clsx('truncate text-[0.65rem]', theme.subtext)}>{user?.permisoSistema || 'Sin rol'}</p>
+            </div>
+          </div>
         </div>
       </aside>
-      {!isOpen && (
-        <button type="button" onClick={handleToggleClick} className={handleButtonClasses} aria-label="Expandir panel lateral">
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path d="M7.707 5.293a1 1 0 0 0-1.414 1.414L8.586 9l-2.293 2.293a1 1 0 1 0 1.414 1.414l3-3a1 1 0 0 0 0-1.414l-3-3Z" />
-          </svg>
-          Panel
-        </button>
-      )}
     </>
   );
 };

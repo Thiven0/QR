@@ -132,13 +132,18 @@ const UserStatsCharts = ({
   className = '',
   title = 'Resumen de usuarios',
   description = 'Distribucion en tiempo real por tipo de permiso y estado.',
+  totalUsers,
 }) => {
-  const totalUsers = Array.isArray(users) ? users.length : 0;
+  const visibleUsersCount = Array.isArray(users) ? users.length : 0;
+  const parsedTotalUsers = Number(totalUsers);
+  const totalUsersCount = Number.isFinite(parsedTotalUsers) && parsedTotalUsers >= 0
+    ? parsedTotalUsers
+    : visibleUsersCount;
 
   const { permisoData, estadoData } = useMemo(() => {
     const withPercentages = (distribution) =>
       distribution.map((item) => {
-        const percentageValue = totalUsers ? (item.count / totalUsers) * 100 : 0;
+        const percentageValue = visibleUsersCount ? (item.count / visibleUsersCount) * 100 : 0;
         return {
           ...item,
           percentage: percentageValue,
@@ -150,7 +155,7 @@ const UserStatsCharts = ({
       permisoData: withPercentages(buildDistribution(users, 'permisoSistema', permisoLabels)),
       estadoData: withPercentages(buildDistribution(users, 'estado', estadoLabels)),
     };
-  }, [users, permisoLabels, estadoLabels, totalUsers]);
+  }, [users, permisoLabels, estadoLabels, visibleUsersCount]);
 
   const containerClasses = ['space-y-4'];
   if (className) {
@@ -166,7 +171,7 @@ const UserStatsCharts = ({
         </div>
         <div className="sm:text-right">
           <span className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Total de usuarios</span>
-          <p className="text-lg font-semibold text-[#0f172a]">{totalUsers.toLocaleString('es-CO')}</p>
+          <p className="text-lg font-semibold text-[#0f172a]">{totalUsersCount.toLocaleString('es-CO')}</p>
         </div>
       </div>
 

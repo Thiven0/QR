@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { FiMenu, FiX } from 'react-icons/fi';
 import useAuth from '../../auth/hooks/useAuth';
 import { resolveAssetUrl } from '../../../services/apiClient';
 import escudoBlanco from '../../../img/escudo_blanco.png';
@@ -31,6 +32,7 @@ const ROLE_THEMES = {
     dropdownText: 'text-[#0f172a]',
     dropdownAccent: 'text-[#b91c1c]',
     dropdownHover: 'hover:bg-[#f1f5f9]',
+    menuButton: 'text-[#00594e] hover:bg-[#00594e]/10',
     decorative: 'bg-gradient-to-br from-[#8EE1CE]/30 via-transparent to-transparent',
   },
   Celador: {
@@ -56,6 +58,7 @@ const ROLE_THEMES = {
     dropdownText: 'text-[#fdf4d6]',
     dropdownAccent: 'text-[#f2c66d]',
     dropdownHover: 'hover:bg-[#f2c66d]/20',
+    menuButton: 'text-white hover:bg-white/15',
     decorative: 'bg-gradient-to-br from-[#f2c66d]/20 via-transparent to-transparent',
   },
   Administrador: {
@@ -81,13 +84,18 @@ const ROLE_THEMES = {
     dropdownText: 'text-[#fdf4d6]',
     dropdownAccent: 'text-[#f2c66d]',
     dropdownHover: 'hover:bg-[#f2c66d]/20',
+    menuButton: 'text-[#fdf4d6] hover:bg-[#f2c66d]/20',
     decorative: 'bg-gradient-to-br from-[#f2c66d]/35 via-transparent to-transparent',
   },
 };
 
 const TRACKED_SESSION_ROLES = ['Administrador', 'Celador'];
 
-const DashboardNavbar = () => {
+const DashboardNavbar = ({
+  showSidebar = false,
+  isMobileSidebarOpen = false,
+  onSidebarToggle,
+}) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -186,6 +194,10 @@ const DashboardNavbar = () => {
     theme.dropdownBorder,
     theme.dropdownBg
   );
+  const sidebarToggleClasses = clsx(
+    'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition focus:outline-none focus:ring-2 focus:ring-current/30',
+    theme.menuButton
+  );
 
   const secondaryLabel = useMemo(() => {
     if (role === 'Administrador') return 'Administracion central';
@@ -234,6 +246,18 @@ const DashboardNavbar = () => {
       <div className="relative z-10 px-4 py-3 sm:px-8 sm:py-4">
         <div className="flex flex-nowrap items-center justify-between gap-2 sm:gap-4 lg:gap-6">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            {showSidebar && (
+              <button
+                type="button"
+                onClick={onSidebarToggle}
+                className={clsx(sidebarToggleClasses, 'lg:hidden')}
+                aria-controls="dashboard-sidebar"
+                aria-expanded={isMobileSidebarOpen}
+                aria-label="Alternar menu principal"
+              >
+                {isMobileSidebarOpen ? <FiX className="h-5 w-5" /> : <FiMenu className="h-5 w-5" />}
+              </button>
+            )}
             <NavLink to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Regresar al inicio del dashboard">
               <img src={logoSrc} className="h-9 w-9 flex-shrink-0 object-contain sm:h-10 sm:w-10" alt="Unitropico Logo" />
               <div className="min-w-0">
@@ -278,7 +302,7 @@ const DashboardNavbar = () => {
                 </button>
               </>
             )}
-            <div className="min-w-0 text-right">
+            <div className="hidden min-w-0 text-right sm:block">
               <p className={nameClasses}>{user?.nombre || 'Equipo de seguridad'}</p>
               <p className={subTextClasses}>{role || 'Sin permisos'}</p>
             </div>
