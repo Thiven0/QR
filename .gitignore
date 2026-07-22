@@ -12,6 +12,9 @@ backend/.env
 frontend/.env
 backend/uploads/
 backend/evaluation/dataset-prueba
+backend/evaluation/face-runs/
+backend/evaluation/face-harness/output/
+backend/evaluation/face-harness/cache/
 
 # Logs
 npm-debug.log*

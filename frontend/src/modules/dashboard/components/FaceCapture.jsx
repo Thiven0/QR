@@ -117,7 +117,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, e
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
       <div className="relative aspect-[4/3] w-full bg-[#0f172a]">
         {cameraOpen ? (
-          <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+          <video ref={videoRef} className="h-full w-full -scale-x-100 object-cover" playsInline muted />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-white/80">
             <p className="text-sm font-medium">
@@ -126,7 +126,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, e
           </div>
         )}
 
-        <canvas ref={meshCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        <canvas ref={meshCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100" />
 
         <div className="pointer-events-none absolute inset-0 border-[12px] border-transparent">
           <div className={clsx('absolute inset-6 rounded-2xl border-2 border-dashed transition', detectionTone.border)} />

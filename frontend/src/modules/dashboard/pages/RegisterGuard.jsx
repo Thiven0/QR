@@ -1287,7 +1287,7 @@ const RegisterGuard = () => {
               <QrScanner
                 key={scannerKey}
                 delay={500}
-                style={{ width: '100%' }}
+                style={{ width: '100%', transform: 'scaleX(-1)' }}
                 onError={() => setScannerError('No fue posible acceder a la camara. Revisa los permisos.')}
                 onScan={handleScan}
               />

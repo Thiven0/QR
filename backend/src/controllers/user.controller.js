@@ -249,6 +249,7 @@ const resolveFaceRegistration = async (payload) => {
         message: "Rostro registrado correctamente durante la creacion del usuario",
         detectionScore: extraction.detection_score,
         embeddingDimensions: extraction.embedding_dimensions,
+        timings: extraction.timings || {},
       },
     };
   } catch (error) {

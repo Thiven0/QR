@@ -8,6 +8,10 @@
     "start": "node index.js",
     "seed:admin": "node scripts/seed-admin.js",
     "evaluate:face": "node scripts/evaluate-face.js",
+    "evaluate:face:robust": "node scripts/evaluate-face-robust.js",
+    "report:face-evaluation": "node scripts/generate-face-evaluation-report.js",
+    "cleanup:face-evaluation": "node scripts/cleanup-face-evaluation.js",
+    "test:face-harness": "node --test test/face-evaluation-metrics.test.js test/face-evaluation-report.test.js",
     "visualize:embedding": "node evaluation/embedding-visualizer/generate-embedding-plot.js",
     "visualize:embedding-map": "node evaluation/embedding-visualizer/generate-embedding-map.js"
   },

@@ -805,7 +805,7 @@ const QRScannerPage = () => {
                           delay={400}
                           onError={handleError}
                           onScan={handleScan}
-                          style={{ width: '100%', height: '100%' }}
+                          style={{ width: '100%', height: '100%', transform: 'scaleX(-1)' }}
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center bg-[#0f172a] text-white/80">

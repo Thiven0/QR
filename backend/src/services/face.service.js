@@ -1,4 +1,5 @@
 const createLogger = require("../utils/logger");
+const { performance } = require("perf_hooks");
 
 const logger = createLogger("face-service");
 const FACE_SERVICE_URL = (process.env.FACE_SERVICE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -7,6 +8,7 @@ const FACE_SERVICE_TIMEOUT_MS = Number(process.env.FACE_SERVICE_TIMEOUT_MS || 30
 const buildUrl = (path) => `${FACE_SERVICE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
 const postJson = async (path, payload) => {
+  const startedAt = performance.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FACE_SERVICE_TIMEOUT_MS);
 
@@ -30,7 +32,13 @@ const postJson = async (path, payload) => {
       throw error;
     }
 
-    return data;
+    return {
+      ...data,
+      timings: {
+        ...(data?.timings || {}),
+        node_face_service_round_trip_ms: performance.now() - startedAt,
+      },
+    };
   } catch (error) {
     if (error.name === "AbortError") {
       const timeoutError = new Error("El servicio facial excedio el tiempo de espera");
