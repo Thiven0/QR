@@ -3,6 +3,7 @@ import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { toast } from 'sonner';
 
 const CHART_COLORS = ['#00594e', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#94a3b8', '#b5a160'];
 
@@ -148,7 +149,6 @@ const DashboardStats = () => {
   const [visitorTickets, setVisitorTickets] = useState([]);
   const [faceStats, setFaceStats] = useState(createEmptyFaceStats);
   const [, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [faceStatsError, setFaceStatsError] = useState('');
   const [downloadingReport, setDownloadingReport] = useState(false);
 
@@ -163,7 +163,6 @@ const DashboardStats = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        setError('');
 
         const [usersResponse, recordsResponse, ticketsResponse] = await Promise.all([
           apiRequest('/users?includeVisitorTicket=true', { token }),
@@ -182,7 +181,7 @@ const DashboardStats = () => {
         setVisitorTickets(ticketsPayload);
       } catch (err) {
         if (mounted) {
-          setError(err.message || 'No fue posible obtener la informacion.');
+          toast.error(err.message || 'No fue posible obtener la informacion.', { id: 'statistics-load-error' });
           setUsers([]);
           setRecords([]);
           setVisitorTickets([]);
@@ -1218,7 +1217,7 @@ const DashboardStats = () => {
   const handleDownloadReport = async () => {
     if (downloadingReport) return;
     if (!reportRef.current) {
-      setError('No fue posible encontrar el contenido del reporte.');
+      toast.error('No fue posible encontrar el contenido del reporte.', { id: 'statistics-report-error' });
       return;
     }
 
@@ -1253,8 +1252,9 @@ const DashboardStats = () => {
 
       const dateLabel = new Date().toISOString().slice(0, 10);
       pdf.save(`reporte-estadisticas-${dateLabel}.pdf`);
+      toast.success('Reporte PDF generado correctamente.');
     } catch (err) {
-      setError(err.message || 'No fue posible generar el PDF.');
+      toast.error(err.message || 'No fue posible generar el PDF.', { id: 'statistics-report-error' });
     } finally {
       setDownloadingReport(false);
     }
@@ -1336,7 +1336,6 @@ const DashboardStats = () => {
             Coincidencias encontradas: <span className="font-semibold text-[#00594e]">{totalFiltered}</span> registros
             de acceso.
           </p>
-          {error && <p className="mt-3 text-sm font-semibold text-[#b91c1c]">{error}</p>}
         </div>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

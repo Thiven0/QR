@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { FiAlertTriangle, FiRefreshCcw } from 'react-icons/fi';
+import { toast } from 'sonner';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -35,7 +36,6 @@ const Content = () => {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsError, setAlertsError] = useState('');
-  const [alertToast, setAlertToast] = useState('');
   const alertCountRef = useRef(0);
   const canSeeAlerts = hasPermission(['Administrador', 'Celador']);
 
@@ -59,8 +59,10 @@ const Content = () => {
         }
       } catch (error) {
         if (isMounted) {
+          const message = error.message || 'No fue posible cargar el resumen de usuarios.';
           setUserSummary(null);
-          setUserSummaryError(error.message || 'No fue posible cargar el resumen de usuarios.');
+          setUserSummaryError(message);
+          toast.error(message, { id: 'dashboard-user-summary-error' });
         }
       } finally {
         if (isMounted) {
@@ -115,7 +117,9 @@ const Content = () => {
         setEntriesToday(todayCount);
       } catch (error) {
         if (isMounted) {
-          setEntryStatsError(error.message || 'No fue posible obtener los registros de hoy.');
+          const message = error.message || 'No fue posible obtener los registros de hoy.';
+          setEntryStatsError(message);
+          toast.error(message, { id: 'dashboard-entry-stats-error' });
           setEntriesToday(0);
           setEntryRecords([]);
         }
@@ -142,11 +146,15 @@ const Content = () => {
       const data = Array.isArray(response) ? response : response?.data || [];
       setAlerts(data);
       if (data.length > alertCountRef.current && data.length > 0) {
-        setAlertToast(`Hay ${data.length} alerta${data.length === 1 ? '' : 's'} de permanencia activa.`);
+        toast.warning(`Hay ${data.length} alerta${data.length === 1 ? '' : 's'} de permanencia activa.`, {
+          id: 'dashboard-active-alerts',
+        });
       }
       alertCountRef.current = data.length;
     } catch (error) {
-      setAlertsError(error.message || 'No fue posible obtener las alertas.');
+      const message = error.message || 'No fue posible obtener las alertas.';
+      setAlertsError(message);
+      toast.error(message, { id: 'dashboard-alerts-error' });
       setAlerts([]);
     } finally {
       setAlertsLoading(false);
@@ -159,12 +167,6 @@ const Content = () => {
     const interval = setInterval(fetchAlerts, ALERT_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchAlerts, canSeeAlerts]);
-
-  useEffect(() => {
-    if (!alertToast) return undefined;
-    const timer = setTimeout(() => setAlertToast(''), 5000);
-    return () => clearTimeout(timer);
-  }, [alertToast]);
 
   const summaryGeneratedAt = userSummary?.generatedAt ? new Date(userSummary.generatedAt) : null;
   const updatedAtSource = summaryGeneratedAt && !Number.isNaN(summaryGeneratedAt.getTime()) ? summaryGeneratedAt : new Date();
@@ -879,12 +881,6 @@ const formatElapsedMinutes = (value) => {
           </div>
         </header>
 
-        {canSeeAlerts && alertToast && (
-          <div className="rounded-xl border border-[#f97316]/40 bg-[#fff7ed] px-4 py-3 text-sm font-semibold text-[#b45309]">
-            {alertToast}
-          </div>
-        )}
-
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[#0f172a]">Resumen por seccion</h2>
@@ -948,11 +944,6 @@ const formatElapsedMinutes = (value) => {
                 </button>
               </div>
             </header>
-            {alertsError && (
-              <div className="mt-3 rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#b91c1c]">
-                {alertsError}
-              </div>
-            )}
             <div className="mt-4 space-y-3">
               {alertsLoading ? (
                 <p className="text-sm text-[#475569]">Verificando alertas...</p>

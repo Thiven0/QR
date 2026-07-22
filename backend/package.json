@@ -12,8 +12,10 @@
     "report:face-evaluation": "node scripts/generate-face-evaluation-report.js",
     "cleanup:face-evaluation": "node scripts/cleanup-face-evaluation.js",
     "test:face-harness": "node --test test/face-evaluation-metrics.test.js test/face-evaluation-report.test.js",
+    "test:embedding-analysis": "py -3.13 -m unittest evaluation/embedding-visualizer/test_embedding_analysis.py",
     "visualize:embedding": "node evaluation/embedding-visualizer/generate-embedding-plot.js",
-    "visualize:embedding-map": "node evaluation/embedding-visualizer/generate-embedding-map.js"
+    "visualize:embedding-map": "node evaluation/embedding-visualizer/generate-embedding-map.js",
+    "analyze:embeddings": "py -3.13 evaluation/embedding-visualizer/generate-embedding-analysis.py"
   },
   "author": "Harold Gutierrez Orduz",
   "license": "MIT",

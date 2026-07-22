@@ -15,10 +15,12 @@ import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 import { FiEdit2, FiTrash2, FiPlusCircle, FiAlertTriangle } from 'react-icons/fi';
+import { toast } from 'sonner';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
 const DEFAULT_REGISTROS_PAGE_SIZE = 10;
+const REGISTROS_EXPORT_PAGE_SIZE = 100;
 
 const buildRegistrosQuery = ({ page, limit, search, status, startDate, endDate }) => {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
@@ -73,6 +75,12 @@ const formatScanMethod = (value) => {
   if (normalized === 'face') return 'Reconocimiento facial';
   if (normalized === 'qr') return 'Escaneo QR';
   return 'Registro manual';
+};
+
+const formatVehicle = (vehicle) => {
+  if (!vehicle || typeof vehicle !== 'object') return '';
+  const description = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
+  return [vehicle.type, vehicle.plate, description, vehicle.color].filter(Boolean).join(' - ');
 };
 
 const getRegistroTimestamp = (registro, candidates = []) => {
@@ -143,7 +151,7 @@ const RegistroDirectory = () => {
   const [summary, setSummary] = useState({ total: 0, open: 0, closed: 0 });
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [startDate, setStartDate] = useState('');
@@ -205,8 +213,9 @@ const RegistroDirectory = () => {
       const response = await apiRequest('/users', { token });
       const data = Array.isArray(response) ? response : response?.data || [];
       setUsers(data);
-    } catch {
+    } catch (err) {
       setUsers([]);
+      toast.error(err.message || 'No fue posible obtener los usuarios', { id: 'records-users-load-error' });
     } finally {
       setLoadingUsers(false);
     }
@@ -226,7 +235,6 @@ const RegistroDirectory = () => {
     const requestId = fetchRequestIdRef.current + 1;
     fetchRequestIdRef.current = requestId;
     setLoading(true);
-    setError('');
 
     try {
       const query = buildRegistrosQuery({
@@ -264,7 +272,8 @@ const RegistroDirectory = () => {
       });
     } catch (err) {
       if (requestId !== fetchRequestIdRef.current) return;
-      setError(err.message || 'No fue posible obtener los registros');
+      const message = err.message || 'No fue posible obtener los registros';
+      toast.error(message, { id: 'records-load-error' });
     } finally {
       if (requestId === fetchRequestIdRef.current) {
         setLoading(false);
@@ -488,47 +497,112 @@ const RegistroDirectory = () => {
     );
   };
 
-  const handleExport = () => {
-    if (!filteredRegistros.length) {
-      setError('No hay registros para exportar con los filtros aplicados.');
+  const handleExport = async () => {
+    if (!pagination.total || exporting) {
+      const message = 'No hay registros para exportar con los filtros aplicados.';
+      if (!exporting) toast.error(message);
       return;
     }
 
-    const headers = [
-      'Usuario',
-      'Correo',
-      'Rol',
-      'Porteria',
-      'Entrada',
-      'Hora entrada',
-      'Salida',
-      'Hora salida',
-      'Duracion',
-      'Cierre forzado',
-      'Observaciones',
-    ];
-    const rows = filteredRegistros.map((registro) => {
-      const usuario = registro.usuario || {};
-      const administrador = registro.administrador || {};
-      return [
-        `${usuario.nombre || ''} ${usuario.apellido || ''}`.trim(),
-        usuario.email || '',
-        usuario.rolAcademico || '',
-        administrador.nombre || '',
-        formatDateTime(registro.fechaEntrada),
-        formatTime(registro.horaEntrada),
-        formatDateTime(registro.fechaSalida),
-        formatTime(registro.horaSalida),
-        formatDurationValue(registro.duracionSesion),
-        registro.cierreForzado ? `Si (${registro.cierreMotivo || 'ticket'})` : 'No',
-        registro.observaciones || '',
-      ];
-    });
+    try {
+      setExporting(true);
+      const exportRegistros = [];
+      let exportPage = 1;
+      let exportTotalPages = 1;
 
-    const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
-    const workbook = XLSXUtils.book_new();
-    XLSXUtils.book_append_sheet(workbook, worksheet, 'Historial');
-    writeXLSXFile(workbook, `historial-registros-${Date.now()}.xlsx`);
+      do {
+        const query = buildRegistrosQuery({
+          page: exportPage,
+          limit: REGISTROS_EXPORT_PAGE_SIZE,
+          search: debouncedSearchTerm,
+          status: statusFilter,
+          startDate,
+          endDate,
+        });
+        const response = await apiRequest(`/exitEntry?${query}`, { token });
+        const pageData = Array.isArray(response) ? response : response?.data || [];
+        exportRegistros.push(...pageData);
+        exportTotalPages = response?.pagination?.totalPages || 1;
+        exportPage += 1;
+      } while (exportPage <= exportTotalPages);
+
+      if (!exportRegistros.length) {
+        toast.error('No hay registros para exportar con los filtros aplicados.');
+        return;
+      }
+
+      const headers = [
+        'Usuario',
+        'Cedula',
+        'Correo',
+        'Telefono',
+        'Rol',
+        'Porteria',
+        'Metodo de ingreso',
+        'Entrada',
+        'Hora entrada',
+        'Salida',
+        'Hora salida',
+        'Duracion',
+        'Vehiculo',
+        'Estado facial',
+        'Score facial',
+        'Umbral facial',
+        'Detection score',
+        'Perfiles comparados',
+        'Fecha log facial',
+        'Cierre forzado',
+        'Observaciones',
+      ];
+      const rows = exportRegistros.map((registro) => {
+        const usuario = registro.usuario || {};
+        const administrador = registro.administrador || {};
+        const faceLog = registro.faceRecognitionLog;
+        return [
+          `${usuario.nombre || ''} ${usuario.apellido || ''}`.trim(),
+          usuario.cedula || '',
+          usuario.email || '',
+          usuario.telefono || '',
+          usuario.rolAcademico || '',
+          `${administrador.nombre || ''} ${administrador.apellido || ''}`.trim(),
+          formatScanMethod(registro.scanMethod),
+          formatDateTime(registro.fechaEntrada),
+          formatTime(registro.horaEntrada),
+          formatDateTime(registro.fechaSalida),
+          formatTime(registro.horaSalida),
+          formatDurationValue(registro.duracionSesion),
+          formatVehicle(registro.vehiculo),
+          faceLog?.status || '',
+          faceLog?.score ?? '',
+          faceLog?.threshold ?? '',
+          faceLog?.detectionScore ?? '',
+          faceLog?.comparedProfiles ?? '',
+          faceLog?.createdAt ? formatDateTime(faceLog.createdAt) : '',
+          registro.cierreForzado ? `Si (${registro.cierreMotivo || 'ticket'})` : 'No',
+          registro.observaciones || '',
+        ];
+      });
+
+      const worksheet = XLSXUtils.aoa_to_sheet([headers, ...rows]);
+      worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+      worksheet['!cols'] = headers.map((header, index) => ({
+        wch: Math.min(
+          40,
+          Math.max(
+            header.length + 2,
+            ...rows.map((row) => String(row[index] ?? '').length + 2)
+          )
+        ),
+      }));
+      const workbook = XLSXUtils.book_new();
+      XLSXUtils.book_append_sheet(workbook, worksheet, 'Historial');
+      writeXLSXFile(workbook, `historial-registros-${Date.now()}.xlsx`);
+      toast.success(`${exportRegistros.length} registros exportados correctamente`);
+    } catch (err) {
+      toast.error(err.message || 'No fue posible exportar los registros');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const chartData = {
@@ -574,7 +648,7 @@ const RegistroDirectory = () => {
   };
 
   const refreshDisabled = loading;
-  const exportDisabled = !filteredRegistros.length;
+  const exportDisabled = loading || exporting || !pagination.total;
   const totalRegistros = summary.total;
   const openCount = summary.open;
   const closedCount = summary.closed;
@@ -659,9 +733,12 @@ const RegistroDirectory = () => {
         data: payload,
       });
       closeCreateModal();
+      toast.success('Registro creado correctamente');
       fetchRegistros(1);
     } catch (err) {
-      setCreateErrors({ api: err.message || 'No fue posible crear el registro' });
+      const message = err.message || 'No fue posible crear el registro';
+      setCreateErrors({ api: message });
+      toast.error(message);
     } finally {
       setCreateSaving(false);
     }
@@ -710,9 +787,12 @@ const RegistroDirectory = () => {
         data: payload,
       });
       closeEditModal();
+      toast.success('Registro actualizado correctamente');
       fetchRegistros(pagination.page);
     } catch (err) {
-      setEditErrors({ api: err.message || 'No fue posible actualizar el registro' });
+      const message = err.message || 'No fue posible actualizar el registro';
+      setEditErrors({ api: message });
+      toast.error(message);
     } finally {
       setEditSaving(false);
     }
@@ -730,9 +810,11 @@ const RegistroDirectory = () => {
         ? pagination.page - 1
         : pagination.page;
       closeDeleteModal();
+      toast.success('Registro eliminado correctamente');
       fetchRegistros(nextPage);
     } catch (err) {
-      setError(err.message || 'No fue posible eliminar el registro');
+      const message = err.message || 'No fue posible eliminar el registro';
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -747,12 +829,6 @@ const RegistroDirectory = () => {
             Consulta las entradas y salidas registradas por los administradores y celadores.
           </p>
         </header>
-
-        {error && (
-          <div className="rounded-xl border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-            {error}
-          </div>
-        )}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-4 sm:grid-cols-5">
@@ -829,7 +905,7 @@ const RegistroDirectory = () => {
                 disabled={exportDisabled}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#B5A160] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9a8952] focus:outline-none focus:ring-2 focus:ring-[#B5A160] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Exportar Excel
+                {exporting ? 'Generando Excel...' : 'Exportar Excel'}
               </button>
             </div>
           </div>

@@ -302,44 +302,46 @@ const DashboardNavbar = ({
                 </button>
               </>
             )}
-            <div className="hidden min-w-0 text-right sm:block">
-              <p className={nameClasses}>{user?.nombre || 'Equipo de seguridad'}</p>
-              <p className={subTextClasses}>{role || 'Sin permisos'}</p>
-            </div>
-            <div className="relative z-20 flex-shrink-0">
-              <button
-                ref={avatarButtonRef}
-                type="button"
-                onClick={handleToggleMenu}
-                className={avatarButtonClasses}
-              >
-                <img
-                  className="h-9 w-9 rounded-full object-cover"
-                  src={avatarImage}
-                  alt={user?.nombre || 'Perfil'}
-                />
-              </button>
-              {isMenuOpen && (
-                <div
-                  ref={menuRef}
-                  className={dropdownClasses}
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:hidden">
+              <div className="min-w-0 max-w-20 text-right sm:max-w-40">
+                <p className={nameClasses}>{user?.nombre || 'Equipo de seguridad'}</p>
+                <p className={subTextClasses}>{role || 'Sin permisos'}</p>
+              </div>
+              <div className="relative z-20 flex-shrink-0">
+                <button
+                  ref={avatarButtonRef}
+                  type="button"
+                  onClick={handleToggleMenu}
+                  className={avatarButtonClasses}
                 >
-                  <button
-                    type="button"
-                    onClick={handleViewAccount}
-                    className={clsx('mx-2 block w-[calc(100%-1rem)] rounded-xl px-4 py-2 text-left transition', theme.dropdownHover, theme.dropdownText)}
+                  <img
+                    className="h-9 w-9 rounded-full object-cover"
+                    src={avatarImage}
+                    alt={user?.nombre || 'Perfil'}
+                  />
+                </button>
+                {isMenuOpen && (
+                  <div
+                    ref={menuRef}
+                    className={dropdownClasses}
                   >
-                    Ver cuenta
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className={clsx('mx-2 mt-1 block w-[calc(100%-1rem)] rounded-xl px-4 py-2 text-left transition', theme.dropdownHover, theme.dropdownAccent)}
-                  >
-                    Cerrar sesion
-                  </button>
-                </div>
-              )}
+                    <button
+                      type="button"
+                      onClick={handleViewAccount}
+                      className={clsx('mx-2 block w-[calc(100%-1rem)] rounded-xl px-4 py-2 text-left transition', theme.dropdownHover, theme.dropdownText)}
+                    >
+                      Ver cuenta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className={clsx('mx-2 mt-1 block w-[calc(100%-1rem)] rounded-xl px-4 py-2 text-left transition', theme.dropdownHover, theme.dropdownAccent)}
+                    >
+                      Cerrar sesion
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

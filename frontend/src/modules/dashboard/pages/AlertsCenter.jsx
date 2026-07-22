@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiCheck, FiRefreshCcw, FiClock } from 'react-icons/fi';
+import { toast } from 'sonner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest } from '../../../services/apiClient';
 
@@ -52,13 +53,11 @@ const AlertsCenter = () => {
 
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
 
   const fetchAlerts = useCallback(async () => {
     if (!token || !canAccess) return;
     setLoading(true);
-    setError('');
     try {
       const response = await apiRequest(
         `/exitEntry/alerts?thresholdMinutes=${ALERT_THRESHOLD_MINUTES}`,
@@ -67,7 +66,7 @@ const AlertsCenter = () => {
       const data = Array.isArray(response) ? response : response?.data || [];
       setAlerts(data);
     } catch (err) {
-      setError(err.message || 'No fue posible obtener las alertas.');
+      toast.error(err.message || 'No fue posible obtener las alertas.', { id: 'alerts-load-error' });
       setAlerts([]);
     } finally {
       setLoading(false);
@@ -79,12 +78,14 @@ const AlertsCenter = () => {
       const alertId = alert?._id || alert?.id || alert;
       if (!token || !alertId) return;
       setUpdatingId(alertId);
-      setError('');
       try {
         await apiRequest(`/exitEntry/${alertId}/alert`, {
           method: 'PATCH',
           token,
           data: { status },
+        });
+        toast.success(status === 'resolved' ? 'Alerta resuelta correctamente.' : 'Alerta marcada para revision.', {
+          id: `alert-update-${alertId}`,
         });
         if (status === 'acknowledged' && autoNavigate) {
           const searchTerm =
@@ -100,7 +101,9 @@ const AlertsCenter = () => {
         }
         fetchAlerts();
       } catch (err) {
-        setError(err.message || 'No fue posible actualizar la alerta.');
+        toast.error(err.message || 'No fue posible actualizar la alerta.', {
+          id: `alert-update-${alertId}`,
+        });
       } finally {
         setUpdatingId(null);
       }
@@ -166,12 +169,6 @@ const AlertsCenter = () => {
             {loading ? 'Actualizando...' : 'Actualizar'}
           </button>
         </header>
-
-        {error && (
-          <div className="rounded-xl border border-[#b91c1c]/50 bg-[#fee2e2] px-4 py-3 text-sm font-semibold text-[#b91c1c]">
-            {error}
-          </div>
-        )}
 
         <section className="grid gap-4 md:grid-cols-4">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -155,3 +155,87 @@ Para el mapa 2D:
 - `--limit <n>`: limita la cantidad de usuarios proyectados en modo Mongo
 
 Si no envias `--input` ni `--userId`, el script usa `sample-embedding.json` por defecto.
+
+## Analisis cientifico con scikit-learn
+
+`generate-embedding-analysis.py` consulta MongoDB y genera un reporte HTML con analisis reproducible. No modifica documentos ni llama al face-service.
+
+### Instalar dependencias
+
+Desde `backend/`:
+
+```bash
+py -3.13 -m pip install -r evaluation/embedding-visualizer/requirements.txt
+```
+
+### Usuarios de produccion
+
+```bash
+npm run analyze:embeddings -- --source=users --max-samples=500
+```
+
+Lee `users.faceDescriptor` y genera `output/embedding-analysis-users.html`.
+
+### Perfiles y probes de un run
+
+```bash
+npm run analyze:embeddings -- --source=evaluation --run-id=prueba-100-perfiles --max-samples=1000
+```
+
+Tambien se pueden analizar por separado:
+
+```bash
+npm run analyze:embeddings -- --source=profiles --run-id=prueba-100-perfiles
+npm run analyze:embeddings -- --source=probes --run-id=prueba-100-perfiles --max-samples=1000
+```
+
+### Logs de reconocimiento
+
+```bash
+npm run analyze:embeddings -- --source=recognition-logs --start-date=2026-01-01 --end-date=2026-12-31
+```
+
+Los logs no contienen el vector de 512 dimensiones. En este modo se grafican scores, estados, actividad temporal y relacion entre deteccion y similitud. No se reportan FAR/FRR porque los logs operativos no tienen una etiqueta de identidad esperada independiente.
+
+### Graficas del reporte de embeddings
+
+- PCA 2D con porcentaje de varianza explicada
+- t-SNE 2D con semilla y perplexity registradas
+- varianza por dimension
+- correlacion entre las dimensiones de mayor varianza
+- posibles outliers por distancia coseno al vecino global mas cercano
+- distribucion de scores Top-1 cuando la fuente contiene probes
+
+PCA y t-SNE son herramientas exploratorias con perdida de informacion. Las decisiones biometricas deben seguir usando el embedding completo y similitud coseno.
+
+El muestreo es determinista por `ObjectId` y `random-state`. En `source=evaluation` se reserva hasta la mitad para profiles y los probes completan los cupos disponibles. El reporte registra conteos por tipo, versiones de librerias y una huella SHA-256 del conjunto utilizado. Los vectores nulos, no finitos o con dimensiones inconsistentes se descartan.
+
+En `source=recognition-logs`, el histograma y el scatter usan la muestra limitada, mientras los totales por estado y la actividad diaria se calculan sobre todos los documentos del rango mediante agregaciones MongoDB.
+
+### Opciones principales
+
+- `--source`: `users`, `profiles`, `probes`, `evaluation` o `recognition-logs`
+- `--run-id`: obligatorio para las fuentes de evaluacion
+- `--max-samples`: limita documentos para controlar memoria y tiempo; predeterminado `1000`
+- `--random-state`: semilla reproducible; predeterminado `42`
+- `--tsne-perplexity`: perplexity solicitada; se ajusta automaticamente al tamano de la muestra
+- `--skip-tsne`: omite t-SNE para una ejecucion mas rapida
+- `--top-dimensions`: cantidad de dimensiones mostradas por varianza
+- `--color-by`: colorea por `category`, `kind` o `result`
+- `--mongo-uri`: sobrescribe `MONGODB_URI`
+- `--database`: selecciona la base cuando la URI no contiene una
+- `--output`: cambia la ruta del HTML
+
+Ejemplo rapido sin t-SNE:
+
+```bash
+npm run analyze:embeddings -- --source=evaluation --run-id=prueba-100-perfiles --max-samples=300 --skip-tsne=true --output=evaluation/embedding-visualizer/output/prueba-100-rapido.html
+```
+
+Con esta version de npm en Windows, usa `--clave=valor` en los comandos `npm run`. El comando Python directo tambien acepta `--clave valor`.
+
+### Pruebas del analizador
+
+```bash
+py -3.13 -m unittest evaluation/embedding-visualizer/test_embedding_analysis.py
+```

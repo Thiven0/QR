@@ -2,6 +2,7 @@ import { useState } from 'react';
 import RegisterForm from '../components/RegisterUserForm';
 import { apiRequest, uploadImageSource } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
+import { toast } from 'sonner';
 
 const validate = (formData) => {
   const newErrors = {};
@@ -71,16 +72,20 @@ const RegisterUser = () => {
         : 'Usuario registrado con éxito.';
 
       setSuccess(successMessage);
+      toast.success('Usuario registrado correctamente.');
       setErrors({});
     } catch (error) {
       const apiErrors = error.details?.errors;
       if (apiErrors) {
         setErrors(apiErrors);
         setSuccess('');
+        if (apiErrors.general) toast.error(apiErrors.general);
         return;
       }
-      setErrors({ general: error.message || 'Error al registrar usuario.' });
+      const message = error.message || 'Error al registrar usuario.';
+      setErrors({ general: message });
       setSuccess('');
+      toast.error(message);
     }
   };
 
@@ -128,7 +133,9 @@ const RegisterUser = () => {
       };
 
       setExternalValues(mapped);
-      setSuccess('Datos precargados desde el QR. Completa y guarda el registro.');
+      const message = 'Datos precargados desde el QR. Completa y guarda el registro.';
+      setSuccess(message);
+      toast.info(message);
       setErrors({});
     } catch (error) {
       const message =
@@ -136,6 +143,7 @@ const RegisterUser = () => {
         error.message ||
         'No fue posible interpretar el QR.';
       setParseError(message);
+      toast.error(message, { id: 'register-user-qr-error' });
     } finally {
       setParsingQr(false);
     }
@@ -155,17 +163,6 @@ const RegisterUser = () => {
         <div className="grid gap-8 lg:grid-cols-[1.45fr_0.9fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="space-y-4">
-              {success && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                  {success}
-                </div>
-              )}
-              {errors.general && (
-                <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-                  {errors.general}
-                </div>
-              )}
-
               <RegisterForm
                 key={success ? 'reset-' + success : 'form'}
                 onSubmit={handleSubmit}

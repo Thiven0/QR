@@ -3,6 +3,7 @@ import { FiUserCheck, FiUserPlus } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest, resolveAssetUrl } from '../../../services/apiClient';
 import ModalDialog from '../../../shared/components/ModalDialog';
@@ -95,16 +96,6 @@ const renderUserDetails = (user) => {
       </div>
     </div>
   );
-};
-
-const buildFeedbackBox = (feedback) => {
-  if (!feedback) return null;
-  const isSuccess = feedback.type === 'success';
-  const base = 'mt-6 rounded-lg border px-4 py-3 text-sm font-semibold transition';
-  const tone = isSuccess
-    ? 'border-[#0f766e] bg-[#0f766e]/10 text-[#0b5f58]'
-    : 'border-[#b91c1c] bg-[#fee2e2] text-[#7f1d1d]';
-  return <div className={`${base} ${tone}`}>{feedback.message}</div>;
 };
 
 const FACE_MATCH_THRESHOLD = 0.5;
@@ -237,8 +228,6 @@ const QRScannerPage = () => {
   const scannerBeforeVisitorRef = useRef({ resumeQr: false, resumeFace: false });
 
   const [scanData, setScanData] = useState(null);
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [lastRawText, setLastRawText] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -257,8 +246,6 @@ const QRScannerPage = () => {
 
   const resetState = () => {
     setScanData(null);
-    setError('');
-    setFeedback(null);
     setProcessing(false);
     setLastRawText('');
     setResetting(false);
@@ -324,19 +311,9 @@ const QRScannerPage = () => {
     closeVisitorRegistration();
   }, [closeVisitorRegistration, visitorRegistrationBusy, visitorRegistrationDirty]);
 
-  const handleVisitorRegistered = useCallback((response) => {
-    setFeedback({
-      type: 'success',
-      message: response?.message || 'Visitante registrado correctamente. Revisa el ticket antes de cerrar.',
-    });
-  }, []);
-
   const restartFaceCapture = useCallback((message) => {
     clearFaceFallback();
-    setFeedback({
-      type: 'error',
-      message,
-    });
+    toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
     setShowConfirmation(false);
     setConfirmationError('');
@@ -346,7 +323,6 @@ const QRScannerPage = () => {
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
       setFaceRetrying(false);
       setFaceRetryMessage('');
-      setError('');
       setFaceCaptureKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
@@ -354,10 +330,7 @@ const QRScannerPage = () => {
 
   const fallbackToQrAfterFaceFailure = useCallback((message) => {
     clearFaceFallback();
-    setFeedback({
-      type: 'error',
-      message,
-    });
+    toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
     setShowConfirmation(false);
     setConfirmationError('');
@@ -369,7 +342,6 @@ const QRScannerPage = () => {
       setFaceRetryMessage('');
       setScanMode('qr');
       setCameraActive(true);
-      setError('');
       setScannerKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
@@ -437,6 +409,7 @@ const QRScannerPage = () => {
   }, []);
 
   const setValidatedUser = useCallback((userId, user, message, extra = {}) => {
+    const feedbackMessage = message || 'Usuario validado. Selecciona el movimiento y confirma el registro.';
     setScanData({
       rawText: extra.rawText || '',
       scannedAt: extra.scannedAt || new Date().toISOString(),
@@ -450,10 +423,7 @@ const QRScannerPage = () => {
       faceRecognitionLogId: extra.faceRecognitionLogId || null,
     });
 
-    setFeedback({
-      type: 'success',
-      message: message || 'Usuario validado. Selecciona el movimiento y confirma el registro.',
-    });
+    toast.success(feedbackMessage, { id: 'qr-scanner-result' });
 
     if (!userId) {
       setShowConfirmation(false);
@@ -510,17 +480,12 @@ const QRScannerPage = () => {
     }
 
     if (!token) {
-      setFeedback({
-        type: 'error',
-        message: 'Inicia sesion para procesar el escaneo.',
-      });
+      toast.error('Inicia sesion para procesar el escaneo.', { id: 'qr-scanner-result' });
       return;
     }
 
     setCameraActive(false);
     setProcessing(true);
-    setFeedback(null);
-    setError('');
 
     try {
       const parsedData = await parseScanData(rawText);
@@ -547,10 +512,7 @@ const QRScannerPage = () => {
       const message = scanError.details?.code === 'SCANNED_USER_BLOCKED'
         ? BLOCKED_USER_MESSAGE
         : scanError.details?.message || scanError.message || 'No se pudo procesar el codigo escaneado.';
-      setFeedback({
-        type: 'error',
-        message,
-      });
+      toast.error(message, { id: 'qr-scanner-result' });
       setLastRawText('');
     } finally {
       setProcessing(false);
@@ -559,7 +521,8 @@ const QRScannerPage = () => {
   };
 
   const handleError = () => {
-    setError('No fue posible acceder a la camara.');
+    const message = 'No fue posible acceder a la camara.';
+    toast.error(message, { id: 'qr-scanner-camera' });
   };
 
   const handleFaceResult = (result) => {
@@ -576,17 +539,13 @@ const QRScannerPage = () => {
       setScanData(null);
       setShowConfirmation(false);
       setConfirmationError('');
-      setFeedback({
-        type: 'error',
-        message: BLOCKED_USER_MESSAGE,
-      });
+      toast.error(BLOCKED_USER_MESSAGE, { id: 'qr-scanner-result' });
       return;
     }
 
     clearFaceFallback();
     resetFaceAttempts();
     setFaceIdentified(true);
-    setError('');
     setValidatedUser(result.userId, result.user, 'Usuario identificado por reconocimiento facial.', {
       score: result.score,
       scannedAt: new Date().toISOString(),
@@ -603,10 +562,7 @@ const QRScannerPage = () => {
 
   const handleReset = async () => {
     if (!token) {
-      setFeedback({
-        type: 'error',
-        message: 'Inicia sesion para reiniciar el escaneo.',
-      });
+      toast.error('Inicia sesion para reiniciar el escaneo.', { id: 'qr-scanner-reset' });
       return;
     }
 
@@ -626,17 +582,11 @@ const QRScannerPage = () => {
 
       const message = response?.message || response?.data?.message || 'Datos del escaneo limpiados. Puedes escanear nuevamente.';
 
-      setFeedback({
-        type: 'success',
-        message,
-      });
+      toast.success(message, { id: 'qr-scanner-reset' });
     } catch (resetError) {
       const message =
         resetError.details?.message || resetError.message || 'No se pudo limpiar la informacion del escaneo.';
-      setFeedback({
-        type: 'error',
-        message,
-      });
+      toast.error(message, { id: 'qr-scanner-reset' });
     } finally {
       setResetting(false);
       setProcessing(false);
@@ -646,7 +596,9 @@ const QRScannerPage = () => {
 
   const handleConfirmMovement = async () => {
     if (!token) {
-      setConfirmationError('Inicia sesion para confirmar el registro.');
+      const message = 'Inicia sesion para confirmar el registro.';
+      setConfirmationError(message);
+      toast.error(message, { id: 'qr-scanner-access-registration' });
       return;
     }
     if (!scanData?.userId) {
@@ -686,9 +638,8 @@ const QRScannerPage = () => {
         activeRegistro: null,
       }));
 
-      setFeedback({
-        type: 'success',
-        message: response.message || 'Registro confirmado correctamente.',
+      toast.success(response.message || 'Registro confirmado correctamente.', {
+        id: 'qr-scanner-access-registration',
       });
       setShowConfirmation(false);
       setMovementNote('');
@@ -696,6 +647,7 @@ const QRScannerPage = () => {
       const message =
         confirmError.details?.message || confirmError.message || 'No se pudo confirmar el movimiento del usuario.';
       setConfirmationError(message);
+      toast.error(message, { id: 'qr-scanner-access-registration' });
     } finally {
       setConfirmingMovement(false);
     }
@@ -751,7 +703,6 @@ const QRScannerPage = () => {
                         resetFaceAttempts();
                         setScanMode('face');
                         setCameraActive(false);
-                        setError('');
                         setFaceCaptureKey((prev) => prev + 1);
                       }}
                       className={clsx(
@@ -769,7 +720,6 @@ const QRScannerPage = () => {
                         resetFaceAttempts();
                         setScanMode('qr');
                         setCameraActive(true);
-                        setError('');
                       }}
                       className={clsx(
                         'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
@@ -838,12 +788,6 @@ const QRScannerPage = () => {
                 )}
               </div>
 
-              {error && (
-                <div className="mt-4 rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-4 py-3 text-sm font-semibold text-[#7f1d1d]">
-                  {error}
-                </div>
-              )}
-              {buildFeedbackBox(feedback)}
             </section>
 
             <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -900,7 +844,6 @@ const QRScannerPage = () => {
             presentation="modal"
             onBusyChange={setVisitorRegistrationBusy}
             onDirtyChange={setVisitorRegistrationDirty}
-            onRegistered={handleVisitorRegistered}
             onCloseAfterSuccess={closeVisitorRegistration}
           />
         )}

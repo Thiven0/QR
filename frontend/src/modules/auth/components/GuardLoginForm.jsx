@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import Input from '../../../shared/components/Input';
 import useAuth from '../hooks/useAuth';
 import { useForm } from '../../../shared/hooks/useForm';
@@ -9,36 +10,24 @@ const GuardLoginForm = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState('idle');
-  const [message, setMessage] = useState('');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setStatus('loading');
-    setMessage('');
 
     try {
       await login({ email: form.email, password: form.password });
       setStatus('success');
+      toast.success('Sesion iniciada correctamente.');
       navigate('/dashboard');
     } catch (error) {
       setStatus('error');
-      setMessage(error.message || 'No fue posible iniciar sesión');
+      toast.error(error.message || 'No fue posible iniciar sesion', { id: 'login-error' });
     }
   };
 
   return (
     <div className="space-y-6">
-      {status === 'success' && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          Sesión iniciada correctamente.
-        </div>
-      )}
-      {status === 'error' && (
-        <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-          {message}
-        </div>
-      )}
-
       <form className="space-y-5" onSubmit={handleSubmit}>
         <Input
           type="email"

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { NavLink, useLocation } from 'react-router-dom';
-import { FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { FiChevronLeft, FiChevronRight, FiLogOut, FiUser, FiX } from 'react-icons/fi';
 import { IoIosWarning, IoMdAnalytics } from 'react-icons/io';
 import { MdDashboard } from 'react-icons/md';
 import { RiQrCodeFill } from 'react-icons/ri';
@@ -61,9 +61,12 @@ const DashboardSidebar = ({
   onMobileClose,
   onCollapseToggle,
 }) => {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, logout, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const previousPathRef = useRef(location.pathname);
+  const profileMenuRef = useRef(null);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
   );
@@ -154,8 +157,24 @@ const DashboardSidebar = ({
   useEffect(() => {
     if (previousPathRef.current === location.pathname) return;
     previousPathRef.current = location.pathname;
+    setIsProfileMenuOpen(false);
     if (!isDesktop) onMobileClose?.();
   }, [isDesktop, location.pathname, onMobileClose]);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+    const handleDismiss = (event) => {
+      if (event.type === 'keydown' && event.key !== 'Escape') return;
+      if (event.type === 'mousedown' && profileMenuRef.current?.contains(event.target)) return;
+      setIsProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleDismiss);
+    document.addEventListener('keydown', handleDismiss);
+    return () => {
+      document.removeEventListener('mousedown', handleDismiss);
+      document.removeEventListener('keydown', handleDismiss);
+    };
+  }, [isProfileMenuOpen]);
 
   const sidebarClasses = clsx(
     'fixed bottom-0 left-0 top-16 z-30 flex w-[min(18rem,calc(100vw-2rem))] flex-col border-r px-3 py-4 shadow-2xl',
@@ -263,8 +282,19 @@ const DashboardSidebar = ({
           ))}
         </nav>
 
-        <div className={clsx('mt-4 border-t pt-4', theme.divider)}>
-          <div className={clsx('flex items-center gap-3 rounded-xl px-3 py-2', isCollapsed && 'lg:justify-center lg:px-0')}>
+        <div ref={profileMenuRef} className={clsx('relative mt-4 hidden border-t pt-4 lg:block', theme.divider)}>
+          <button
+            type="button"
+            onClick={() => setIsProfileMenuOpen((previous) => !previous)}
+            className={clsx(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-current/30',
+              theme.button,
+              isCollapsed && 'lg:justify-center lg:px-0'
+            )}
+            aria-haspopup="menu"
+            aria-expanded={isProfileMenuOpen}
+            aria-label="Abrir menu de perfil"
+          >
             <span className={clsx('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold', theme.accentDot, roleKey === 'default' ? 'text-white' : 'text-[#073c34]')}>
               {(user?.nombre || user?.permisoSistema || 'U').charAt(0).toUpperCase()}
             </span>
@@ -272,7 +302,37 @@ const DashboardSidebar = ({
               <p className={clsx('truncate text-xs font-semibold', theme.header)}>{user?.nombre || 'Usuario'}</p>
               <p className={clsx('truncate text-[0.65rem]', theme.subtext)}>{user?.permisoSistema || 'Sin rol'}</p>
             </div>
-          </div>
+          </button>
+
+          {isProfileMenuOpen && (
+            <div
+              role="menu"
+              className={clsx(
+                'absolute bottom-[calc(100%+0.5rem)] z-50 w-52 rounded-xl border p-2 shadow-2xl',
+                isCollapsed ? 'left-[calc(100%+0.75rem)]' : 'inset-x-0 w-auto',
+                theme.tooltip
+              )}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => navigate('/dashboard/profile')}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-current/30"
+              >
+                <FiUser className="h-4 w-4" aria-hidden="true" />
+                Ver cuenta
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={logout}
+                className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              >
+                <FiLogOut className="h-4 w-4" aria-hidden="true" />
+                Cerrar sesion
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </>

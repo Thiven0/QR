@@ -2,6 +2,8 @@
 node_modules/
 frontend/node_modules/
 backend/node_modules/
+__pycache__/
+*.py[cod]
 
 # Build outputs
 frontend/dist/
@@ -15,6 +17,7 @@ backend/evaluation/dataset-prueba
 backend/evaluation/face-runs/
 backend/evaluation/face-harness/output/
 backend/evaluation/face-harness/cache/
+backend/evaluation/embedding-visualizer/output/
 
 # Logs
 npm-debug.log*

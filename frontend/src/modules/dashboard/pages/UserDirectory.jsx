@@ -13,6 +13,7 @@ import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import { toast } from 'sonner';
 
 const convertOklchToSRGB = (value) => {
   if (typeof value !== 'string') return null;
@@ -291,8 +292,6 @@ const UserDirectory = () => {
     hasMore: false,
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState('');
 
   const [viewUser, setViewUser] = useState(null);
   const [showFaceCaptureModal, setShowFaceCaptureModal] = useState(false);
@@ -334,7 +333,6 @@ const UserDirectory = () => {
     const requestId = loadUsersRequestIdRef.current + 1;
     loadUsersRequestIdRef.current = requestId;
     setLoading(true);
-    setError('');
 
     try {
       const params = new URLSearchParams();
@@ -366,7 +364,8 @@ const UserDirectory = () => {
 
     } catch (err) {
       if (requestId !== loadUsersRequestIdRef.current) return;
-      setError(err.message || 'No fue posible obtener los usuarios');
+      const message = err.message || 'No fue posible obtener los usuarios';
+      toast.error(message, { id: 'users-load-error' });
       setUsersPagination((prev) => ({ ...prev, hasMore: false }));
     } finally {
       if (requestId === loadUsersRequestIdRef.current) {
@@ -467,7 +466,8 @@ const UserDirectory = () => {
 
   const handleExportUsers = () => {
     if (!users.length) {
-      setFeedback('No hay usuarios para exportar.');
+      const message = 'No hay usuarios para exportar.';
+      toast.error(message, { id: 'users-export-unavailable' });
       return;
     }
 
@@ -499,7 +499,8 @@ const UserDirectory = () => {
     const workbook = XLSXUtils.book_new();
     XLSXUtils.book_append_sheet(workbook, worksheet, 'Usuarios');
     writeXLSXFile(workbook, `directorio-usuarios-${Date.now()}.xlsx`);
-    setFeedback(`Pagina ${usersPagination.page} exportada correctamente.`);
+    const message = `Pagina ${usersPagination.page} exportada correctamente.`;
+    toast.success(message);
   };
 
   const handleViewUser = (user) => {
@@ -522,7 +523,8 @@ const UserDirectory = () => {
         }
         return detail;
       } catch (err) {
-        setError(err.message || 'No fue posible obtener el detalle del usuario');
+        const message = err.message || 'No fue posible obtener el detalle del usuario';
+        toast.error(message, { id: `user-detail-error-${userId}` });
         return null;
       }
     },
@@ -534,7 +536,6 @@ const UserDirectory = () => {
     setEditUserId(user._id);
     setEditForm(mapUserToForm(user));
     setEditErrors({});
-    setFeedback('');
     setEditPasswordVisible(false);
     setRegeneratingQr(false);
     setShowEditFaceCaptureModal(false);
@@ -649,12 +650,15 @@ const UserDirectory = () => {
         ...prev,
         imagenQR: qrDataUrl,
       }));
-      setFeedback('QR regenerado correctamente.');
+      const message = 'QR regenerado correctamente.';
+      toast.success(message);
     } catch {
+      const message = 'No fue posible regenerar el QR. Intenta nuevamente.';
       setEditErrors((prev) => ({
         ...prev,
-        imagenQR: 'No fue posible regenerar el QR. Intenta nuevamente.',
+        imagenQR: message,
       }));
+      toast.error(message);
     } finally {
       setRegeneratingQr(false);
     }
@@ -711,7 +715,6 @@ const UserDirectory = () => {
     if (!validateEditForm()) return;
 
     setSaving(true);
-    setFeedback('');
 
     try {
       const payload = await buildUpdatePayload();
@@ -727,14 +730,16 @@ const UserDirectory = () => {
       }
       await loadUsers(usersPagination.page);
 
-      setFeedback('Usuario actualizado correctamente.');
+      const message = 'Usuario actualizado correctamente.';
+      toast.success(message);
       closeEditModal();
     } catch (err) {
       const apiErrors = err.details?.errors;
       if (apiErrors && typeof apiErrors === 'object') {
         setEditErrors((prev) => ({ ...prev, ...apiErrors }));
       } else {
-        setFeedback(err.message || 'No fue posible actualizar el usuario.');
+        const message = err.message || 'No fue posible actualizar el usuario.';
+        toast.error(message);
       }
     } finally {
       setSaving(false);
@@ -744,7 +749,6 @@ const UserDirectory = () => {
   const confirmDeleteUser = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    setFeedback('');
 
     try {
       await apiRequest(`/users/${deleteTarget._id}`, {
@@ -760,10 +764,12 @@ const UserDirectory = () => {
       }
 
       await loadUsers(nextPage);
-      setFeedback('Usuario eliminado correctamente.');
+      const message = 'Usuario eliminado correctamente.';
+      toast.success(message);
       setDeleteTarget(null);
     } catch (err) {
-      setFeedback(err.message || 'No fue posible eliminar al usuario.');
+      const message = err.message || 'No fue posible eliminar al usuario.';
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -815,7 +821,6 @@ const UserDirectory = () => {
     if (!userId || reactivatingId) return;
 
     setReactivatingId(userId);
-    setFeedback('');
 
     try {
       const response = await apiRequest('/visitors/reactivate', {
@@ -836,9 +841,11 @@ const UserDirectory = () => {
         setViewUser((prev) => (prev ? { ...prev, visitorTicket: updatedTicket } : prev));
       }
 
-      setFeedback('Ticket temporal reactivado correctamente.');
+      const message = 'Ticket temporal reactivado correctamente.';
+      toast.success(message);
     } catch (err) {
-      setFeedback(err.message || 'No fue posible reactivar el ticket temporal.');
+      const message = err.message || 'No fue posible reactivar el ticket temporal.';
+      toast.error(message);
     } finally {
       setReactivatingId(null);
     }
@@ -851,7 +858,6 @@ const UserDirectory = () => {
 
     const targetId = targetUser._id || targetUser.id || targetUser.cedula;
     setTogglingAccessId(targetId);
-    setFeedback('');
 
     try {
       const response = await apiRequest('/users/toggle-access', {
@@ -879,9 +885,10 @@ const UserDirectory = () => {
         : usersPagination.page;
       await loadUsers(nextPage);
 
-      setFeedback(message);
+      toast.success(message);
     } catch (error) {
-      setFeedback(error?.message || 'No fue posible actualizar el estado del usuario.');
+      const message = error?.message || 'No fue posible actualizar el estado del usuario.';
+      toast.error(message);
     } finally {
       setTogglingAccessId(null);
     }
@@ -890,7 +897,6 @@ const UserDirectory = () => {
   const handleDownloadCard = async () => {
     if (!profileCardRef.current || !viewUser) return;
     setDownloadingCard(true);
-    setFeedback('');
 
     const trackedNodes = [];
     if (!colorNormalizerRef.current && typeof window !== 'undefined') {
@@ -972,9 +978,11 @@ const UserDirectory = () => {
       );
       const filename = `carnet-${viewUser?.cedula || viewUser?.nombre || 'usuario'}.pdf`;
       pdf.save(filename);
-      setFeedback('Carnet descargado correctamente.');
+      const message = 'Carnet descargado correctamente.';
+      toast.success(message);
     } catch {
-      setFeedback('No fue posible descargar el carnet. Intentalo nuevamente.');
+      const message = 'No fue posible descargar el carnet. Intentalo nuevamente.';
+      toast.error(message);
     } finally {
       restoreSnapshotStyles();
       setDownloadingCard(false);
@@ -1079,18 +1087,6 @@ const UserDirectory = () => {
           title="Distribucion de la pagina"
           description="Visualiza la composicion por permiso y estado de los usuarios visibles."
         />
-
-        {feedback && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-            {feedback}
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-            {error}
-          </div>
-        )}
 
         {loading ? (
           <p className="text-sm font-medium text-[#00594e]">Cargando usuarios...</p>
