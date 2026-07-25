@@ -2,6 +2,7 @@ const Registro = require("../models/entry-exit.model.js");
 const { FaceRecognitionLog } = require("../models/face-recognition-log.model");
 const { User } = require("../models/user.model");
 const { Vehicle } = require("../models/vehicle.model");
+const { getEntryExitStats } = require('../services/entry-exit-stats.service');
 
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
 const ALERT_STATUSES = {
@@ -698,6 +699,26 @@ exports.getRegistros = async (req, res) => {
       status: 'error',
       message: "Error al obtener registros",
       error: error.message,
+    });
+  }
+};
+
+exports.getRegistroStats = async (req, res) => {
+  try {
+    const data = await getEntryExitStats({
+      start: req.query.start || req.query.from,
+      end: req.query.end || req.query.to,
+      faculty: req.query.faculty,
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      data,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      status: 'error',
+      message: error.message || 'No fue posible generar las estadisticas de registros.',
     });
   }
 };

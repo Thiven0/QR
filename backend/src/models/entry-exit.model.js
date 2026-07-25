@@ -42,6 +42,6 @@ const RegistroSchema = new Schema(
 
 RegistroSchema.index({ usuario: 1, fechaEntrada: -1 });
 RegistroSchema.index({ fechaEntrada: -1 });
-RegistroSchema.index({ fechaSalida: -1 });
+RegistroSchema.index({ fechaSalida: 1, fechaEntrada: -1 });
 RegistroSchema.index({ alertStatus: 1, fechaEntrada: -1 });
 module.exports = model("Registro", RegistroSchema, "registros");

@@ -50,27 +50,20 @@ const ensureDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const formatDayLabel = (date) =>
-  date.toLocaleDateString('es-CO', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-  });
-
-const normalizeUserId = (usuario) => {
-  if (!usuario) return null;
-  if (typeof usuario === 'string') return usuario;
-  return usuario._id || usuario.id || usuario.cedula || usuario.email || null;
-};
-
 const getDefaultRange = () => {
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 29);
+  const dateParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
+  const endKey = `${values.year}-${values.month}-${values.day}`;
+  const end = new Date(`${endKey}T00:00:00.000Z`);
+  const start = new Date(end.getTime() - (29 * 24 * 60 * 60 * 1000));
   return {
     start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    end: endKey,
   };
 };
 
@@ -90,32 +83,6 @@ const formatPercent = (value, fractionDigits = 1) => {
 const formatScore = (value, fractionDigits = 2) => {
   if (!Number.isFinite(value)) return '0.00';
   return value.toFixed(fractionDigits);
-};
-
-const average = (values = []) => {
-  if (!values.length) return 0;
-  return values.reduce((acc, value) => acc + value, 0) / values.length;
-};
-
-const median = (values = []) => {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-};
-
-const percentile = (values = [], p = 0.9) => {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
-  return sorted[index];
-};
-
-const standardDeviation = (values = []) => {
-  if (!values.length) return 0;
-  const mean = average(values);
-  const variance = average(values.map((value) => (value - mean) ** 2));
-  return Math.sqrt(variance);
 };
 
 const formatSignedPercent = (value, fractionDigits = 1) => {
@@ -141,14 +108,49 @@ const createEmptyFaceStats = () => ({
   recentAttempts: [],
 });
 
+const createEmptyEntryStats = () => ({
+  facultyOptions: [],
+  totalFiltered: 0,
+  summaryMetrics: { daily: 0, weekly: 0, monthly: 0 },
+  dailyEntriesSeries: { max: 1, items: [] },
+  weeklyBars: { max: 1, items: [] },
+  monthlyBars: { max: 1, items: [] },
+  peakHourBars: { max: 1, items: [] },
+  entriesByRole: { total: 0, max: 1, items: [] },
+  heatmapData: {
+    days: ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'],
+    matrix: ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'].map((label) => ({
+      label,
+      values: Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 })),
+    })),
+    max: 1,
+  },
+  topAdminSeries: { max: 1, items: [] },
+  openSessions: [],
+  previousPeriodComparison: { current: 0, previous: 0, delta: 0, deltaPercent: null, days: 30 },
+  statisticalInsights: {
+    mean: 0,
+    median: 0,
+    p90: 0,
+    stdDev: 0,
+    variationCoefficient: 0,
+    closedRate: 0,
+    openRate: 0,
+    sampleDays: 0,
+  },
+  rankingData: [],
+  sessionDuration: { count: 0, total: null, average: null, median: null, min: null, max: null, p90: null },
+});
+
 const DashboardStats = () => {
   const { token } = useAuth();
 
   const [users, setUsers] = useState([]);
-  const [records, setRecords] = useState([]);
   const [visitorTickets, setVisitorTickets] = useState([]);
+  const [entryStats, setEntryStats] = useState(createEmptyEntryStats);
   const [faceStats, setFaceStats] = useState(createEmptyFaceStats);
   const [, setLoading] = useState(false);
+  const [entryStatsLoading, setEntryStatsLoading] = useState(false);
   const [faceStatsError, setFaceStatsError] = useState('');
   const [downloadingReport, setDownloadingReport] = useState(false);
 
@@ -164,26 +166,22 @@ const DashboardStats = () => {
       try {
         setLoading(true);
 
-        const [usersResponse, recordsResponse, ticketsResponse] = await Promise.all([
+        const [usersResponse, ticketsResponse] = await Promise.all([
           apiRequest('/users?includeVisitorTicket=true', { token }),
-          apiRequest('/exitEntry', { token }),
           apiRequest('/visitors/tickets', { token }),
         ]);
 
         if (!mounted) return;
 
         const usersPayload = Array.isArray(usersResponse) ? usersResponse : usersResponse?.data || [];
-        const recordsPayload = Array.isArray(recordsResponse) ? recordsResponse : recordsResponse?.data || [];
         const ticketsPayload = Array.isArray(ticketsResponse) ? ticketsResponse : ticketsResponse?.data || [];
 
         setUsers(usersPayload);
-        setRecords(recordsPayload);
         setVisitorTickets(ticketsPayload);
       } catch (err) {
         if (mounted) {
           toast.error(err.message || 'No fue posible obtener la informacion.', { id: 'statistics-load-error' });
           setUsers([]);
-          setRecords([]);
           setVisitorTickets([]);
         }
       } finally {
@@ -197,6 +195,42 @@ const DashboardStats = () => {
       mounted = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let mounted = true;
+    const fetchEntryStats = async () => {
+      try {
+        setEntryStatsLoading(true);
+        const query = new URLSearchParams();
+        if (dateRange.start) query.set('start', dateRange.start);
+        if (dateRange.end) query.set('end', dateRange.end);
+        if (facultyFilter) query.set('faculty', facultyFilter);
+
+        const response = await apiRequest(`/exitEntry/stats?${query.toString()}`, { token });
+        if (!mounted) return;
+        setEntryStats({
+          ...createEmptyEntryStats(),
+          ...(response?.data || response || {}),
+        });
+      } catch (err) {
+        if (!mounted) return;
+        setEntryStats(createEmptyEntryStats());
+        toast.error(err.message || 'No fue posible obtener las estadisticas de acceso.', {
+          id: 'entry-statistics-load-error',
+        });
+      } finally {
+        if (mounted) setEntryStatsLoading(false);
+      }
+    };
+
+    fetchEntryStats();
+
+    return () => {
+      mounted = false;
+    };
+  }, [token, dateRange.start, dateRange.end, facultyFilter]);
 
   useEffect(() => {
     if (!token) return;
@@ -237,317 +271,23 @@ const DashboardStats = () => {
     };
   }, [token, dateRange.start, dateRange.end, facultyFilter]);
 
-  const userMap = useMemo(() => {
-    return users.reduce((acc, user) => {
-      acc[user._id] = user;
-      return acc;
-    }, {});
-  }, [users]);
-
-  const normalizedRecords = useMemo(() => {
-    return records
-      .map((record) => {
-        const userId = normalizeUserId(record?.usuario);
-        const user = userId ? userMap[userId] : null;
-        const faculty = (user?.facultad || 'Sin facultad').trim() || 'Sin facultad';
-
-        return {
-          ...record,
-          userId,
-          faculty,
-          fechaEntradaDate: ensureDate(record?.fechaEntrada),
-        };
-      })
-      .filter((record) => record.fechaEntradaDate);
-  }, [records, userMap]);
-
-  const facultyOptions = useMemo(() => {
-    const options = new Set();
-    users.forEach((user) => {
-      const label = (user?.facultad || '').trim();
-      if (label) options.add(label);
-    });
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [users]);
-
-  const rangeStart = ensureDate(dateRange.start);
-  if (rangeStart) {
-    rangeStart.setHours(0, 0, 0, 0);
-  }
-  const rangeEnd = ensureDate(dateRange.end);
-  if (rangeEnd) {
-    rangeEnd.setHours(23, 59, 59, 999);
-  }
-
-  const filteredRecords = useMemo(() => {
-    return normalizedRecords.filter((record) => {
-      const withinRange =
-        (!rangeStart || record.fechaEntradaDate >= rangeStart) &&
-        (!rangeEnd || record.fechaEntradaDate <= rangeEnd);
-
-      const matchesFaculty = !facultyFilter || record.faculty.toLowerCase() === facultyFilter.toLowerCase();
-
-      return withinRange && matchesFaculty;
-    });
-  }, [normalizedRecords, rangeStart, rangeEnd, facultyFilter]);
-
-  const summaryMetrics = useMemo(() => {
-    const dayStart = ensureDate(rangeEnd);
-    if (dayStart) dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = dayStart ? new Date(dayStart.getTime() + 24 * 60 * 60 * 1000) : null;
-
-    const weekStart = dayStart ? new Date(dayStart) : null;
-    if (weekStart) weekStart.setDate(weekStart.getDate() - 6);
-
-    const monthStart = dayStart ? new Date(dayStart) : null;
-    if (monthStart) monthStart.setDate(monthStart.getDate() - 29);
-
-    const daily = filteredRecords.filter(
-      (record) => dayStart && dayEnd && record.fechaEntradaDate >= dayStart && record.fechaEntradaDate < dayEnd
-    ).length;
-
-    const weekly = filteredRecords.filter(
-      (record) => weekStart && dayEnd && record.fechaEntradaDate >= weekStart && record.fechaEntradaDate < dayEnd
-    ).length;
-
-    const monthly = filteredRecords.filter(
-      (record) => monthStart && dayEnd && record.fechaEntradaDate >= monthStart && record.fechaEntradaDate < dayEnd
-    ).length;
-
-    return {
-      daily,
-      weekly,
-      monthly,
-    };
-  }, [filteredRecords, rangeEnd]);
-
-  const weeklyBars = useMemo(() => {
-    if (!rangeEnd) {
-      return { max: 1, items: [] };
-    }
-
-    const end = new Date(rangeEnd);
-    end.setHours(0, 0, 0, 0);
-    const day = end.getDay() || 7;
-    end.setDate(end.getDate() - (day - 1));
-
-    const items = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date(end);
-      start.setDate(end.getDate() - i * 7);
-      const finish = new Date(start);
-      finish.setDate(start.getDate() + 7);
-
-      const count = filteredRecords.filter(
-        (record) => record.fechaEntradaDate >= start && record.fechaEntradaDate < finish
-      ).length;
-
-      items.push({
-        label: `${start.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}`,
-        value: count,
-        tooltip: `${formatDayLabel(start)} - ${formatDayLabel(new Date(finish.getTime() - 1))}: ${count} entradas`,
-      });
-    }
-
-    const max = items.reduce((acc, item) => Math.max(acc, item.value), 0);
-    return {
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [filteredRecords, rangeEnd]);
-
-  const monthlyBars = useMemo(() => {
-    if (!rangeEnd) {
-      return { max: 1, items: [] };
-    }
-
-    const base = new Date(rangeEnd);
-    base.setDate(1);
-    base.setHours(0, 0, 0, 0);
-
-    const items = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date(base);
-      start.setMonth(base.getMonth() - i);
-      const finish = new Date(start);
-      finish.setMonth(start.getMonth() + 1);
-
-      const count = filteredRecords.filter(
-        (record) => record.fechaEntradaDate >= start && record.fechaEntradaDate < finish
-      ).length;
-
-      items.push({
-        label: start.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }),
-        value: count,
-        tooltip: `${start.toLocaleDateString('es-CO', {
-          month: 'long',
-          year: 'numeric',
-        })}: ${count} entradas`,
-      });
-    }
-
-    const max = items.reduce((acc, item) => Math.max(acc, item.value), 0);
-    return {
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [filteredRecords, rangeEnd]);
-
-  const dailyEntriesSeries = useMemo(() => {
-    if (!filteredRecords.length) {
-      return { max: 1, items: [] };
-    }
-
-    let windowStart = rangeStart ? new Date(rangeStart) : null;
-    let windowEnd = rangeEnd ? new Date(rangeEnd) : null;
-
-    filteredRecords.forEach((record) => {
-      const date = record.fechaEntradaDate;
-      if (!date) return;
-      if (!windowStart || date < windowStart) windowStart = new Date(date);
-      if (!windowEnd || date > windowEnd) windowEnd = new Date(date);
-    });
-
-    if (!windowStart || !windowEnd) {
-      return { max: 1, items: [] };
-    }
-
-    windowStart.setHours(0, 0, 0, 0);
-    windowEnd.setHours(0, 0, 0, 0);
-
-    const countsByDay = new Map();
-    filteredRecords.forEach((record) => {
-      const date = record.fechaEntradaDate;
-      if (!date) return;
-      const day = new Date(date);
-      day.setHours(0, 0, 0, 0);
-      const key = day.toISOString().slice(0, 10);
-      countsByDay.set(key, (countsByDay.get(key) || 0) + 1);
-    });
-
-    const items = [];
-    const cursor = new Date(windowStart);
-    while (cursor <= windowEnd) {
-      const key = cursor.toISOString().slice(0, 10);
-      const value = countsByDay.get(key) || 0;
-      items.push({
-        key,
-        label: cursor.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }),
-        tooltip: cursor.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }),
-        value,
-      });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    const max = items.reduce((acc, item) => Math.max(acc, item.value), 0);
-    return {
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [filteredRecords, rangeStart, rangeEnd]);
-
-  const peakHourBars = useMemo(() => {
-    if (!filteredRecords.length) {
-      return { max: 1, items: [] };
-    }
-
-    const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
-    filteredRecords.forEach((record) => {
-      const date = record.fechaEntradaDate;
-      if (!date) return;
-      const hour = date.getHours();
-      hours[hour].count += 1;
-    });
-
-    const max = hours.reduce((acc, item) => Math.max(acc, item.count), 0);
-    const sortedByCount = [...hours].sort((a, b) => b.count - a.count);
-    const topHours = sortedByCount.slice(0, 6);
-    const hasData = topHours.some((item) => item.count > 0);
-    const dataset = hasData ? topHours : hours.slice(0, 6);
-
-    const items = dataset
-      .map((item) => ({
-        hour: item.hour,
-        label: `${item.hour.toString().padStart(2, '0')}:00`,
-        value: item.count,
-      }))
-      .sort((a, b) => {
-        if (b.value === a.value) {
-          return a.hour - b.hour;
-        }
-        return b.value - a.value;
-      });
-
-    return {
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [filteredRecords]);
-
-  const entriesByRole = useMemo(() => {
-    if (!filteredRecords.length) {
-      return { total: 0, max: 1, items: [] };
-    }
-
-    const totals = new Map();
-    filteredRecords.forEach((record) => {
-      const user = userMap[record.userId];
-      const roleFromRecord =
-        record?.rolAcademico ||
-        record?.usuario?.rolAcademico ||
-        record?.usuario?.rol_academico ||
-        record?.user?.rolAcademico ||
-        record?.user?.rol_academico;
-      const role = (user?.rolAcademico || roleFromRecord || 'Sin rol academico').toString().trim() || 'Sin rol academico';
-      totals.set(role, (totals.get(role) || 0) + 1);
-    });
-
-    const items = Array.from(totals.entries())
-      .map(([role, count], index) => ({
-        role,
-        count,
+  const facultyOptions = entryStats.facultyOptions;
+  const summaryMetrics = entryStats.summaryMetrics;
+  const weeklyBars = entryStats.weeklyBars;
+  const monthlyBars = entryStats.monthlyBars;
+  const dailyEntriesSeries = entryStats.dailyEntriesSeries;
+  const peakHourBars = entryStats.peakHourBars;
+  const heatmapData = entryStats.heatmapData;
+  const entriesByRole = useMemo(
+    () => ({
+      ...entryStats.entriesByRole,
+      items: entryStats.entriesByRole.items.map((item, index) => ({
+        ...item,
         color: CHART_COLORS[index % CHART_COLORS.length],
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const max = items.reduce((acc, item) => Math.max(acc, item.count), 0);
-
-    return {
-      total: filteredRecords.length,
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [filteredRecords, userMap]);
-
-  const heatmapData = useMemo(() => {
-    const days = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
-    const matrix = days.map((label) => ({
-      label,
-      values: Array.from({ length: 24 }, (_, hour) => ({
-        hour,
-        count: 0,
       })),
-    }));
-
-    filteredRecords.forEach((record) => {
-      const date = record.fechaEntradaDate;
-      const weekday = date.getDay();
-      const mappedDay = weekday === 0 ? 6 : weekday - 1;
-      const hour = date.getHours();
-      matrix[mappedDay].values[hour].count += 1;
-    });
-
-    const max = matrix.reduce((maxValue, day) => {
-      const localMax = day.values.reduce((acc, cell) => Math.max(acc, cell.count), 0);
-      return Math.max(maxValue, localMax);
-    }, 0);
-
-    return {
-      days,
-      matrix,
-      max: Math.max(max, 1),
-    };
-  }, [filteredRecords]);
+    }),
+    [entryStats.entriesByRole]
+  );
 
   const userRoleSummary = useMemo(() => {
     if (!users.length) {
@@ -851,77 +591,8 @@ const DashboardStats = () => {
     };
   }, [visitorTicketAnalytics]);
 
-  const adminLeaderboard = useMemo(() => {
-    const adminMap = new Map();
-    filteredRecords.forEach((record) => {
-      const admin = record?.administrador;
-      const adminId =
-        typeof admin === 'string' ? admin : admin?._id || admin?.id || null;
-      if (!adminId) return;
-      const entry = adminMap.get(adminId) || { admin, adminId, count: 0 };
-      entry.count += 1;
-      entry.admin = admin;
-      adminMap.set(adminId, entry);
-    });
-
-    return Array.from(adminMap.values())
-      .map((entry) => {
-        const admin = entry.admin;
-        const fullName = admin
-          ? `${admin.nombre || ''} ${admin.apellido || ''}`.trim() || admin.email || 'Sin asignar'
-          : 'Sin asignar';
-        return {
-          id: entry.adminId,
-          name: fullName,
-          email: admin?.email || '',
-          count: entry.count,
-        };
-      })
-      .sort((a, b) => b.count - a.count);
-  }, [filteredRecords]);
-
-  const topAdminSeries = useMemo(() => {
-    if (!adminLeaderboard.length) {
-      return { max: 1, items: [] };
-    }
-    const items = adminLeaderboard.slice(0, 5);
-    const max = items.reduce((acc, admin) => Math.max(acc, admin.count), 0);
-    return {
-      max: Math.max(max, 1),
-      items,
-    };
-  }, [adminLeaderboard]);
-
-  const openSessions = useMemo(() => {
-    return normalizedRecords
-      .filter((record) => !ensureDate(record?.fechaSalida))
-      .map((record) => {
-        const user = userMap[record.userId];
-        const admin = record?.administrador;
-        const startedAt = record.fechaEntradaDate || ensureDate(record?.fechaEntrada);
-
-        const userName = user
-          ? `${user.nombre || ''} ${user.apellido || ''}`.trim() || user.email || 'Sin nombre'
-          : 'Sin nombre';
-        const adminName = admin
-          ? `${admin.nombre || ''} ${admin.apellido || ''}`.trim() || admin.email || 'Sin asignar'
-          : 'Sin asignar';
-
-        return {
-          id: record._id,
-          userName,
-          userEstado: user?.estado || 'Sin estado',
-          adminName,
-          startedAt,
-          horaEntrada: record?.horaEntrada,
-        };
-      })
-      .sort((a, b) => {
-        const aTime = a.startedAt instanceof Date ? a.startedAt.getTime() : ensureDate(a.startedAt)?.getTime() || 0;
-        const bTime = b.startedAt instanceof Date ? b.startedAt.getTime() : ensureDate(b.startedAt)?.getTime() || 0;
-        return bTime - aTime;
-      });
-  }, [normalizedRecords, userMap]);
+  const topAdminSeries = entryStats.topAdminSeries;
+  const openSessions = entryStats.openSessions;
 
   const summaryCards = useMemo(
     () => [
@@ -1013,105 +684,12 @@ const DashboardStats = () => {
     };
   }, [faceStats.scoreBands]);
 
-  const previousPeriodComparison = useMemo(() => {
-    if (!rangeStart || !rangeEnd) {
-      return {
-        current: filteredRecords.length,
-        previous: 0,
-        delta: filteredRecords.length,
-        deltaPercent: null,
-        days: 0,
-      };
-    }
-
-    const currentStart = new Date(rangeStart);
-    currentStart.setHours(0, 0, 0, 0);
-    const currentEnd = new Date(rangeEnd);
-    currentEnd.setHours(23, 59, 59, 999);
-
-    const days = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-    const previousEnd = new Date(currentStart.getTime() - 1);
-    const previousStart = new Date(previousEnd);
-    previousStart.setHours(0, 0, 0, 0);
-    previousStart.setDate(previousStart.getDate() - (days - 1));
-
-    const previous = normalizedRecords.filter((record) => {
-      const withinRange = record.fechaEntradaDate >= previousStart && record.fechaEntradaDate <= previousEnd;
-      const matchesFaculty = !facultyFilter || record.faculty.toLowerCase() === facultyFilter.toLowerCase();
-      return withinRange && matchesFaculty;
-    }).length;
-
-    return {
-      current: filteredRecords.length,
-      previous,
-      delta: filteredRecords.length - previous,
-      deltaPercent: previous > 0 ? ((filteredRecords.length - previous) / previous) * 100 : null,
-      days,
-    };
-  }, [filteredRecords.length, normalizedRecords, rangeStart, rangeEnd, facultyFilter]);
-
-  const statisticalInsights = useMemo(() => {
-    const dailyValues = dailyEntriesSeries.items.map((item) => item.value);
-    const completedSessions = filteredRecords.filter((record) => ensureDate(record.fechaSalida)).length;
-    const closedRate = filteredRecords.length ? (completedSessions / filteredRecords.length) * 100 : 0;
-    const mean = average(dailyValues);
-    const stdDev = standardDeviation(dailyValues);
-
-    return {
-      mean,
-      median: median(dailyValues),
-      p90: percentile(dailyValues, 0.9),
-      stdDev,
-      variationCoefficient: mean > 0 ? (stdDev / mean) * 100 : 0,
-      closedRate,
-      openRate: filteredRecords.length ? 100 - closedRate : 0,
-      sampleDays: dailyValues.length,
-    };
-  }, [dailyEntriesSeries.items, filteredRecords]);
-
-  const rankingData = useMemo(() => {
-    const totals = filteredRecords.reduce((acc, record) => {
-      const label = record.faculty || 'Sin facultad';
-      acc[label] = (acc[label] || 0) + 1;
-      return acc;
-    }, {});
-
-    return Object.entries(totals)
-      .map(([faculty, count]) => ({
-        faculty,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [filteredRecords]);
-
-  const parseDurationToMinutes = (record) => {
-    if (record?.duracionSesion) {
-      const parts = String(record.duracionSesion).split(':').map(Number);
-      if (parts.length >= 2 && parts.every((value) => Number.isFinite(value))) {
-        const [hours, minutes] = parts;
-        return hours * 60 + minutes;
-      }
-    }
-
-    const entryDate = ensureDate(record?.fechaEntrada);
-    const exitDate = ensureDate(record?.fechaSalida);
-
-    if (entryDate && exitDate) {
-      const diff = exitDate.getTime() - entryDate.getTime();
-      if (diff > 0) {
-        return diff / 60000;
-      }
-    }
-
-    return null;
-  };
-
+  const previousPeriodComparison = entryStats.previousPeriodComparison;
+  const statisticalInsights = entryStats.statisticalInsights;
+  const rankingData = entryStats.rankingData;
   const sessionDurationSummary = useMemo(() => {
-    const durations = filteredRecords
-      .map((record) => parseDurationToMinutes(record))
-      .filter((value) => Number.isFinite(value) && value > 0);
-
-    if (!durations.length) {
+    const summary = entryStats.sessionDuration;
+    if (!summary.count) {
       return {
         average: 'Sin datos',
         median: 'Sin datos',
@@ -1123,34 +701,16 @@ const DashboardStats = () => {
       };
     }
 
-    const sum = durations.reduce((acc, value) => acc + value, 0);
-    const averageMinutes = sum / durations.length;
-
-    const sorted = [...durations].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    const medianMinutes =
-      sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-
-    const percentileValue = (p) => {
-      if (!sorted.length) return null;
-      const index = Math.min(sorted.length - 1, Math.floor(((p / 100) * sorted.length) - 1e-9));
-      return sorted[index];
-    };
-
-    const minMinutes = sorted[0];
-    const maxMinutes = sorted[sorted.length - 1];
-    const p90Minutes = percentileValue(90);
-
     return {
-      average: formatMinutesToHuman(averageMinutes),
-      median: formatMinutesToHuman(medianMinutes),
-      count: durations.length,
-      min: formatMinutesToHuman(minMinutes),
-      max: formatMinutesToHuman(maxMinutes),
-      p90: formatMinutesToHuman(p90Minutes),
-      total: formatMinutesToHuman(sum),
+      average: formatMinutesToHuman(summary.average),
+      median: formatMinutesToHuman(summary.median),
+      min: formatMinutesToHuman(summary.min),
+      max: formatMinutesToHuman(summary.max),
+      p90: formatMinutesToHuman(summary.p90),
+      count: summary.count,
+      total: formatMinutesToHuman(summary.total),
     };
-  }, [filteredRecords]);
+  }, [entryStats.sessionDuration]);
 
   const handleDateChange = (event) => {
     const { name, value } = event.target;
@@ -1260,7 +820,7 @@ const DashboardStats = () => {
     }
   };
 
-  const totalFiltered = filteredRecords.length;
+  const totalFiltered = entryStats.totalFiltered;
 
   return (
     <section ref={reportRef} data-report-root className="min-h-screen bg-[#f8fafc] px-4 pb-16 pt-6 sm:pt-8">
@@ -1277,10 +837,10 @@ const DashboardStats = () => {
             <button
               type="button"
               onClick={handleDownloadReport}
-              disabled={downloadingReport}
+              disabled={downloadingReport || entryStatsLoading}
               className="inline-flex items-center gap-2 rounded-md bg-[#00594e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#004037] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {downloadingReport ? 'Generando...' : 'Descargar reporte'}
+              {entryStatsLoading ? 'Actualizando...' : downloadingReport ? 'Generando...' : 'Descargar reporte'}
             </button>
           </div>
         </header>
