@@ -1,1144 +1,317 @@
 {
   "info": {
-    "name": "QR Backend API",
-    "_postman_id": "22f1ee3f-e3a5-4bab-8fe4-7a0f69d76a0e",
-    "description": "Coleccion de endpoints alineados con los controladores actuales del backend.",
+    "name": "Plataforma QR - Backend API",
+    "_postman_id": "0cc2d634-05f8-4f1c-b443-11a1e7e25567",
+    "description": "Coleccion alineada con las rutas vigentes. Use primero Login y copie el token a authToken.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "baseUrl",
-      "value": "https://services-virid-three.vercel.app",
-      "type": "string",
-      "description": "URL del backend desplegado. Para pruebas locales usar http://localhost:3000."
-    },
-    {
-      "key": "authToken",
-      "value": "",
-      "type": "string"
-    }
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "authToken", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "registroId", "value": "", "type": "string" },
+    { "key": "faceRecognitionLogId", "value": "", "type": "string" },
+    { "key": "imageDataUrl", "value": "data:image/jpeg;base64,REEMPLAZAR", "type": "string" }
   ],
   "auth": {
     "type": "bearer",
     "bearer": [
-      {
-        "key": "token",
-        "value": "{{authToken}}",
-        "type": "string"
-      }
+      { "key": "token", "value": "{{authToken}}", "type": "string" }
     ]
   },
   "item": [
     {
-      "name": "Auth",
+      "name": "Autenticacion",
       "item": [
         {
           "name": "Login",
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/auth/login",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "auth",
-                "login"
-              ]
-            },
-            "description": "Autentica usuarios y devuelve token (visitantes retornan ticket activo).",
-            "body": {
-              "mode": "raw",
-              "raw": "{\"email\":\"usuario@ejemplo.com\",\"password\":\"secreto\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"reemplazar\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Devuelve token, usuario y ticket cuando aplica. Guarde token en authToken."
           }
+        },
+        {
+          "name": "Perfil",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/profile" }
         },
         {
           "name": "Logout",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/auth/logout",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "auth",
-                "logout"
-              ]
-            },
-            "description": "Cierra sesion y marca estado inactivo.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/auth/logout" }
         },
         {
-          "name": "Issue Token (service)",
+          "name": "Token tecnico",
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/auth/token",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "auth",
-                "token"
-              ]
-            },
-            "description": "Genera token de servicio con llaves configuradas.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\"access_key\":\"accessKey123\",\"secret_key\":\"secretKey123\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Profile",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/auth/profile",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "auth",
-                "profile"
-              ]
-            },
-            "description": "Perfil del usuario autenticado (incluye visitorTicket).",
-            "auth": {
-              "type": "inherit"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"access_key\": \"reemplazar\",\n  \"secret_key\": \"reemplazar\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/auth/token"
           }
         }
       ]
     },
     {
-      "name": "Users",
+      "name": "Usuarios",
       "item": [
         {
-          "name": "Create User",
+          "name": "Crear usuario",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users"
-              ]
-            },
-            "description": "Crea usuario (Admin/Celador).",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"nombre\":\"Nombre\",\"email\":\"user@example.com\",\"password\":\"secreto\",\"cedula\":\"1234567890\",\"permisoSistema\":\"Usuario\",\"rolAcademico\":\"Estudiante\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Perez\",\n  \"email\": \"ana@example.com\",\n  \"password\": \"reemplazar\",\n  \"cedula\": \"1234567890\",\n  \"imagen\": \"/uploads/profiles/reemplazar.jpg\",\n  \"facultad\": \"Ingenieria\",\n  \"rolAcademico\": \"Estudiante\",\n  \"permisoSistema\": \"Usuario\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users"
           }
         },
         {
-          "name": "List Users",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/users",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users"
-              ],
-              "query": [
-                {
-                  "key": "search",
-                  "value": "juan"
-                },
-                {
-                  "key": "permiso",
-                  "value": "Usuario"
-                },
-                {
-                  "key": "estado",
-                  "value": "activo"
-                },
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "25"
-                },
-                {
-                  "key": "includeVisitorTicket",
-                  "value": "true"
-                }
-              ]
-            },
-            "description": "Listado con filtros y paginacion.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
+          "name": "Listar usuarios",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users?page=1&limit=10&search=&estado=&permiso=&includeVisitorTicket=true" }
         },
         {
-          "name": "Users Summary",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/summary",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                "summary"
-              ]
-            },
-            "description": "Resumen estadistico de usuarios.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
+          "name": "Resumen usuarios",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/summary" }
         },
         {
-          "name": "Update User",
+          "name": "Detalle usuario",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{userId}}/detail" }
+        },
+        {
+          "name": "Actualizar usuario",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                ":id"
-              ]
-            },
-            "description": "Actualiza usuario (solo Admin).",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"nombre\":\"Nuevo\",\"estado\":\"activo\",\"permisoSistema\":\"Administrador\",\"rolAcademico\":\"Docente\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"nombre\": \"Ana actualizada\",\n  \"apellido\": \"Perez\",\n  \"email\": \"ana@example.com\",\n  \"cedula\": \"1234567890\",\n  \"RH\": \"O+\",\n  \"telefono\": \"3000000000\",\n  \"imagen\": \"/uploads/profiles/reemplazar.jpg\",\n  \"imagenQR\": \"/uploads/qr/reemplazar.png\",\n  \"facultad\": \"Ingenieria\",\n  \"rolAcademico\": \"Estudiante\",\n  \"permisoSistema\": \"Usuario\",\n  \"estado\": \"activo\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users/{{userId}}"
           }
         },
         {
-          "name": "Delete User",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                ":id"
-              ]
-            },
-            "description": "Elimina usuario (solo Admin).",
-            "auth": {
-              "type": "inherit"
-            }
-          }
+          "name": "Eliminar usuario",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/users/{{userId}}" }
         },
         {
-          "name": "Toggle Access by Cedula",
+          "name": "Bloquear o desbloquear",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/toggle-access",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                "toggle-access"
-              ]
-            },
-            "description": "Alterna bloqueado/inactivo por cedula.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"cedula\":\"1234567890\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"cedula\": \"1234567890\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users/toggle-access"
           }
         },
         {
-          "name": "Parse Scan",
+          "name": "Parsear texto escaneado",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/parse-scan",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                "parse-scan"
-              ]
-            },
-            "description": "Interpreta texto escaneado.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"rawText\":\"Nombre\\n1234567890\\nPrograma\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"rawText\": \"Ana Perez\\n1234567890\\nIngenieria\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users/parse-scan"
           }
         },
         {
-          "name": "Parse QR",
-          "request": {
-            "auth": {
-              "type": "inherit"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/parse-qr",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                "parse-qr"
-              ]
-            },
-            "description": "Interpreta contenido de un QR y devuelve campos normalizados.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\"qrData\":\"Nombre\\n1234567890\\nPrograma\\nO+\\n3001234567\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Validate Scan",
+          "name": "Parsear QR",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/validate-scan",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                "validate-scan"
-              ]
-            },
-            "description": "Valida usuario escaneado.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"cedula\":\"1234567890\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qrData\": \"Ana Perez\\n1234567890\\nIngenieria\\nO+\\n3000000000\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users/parse-qr"
           }
         },
         {
-          "name": "List Vehicles by User",
+          "name": "Validar escaneo",
           "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/users/:userId/vehicles",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "users",
-                ":userId",
-                "vehicles"
-              ]
-            },
-            "description": "Vehiculos del usuario.",
-            "auth": {
-              "type": "inherit"
-            }
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"cedula\": \"1234567890\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/users/validate-scan"
           }
         }
       ]
     },
     {
-      "name": "Entry & Exit",
+      "name": "Registros",
       "item": [
         {
-          "name": "List Alerts",
+          "name": "Crear manual",
           "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/alerts",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                "alerts"
-              ],
-              "query": [
-                {
-                  "key": "thresholdMinutes",
-                  "value": "5"
-                }
-              ]
-            },
-            "description": "Alertas por permanencia.",
-            "auth": {
-              "type": "inherit"
-            }
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"cedula\": \"1234567890\",\n  \"fechaEntrada\": \"2026-07-25T13:00:00.000Z\",\n  \"horaEntrada\": \"08:00:00\",\n  \"observaciones\": \"Ingreso manual\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/exitEntry"
           }
         },
         {
-          "name": "Update Alert Status",
+          "name": "Listar registros",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/exitEntry?page=1&limit=10&status=todos&search=&from=&to=" }
+        },
+        {
+          "name": "Detalle registro",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/exitEntry/{{registroId}}" }
+        },
+        {
+          "name": "Actualizar registro",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"observaciones\": \"Actualizado\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/exitEntry/{{registroId}}"
+          }
+        },
+        {
+          "name": "Eliminar registro",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/exitEntry/{{registroId}}" }
+        },
+        {
+          "name": "Movimiento desde QR",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"direction\": \"entry\",\n  \"scanMethod\": \"qr\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/exitEntry/from-scan"
+          }
+        },
+        {
+          "name": "Movimiento desde rostro",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"direction\": \"entry\",\n  \"scanMethod\": \"face\",\n  \"faceRecognitionLogId\": \"{{faceRecognitionLogId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/exitEntry/from-scan"
+          }
+        },
+        {
+          "name": "Reset escaneo",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/exitEntry/reset-scan" }
+        },
+        {
+          "name": "Alertas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/exitEntry/alerts?page=1&limit=10&thresholdMinutes=5" }
+        },
+        {
+          "name": "Resolver alerta",
           "request": {
             "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/:id/alert",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                ":id",
-                "alert"
-              ]
-            },
-            "description": "Actualiza estado de alerta.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"status\":\"acknowledged\",\"notes\":\"guard reviso\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"acknowledged\",\n  \"notes\": \"Validado por porteria; la sesion sigue abierta\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/exitEntry/{{registroId}}/alert"
           }
         },
         {
-          "name": "Create Registro (manual)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry"
-              ]
-            },
-            "description": "Crea registro manual (Admin/Celador).",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"userId\":\"<id_usuario>\",\"administradorId\":\"<id_admin>\",\"fechaEntrada\":\"2024-11-20T13:00:00.000Z\",\"vehiculoId\":\"<id_vehiculo>\",\"observaciones\":\"Ingreso manual\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "List Registros",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry"
-              ],
-              "query": [
-                {
-                  "key": "rangeDays",
-                  "value": "7"
-                },
-                {
-                  "key": "activeOnly",
-                  "value": "true"
-                },
-                {
-                  "key": "limit",
-                  "value": "100"
-                }
-              ]
-            },
-            "description": "Lista registros con filtros.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Get Registro by ID",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                ":id"
-              ]
-            },
-            "description": "Detalle de registro.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Update Registro",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                ":id"
-              ]
-            },
-            "description": "Actualiza fechas/observaciones/vehiculo.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"fechaSalida\":\"2024-11-20T18:00:00.000Z\",\"observaciones\":\"Salida manual\",\"vehiculoId\":\"<id_vehiculo>\",\"alertNotes\":\"\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Delete Registro",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                ":id"
-              ]
-            },
-            "description": "Elimina registro.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Create Registro From Scan",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/from-scan",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                "from-scan"
-              ]
-            },
-            "description": "Crea/cierra registro desde escaneo validado.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"userId\":\"<id_usuario>\",\"direction\":\"entry\",\"vehicleId\":\"<id_vehiculo>\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Reset Scan Data",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/exitEntry/reset-scan",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "exitEntry",
-                "reset-scan"
-              ]
-            },
-            "description": "Limpia datos del escaneo actual.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
+          "name": "Estadisticas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/exitEntry/stats?start=2026-07-01&end=2026-07-31&faculty=" }
         }
       ]
     },
     {
-      "name": "Visitors",
+      "name": "Visitantes",
       "item": [
         {
-          "name": "Register Visitor",
+          "name": "Registrar visitante",
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/visitors/register",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "visitors",
-                "register"
-              ]
-            },
-            "description": "Registra visitante y genera ticket/token.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\"cedula\":\"987654321\",\"nombre\":\"Visitante\",\"apellido\":\"Ejemplo\",\"email\":\"visitante@ejemplo.com\",\"password\":\"clave\",\"documentImage\":\"data:image/jpeg;base64,...\",\"dataConsent\":{\"accepted\":true}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"nombre\": \"Visitante\",\n  \"apellido\": \"Ejemplo\",\n  \"email\": \"visitante@example.com\",\n  \"password\": \"reemplazar\",\n  \"cedula\": \"987654321\",\n  \"imagen\": \"/uploads/profiles/reemplazar.jpg\",\n  \"imagenQR\": \"/uploads/qr/reemplazar.png\",\n  \"documentImage\": \"/uploads/documents/reemplazar.jpg\",\n  \"faceImage\": \"{{imageDataUrl}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/visitors/register"
           }
         },
         {
-          "name": "Extract Visitor Document Data (OCR)",
+          "name": "OCR documento",
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/visitors/ocr",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "visitors",
-                "ocr"
-              ]
-            },
-            "description": "Extrae datos de la cedula (OCR).",
-            "body": {
-              "mode": "raw",
-              "raw": "{\"image\":\"data:image/jpeg;base64,...\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"image\": \"{{imageDataUrl}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/visitors/ocr"
           }
         },
         {
-          "name": "Expire Visitor Session",
+          "name": "Expirar sesion",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/visitors/expire" }
+        },
+        {
+          "name": "Reactivar ticket",
           "request": {
             "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/visitors/expire",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "visitors",
-                "expire"
-              ]
-            },
-            "description": "Visitante expira su ticket.",
-            "auth": {
-              "type": "inherit"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/visitors/reactivate"
           }
         },
         {
-          "name": "Reactivate Visitor Ticket",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/visitors/reactivate",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "visitors",
-                "reactivate"
-              ]
-            },
-            "description": "Reactiva ticket expirado.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"userId\":\"<id_visitante>\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "List Visitor Tickets",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/visitors/tickets",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "visitors",
-                "tickets"
-              ]
-            },
-            "description": "Tickets de visitantes.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
+          "name": "Listar tickets",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/visitors/tickets?page=1&limit=10" }
         }
       ]
     },
     {
-      "name": "Vehicles",
+      "name": "Reconocimiento facial",
       "item": [
         {
-          "name": "Create Vehicle",
+          "name": "Extraer embedding",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles"
-              ]
-            },
-            "description": "Crea vehiculo asociado a usuario.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"owner\":\"<id_usuario>\",\"type\":\"Carro\",\"brand\":\"Mazda\",\"model\":\"3\",\"color\":\"Rojo\",\"plate\":\"ABC123\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"image\": \"{{imageDataUrl}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/face/extract"
           }
         },
         {
-          "name": "List Vehicles",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles"
-              ]
-            },
-            "description": "Listado de vehiculos.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Get Vehicle",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles",
-                ":id"
-              ]
-            },
-            "description": "Detalle de vehiculo.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Update Vehicle",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "name": "Content-Type",
-                "type": "text",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles",
-                ":id"
-              ]
-            },
-            "description": "Actualiza vehiculo.",
-            "auth": {
-              "type": "inherit"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"owner\":\"<id_usuario>\",\"type\":\"Moto\",\"brand\":\"Yamaha\",\"plate\":\"XYZ987\",\"estado\":\"activo\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Delete Vehicle",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles",
-                ":id"
-              ]
-            },
-            "description": "Elimina vehiculo.",
-            "auth": {
-              "type": "inherit"
-            }
-          }
-        },
-        {
-          "name": "Toggle Vehicle Status",
+          "name": "Enrolar rostro",
           "request": {
             "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/vehicles/:id/toggle-status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "vehicles",
-                ":id",
-                "toggle-status"
-              ]
-            },
-            "description": "Alterna estado del vehiculo.",
-            "auth": {
-              "type": "inherit"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"image\": \"{{imageDataUrl}}\",\n  \"force\": false\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/face/enroll"
           }
+        },
+        {
+          "name": "Identificar rostro",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"image\": \"{{imageDataUrl}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/face/identify"
+          }
+        },
+        {
+          "name": "Estadisticas faciales",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/face/stats?start=2026-07-01&end=2026-07-31&faculty=" }
         }
       ]
     },
     {
-      "name": "Misc",
+      "name": "Uploads",
       "item": [
         {
-          "name": "Ruta de Prueba",
+          "name": "Subir perfil",
           "request": {
-            "method": "GET",
+            "auth": { "type": "noauth" },
+            "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/ruta-prueba",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "ruta-prueba"
-              ]
-            },
-            "description": "Endpoint de prueba."
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] },
+            "url": "{{baseUrl}}/api/upload/profile"
+          }
+        },
+        {
+          "name": "Subir QR",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] },
+            "url": "{{baseUrl}}/api/upload/qr"
+          }
+        },
+        {
+          "name": "Subir documento",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] },
+            "url": "{{baseUrl}}/api/upload/document"
           }
         }
       ]

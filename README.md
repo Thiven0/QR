@@ -1,112 +1,95 @@
-# QR Access Control Platform
+# Plataforma de control de acceso QR y facial
 
-Plataforma web full-stack para controlar accesos mediante códigos QR y reconocimiento facial. Incluye autenticación de usuarios, bloqueo/desbloqueo remoto, administración de vehículos, descarga de carnets en PDF y tableros de métricas para administradores y celadores.
+Aplicacion full-stack para gestionar usuarios, visitantes y movimientos de entrada/salida mediante registro manual, codigo QR y reconocimiento facial.
 
-## Demo
-- Producción: https://proyectounitropicoqr.vercel.app/
+## Componentes
 
-## Arquitectura
+| Carpeta | Tecnologia | Responsabilidad |
+|---|---|---|
+| `frontend` | React 18, Vite, Tailwind | Interfaz, camara, QR, dashboard y reportes. |
+| `backend` | Node.js, Express, Mongoose | API, reglas de negocio, persistencia y matching facial. |
+| `face-service` | FastAPI, InsightFace, OpenCV | Extraccion de embeddings faciales de 512 dimensiones. |
+| `docs` | Markdown y Postman | Arquitectura, API, operacion y producto. |
 
-| Carpeta        | Descripción                                                                                 |
-|----------------|---------------------------------------------------------------------------------------------|
-| `backend`      | API REST en Node.js/Express con MongoDB/Mongoose y controladores modularizados             |
-| `frontend`     | Aplicación React + Vite con contextos de sesión, dashboard protegido y flujos públicos     |
-| `face-service` | Microservicio FastAPI con OpenCV + InsightFace para extraer embeddings faciales            |
+## Funcionalidad
 
-## Principales características
+- JWT, roles `Administrador`, `Celador` y `Usuario`, y bloqueo inmediato.
+- Registro, edicion, consulta y exportacion de usuarios.
+- Entrada/salida manual, QR o facial.
+- Visitantes con OCR, QR, rostro y ticket temporal TTL.
+- Alertas de sesiones abiertas y cierres forzados.
+- Estadisticas agregadas por rango y facultad.
+- Excel de historial y PDF de estadisticas/carnets.
+- Harness robusto de evaluacion facial y analisis PCA/t-SNE.
 
-- **Gestión de usuarios**: registro, edición, bloqueo/desbloqueo, reactivación de tickets temporales y descarga de carnets en PDF (con conversión automática de colores para html2canvas).
-- **Escaneo de QR**: flujo doble (usuarios y vehículos), avisos sonoros y control de cierres forzados.
-- **Reconocimiento facial**: enrolamiento y búsqueda de coincidencias sobre embeddings almacenados en MongoDB mediante un microservicio dedicado.
-- **Vehículos**: filtros por propietario desde el directorio, registro rápido y estado activo/inactivo visible.
-- **Historial de registros**: filtros por fecha/estado, badges compactos y exportación a Excel (`xlsx`).
-- **Dashboard rediseñado**: accesos rápidos con íconos de `react-icons`, sidebar ampliado y estados visuales consistentes.
-- **Cliente API resiliente**: si `VITE_API_URL` no está definido, el frontend calcula la URL usando la ubicación del navegador para evitar errores CORS.
+## Inicio rapido
 
-## Requisitos
+Requisitos: Node.js 18.20+, Python 3.13 y MongoDB.
 
-- Node.js 18+ y npm
-- MongoDB (local o remoto)
+```powershell
+# Terminal 1: face-service
+Set-Location face-service
+py -3.13 -m pip install -r requirements.txt
+Copy-Item .env.example .env
+py -3.13 -m uvicorn main:app --reload --port 8000
 
-## Configuración rápida
+# Terminal 2: backend
+Set-Location backend
+npm install
+Copy-Item .env.example .env
+npm run dev
 
-1. **Clonar el repositorio**
-   ```bash
-   git clone <url>
-   cd QR
-   ```
+# Terminal 3: frontend
+Set-Location frontend
+npm install
+Copy-Item .env.example .env
+npm run dev
+```
 
-2. **Backend**
-    ```bash
-    cd backend
-    npm install
-    cp .env.example .env   # ajusta MongoDB, JWT, etc.
-     npm run dev
-    ```
-    - API base: `http://localhost:3000/api`
-    - `MONGODB_URI` local por defecto: `mongodb://localhost:27017/universidad`
-    - Los archivos subidos se guardan localmente en `backend/uploads/` (configurable con `UPLOAD_DIR`).
-    - Si vienes de MongoDB Atlas, basta con reemplazar `MONGODB_URI` en `backend/.env`; el código no depende de features exclusivas de Atlas.
-    - Para crear el primer administrador en una base vacia: `npm run seed:admin`
-    - Variables adicionales recomendadas:
-      - `FACE_SERVICE_URL`: URL base del microservicio facial (`http://127.0.0.1:8000` por defecto)
-      - `FACE_SERVICE_TIMEOUT_MS`: timeout hacia el microservicio (30000 por defecto)
-      - `FACE_MATCH_THRESHOLD`: umbral de similitud coseno para matching facial (0.5 por defecto)
-      - `UPLOAD_DIR`: carpeta local donde se almacenan imagenes (`uploads` por defecto dentro de `backend/`)
-    - Rutas destacadas: `/auth`, `/users`, `/exitEntry`, `/visitors`, `/face`
+Configure secretos y `MONGODB_URI` antes de iniciar el backend. Consulte [Desarrollo local](docs/getting-started/local-development.md) para instrucciones completas.
 
-3. **Face Service**
-   ```bash
-   cd face-service
-   py -3.13 -m pip install -r requirements.txt
-   copy .env.example .env
-   py -3.13 -m uvicorn main:app --reload --port 8000
-   ```
-   - Base URL: `http://localhost:8000`
-   - Endpoint principal: `POST /extract-embedding`
-   - Health check: `GET /health`
+## URLs locales
 
-4. **Frontend**
-   ```bash
-   cd frontend
-   npm install
-   cp .env.example .env   # define VITE_API_URL si necesitas forzar la URL
-   npm run dev
-   ```
-   - Dev server: `http://localhost:5173`
-   - Variables soportadas:
-     - `VITE_API_URL`: URL completa (incluye `/api`). Tiene prioridad.
-     - `VITE_API_PORT`: Puerto para el cálculo automático cuando `VITE_API_URL` está vacío (3000 por defecto).
-   - Sin `VITE_API_URL`, el cliente genera `http(s)://<host>:<VITE_API_PORT>/api`, útil para pruebas en LAN.
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000/api`
+- Face-service: `http://localhost:8000`
+- FastAPI Swagger: `http://localhost:8000/docs`
 
-## Scripts útiles
+## Scripts principales
 
-| Ubicación | Script            | Acción                                |
-|-----------|-------------------|----------------------------------------|
-| backend   | `npm run dev`     | Levanta la API con nodemon             |
-| backend   | `npm test`        | (si aplica) pruebas/linters            |
-| frontend  | `npm run dev`     | Servidor de desarrollo Vite            |
-| frontend  | `npm run build`   | Compila artefactos de producción       |
-| frontend  | `npm run preview` | Previsualiza el build estático         |
+| Paquete | Comando | Funcion |
+|---|---|---|
+| backend | `npm run dev` | API con nodemon. |
+| backend | `npm run seed:admin` | Crea el administrador si no existe. |
+| backend | `npm run test:entry-stats` | Pruebas de analitica. |
+| backend | `npm run test:face-harness` | Pruebas de metricas/reportes faciales. |
+| backend | `npm run evaluate:face:robust` | Evaluacion facial robusta. |
+| backend | `npm run analyze:embeddings` | PCA/t-SNE y diagnosticos. |
+| frontend | `npm run lint` | ESLint. |
+| frontend | `npm run build` | Build productivo. |
 
-## Tecnologías
+No existe un script generico `npm test`.
 
-- **Backend:** Node.js, Express, Mongoose, JWT, bcrypt.
-- **Face service:** FastAPI, OpenCV, InsightFace, ONNX Runtime.
-- **Frontend:** React 18, Vite, React Router, Tailwind CSS, react-icons.
-- **Reportes/visualizaciones:** Chart.js, react-chartjs-2, `html2canvas`, `jspdf`, `xlsx`.
+## Documentacion
 
-## Datos principales
+El indice completo esta en [`docs/README.md`](docs/README.md):
 
-- `users`: incluye `rolAcademico`, `permisoSistema`, estado (`activo`, `inactivo`, `bloqueado`), ticket temporal y datos faciales (`faceRegistered`, `faceDescriptor`).
-- `entry-exit`: historial con referencias a usuario, vehículo, motivo de cierre y badges compactos (`En progreso`, `Finalizado`).
-- `visitor_tickets`: tickets temporales con expiración automática y reactivación desde el panel.
-- `vehicles`: catálogo asociado a usuarios con filtros por propietario.
+- [Arquitectura](docs/architecture/system-overview.md)
+- [API backend](docs/api/backend-reference.md)
+- [Configuracion](docs/getting-started/configuration.md)
+- [Guia del operador](docs/product/operator-guide.md)
+- [Despliegue](docs/operations/deployment.md)
+- [Seguridad y privacidad](docs/operations/security-and-privacy.md)
+- [Evaluacion facial](docs/evaluation/README.md)
 
-## Documentación
+## Estado de vehiculos y Arduino
 
-Consulta la carpeta [`docs/`](docs) para la arquitectura detallada, colecciones de Postman, pendientes tecnicos (`TODO.md`) y ejemplos de `.env` actualizados.
+Existe un modelo de vehiculos que puede asociarse a registros, pero no hay un router CRUD `/api/vehicles`. La talanquera Arduino es trabajo futuro documentado en [`docs/TODO.md`](docs/TODO.md).
+
+## Datos sensibles
+
+El proyecto procesa documentos, fotos, embeddings y logs de acceso. No confirme `.env`, uploads, datasets ni reportes con identidad. Defina consentimiento, retencion y controles legales antes de usar datos reales.
 
 ## Licencia
 
-Proyecto académico; ajusta la licencia según tus necesidades antes de desplegar en producción.
+Proyecto academico. Revise y formalice la licencia institucional antes de redistribuir o desplegar comercialmente.
