@@ -15,6 +15,7 @@ const ModalDialog = ({
   isOpen,
   title,
   description,
+  eyebrow = 'Registro temporal',
   onClose,
   closeDisabled = false,
   children,
@@ -107,7 +108,7 @@ const ModalDialog = ({
           >
             <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Registro temporal</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">{eyebrow}</p>
                 <h2 id={titleId} className="mt-1 text-xl font-bold text-[#0f172a] sm:text-2xl">{title}</h2>
                 {description && <p id={descriptionId} className="mt-1 text-sm text-[#475569]">{description}</p>}
               </div>

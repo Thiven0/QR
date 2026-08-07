@@ -1,5 +1,11 @@
 # Cambios de documentacion
 
+## 2026-07-26
+
+- Creacion de `DOCUMENTACION_PROYECTO.md` como documento tecnico consolidado.
+- Enlace del documento maestro desde `README.md` y `docs/README.md`.
+- Integracion del alcance pendiente de talanquera Arduino indicado en `docs/TODO.md`.
+
 ## 2026-07-25
 
 - Reestructuracion completa de `docs/` en español.

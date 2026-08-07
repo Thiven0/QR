@@ -20,7 +20,7 @@ backend/evaluation/face-harness/output/
 backend/evaluation/face-harness/cache/
 backend/evaluation/embedding-visualizer/output/
 
-doc/TODO.md
+docs
 
 # Logs
 npm-debug.log*

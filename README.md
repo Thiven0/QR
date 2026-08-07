@@ -74,6 +74,7 @@ No existe un script generico `npm test`.
 
 El indice completo esta en [`docs/README.md`](docs/README.md):
 
+- [Documentacion tecnica del proyecto](docs/DOCUMENTACION_PROYECTO.md)
 - [Arquitectura](docs/architecture/system-overview.md)
 - [API backend](docs/api/backend-reference.md)
 - [Configuracion](docs/getting-started/configuration.md)

@@ -6,6 +6,7 @@ Este directorio describe la implementacion vigente de la plataforma de control d
 
 | Audiencia | Punto de inicio |
 |---|---|
+| Evaluador del proyecto | [Documentacion tecnica del proyecto](DOCUMENTACION_PROYECTO.md) |
 | Nuevo desarrollador | [Desarrollo local](getting-started/local-development.md) |
 | Arquitectura y mantenimiento | [Vision general](architecture/system-overview.md) |
 | Integracion con la API | [Referencia del backend](api/backend-reference.md) |
@@ -17,6 +18,7 @@ Este directorio describe la implementacion vigente de la plataforma de control d
 
 ### Inicio y configuracion
 
+- [Documentacion tecnica del proyecto](DOCUMENTACION_PROYECTO.md): documento consolidado con alcance, arquitectura, flujos, API, datos, pruebas, despliegue y trabajo futuro.
 - [Desarrollo local](getting-started/local-development.md): instalacion de MongoDB, backend, face-service y frontend.
 - [Configuracion](getting-started/configuration.md): variables de entorno y prioridades.
 - [Solucion de problemas](getting-started/troubleshooting.md): puertos, CORS, camara, modelos y MongoDB.

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiUserCheck, FiUserPlus } from 'react-icons/fi';
+import { FiLock, FiRefreshCw, FiSettings, FiUnlock, FiUserCheck, FiUserPlus } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
 import { toast } from 'sonner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest, resolveAssetUrl } from '../../../services/apiClient';
+import { closeTurnstile, getTurnstileStatus, openTurnstile } from '../../../services/turnstileApi';
 import ModalDialog from '../../../shared/components/ModalDialog';
 import VisitorRegistrationWorkflow from '../../public/components/VisitorRegistrationWorkflow';
 import FaceCapture from './FaceCapture';
@@ -243,6 +244,42 @@ const QRScannerPage = () => {
   const [showVisitorRegistration, setShowVisitorRegistration] = useState(false);
   const [visitorRegistrationBusy, setVisitorRegistrationBusy] = useState(false);
   const [visitorRegistrationDirty, setVisitorRegistrationDirty] = useState(false);
+  const [showTurnstile, setShowTurnstile] = useState(false);
+  const [turnstileStatus, setTurnstileStatus] = useState(null);
+  const [turnstileLoading, setTurnstileLoading] = useState(false);
+
+  const refreshTurnstileStatus = useCallback(async () => {
+    if (!token) return;
+    setTurnstileLoading(true);
+    try {
+      const response = await getTurnstileStatus(token);
+      setTurnstileStatus(response.turnstile || null);
+    } catch (error) {
+      const message = error.details?.message || error.message || 'No se pudo consultar la talanquera.';
+      toast.error(message, { id: 'turnstile-status' });
+    } finally {
+      setTurnstileLoading(false);
+    }
+  }, [token]);
+
+  const handleTurnstileCommand = useCallback(async (command) => {
+    if (!token) return;
+    setTurnstileLoading(true);
+    try {
+      const response = command === 'open' ? await openTurnstile(token) : await closeTurnstile(token);
+      setTurnstileStatus(response.turnstile || null);
+      toast[response.turnstile?.success ? 'success' : 'error'](response.message, { id: 'turnstile-command' });
+    } catch (error) {
+      const message = error.details?.message || error.message || 'No se pudo controlar la talanquera.';
+      toast.error(message, { id: 'turnstile-command' });
+    } finally {
+      setTurnstileLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (showTurnstile) refreshTurnstileStatus();
+  }, [showTurnstile, refreshTurnstileStatus]);
 
   const resetState = () => {
     setScanData(null);
@@ -695,6 +732,15 @@ const QRScannerPage = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowTurnstile(true)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                    aria-label="Controlar talanquera"
+                    title="Controlar talanquera"
+                  >
+                    <FiSettings className="h-5 w-5" aria-hidden="true" />
+                  </button>
                   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                     <button
                       type="button"
@@ -847,6 +893,63 @@ const QRScannerPage = () => {
             onCloseAfterSuccess={closeVisitorRegistration}
           />
         )}
+      </ModalDialog>
+
+      <ModalDialog
+        isOpen={showTurnstile}
+        title="Talanquera"
+        description="El control manual no altera los registros de ingreso o salida."
+        eyebrow="Control de acceso"
+        onClose={() => setShowTurnstile(false)}
+        closeDisabled={turnstileLoading}
+      >
+        <div className="mx-auto max-w-xl space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">
+                {turnstileStatus?.mode === 'serial' ? 'Arduino conectado' : turnstileStatus?.mode === 'simulated' ? 'Modo simulacion' : 'Talanquera desactivada'}
+              </p>
+              <p className="mt-1 text-xs text-[#475569]">
+                {turnstileStatus?.mode === 'serial'
+                  ? `${turnstileStatus.configuredPort} a ${turnstileStatus.baudRate} baudios`
+                  : turnstileStatus?.fallbackReason || 'No se requiere un Arduino para continuar registrando accesos.'}
+              </p>
+            </div>
+            <span className={clsx('inline-flex h-10 w-10 items-center justify-center rounded-full', turnstileStatus?.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+              {turnstileStatus?.isOpen ? <FiUnlock className="h-5 w-5" /> : <FiLock className="h-5 w-5" />}
+            </span>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div className="border border-slate-200 p-3">
+              <dt className="text-xs text-[#475569]">Estado</dt>
+              <dd className="mt-1 font-semibold text-[#0f172a]">{turnstileStatus?.isOpen ? 'Abierta' : 'Cerrada'}</dd>
+            </div>
+            <div className="border border-slate-200 p-3">
+              <dt className="text-xs text-[#475569]">Conexion</dt>
+              <dd className="mt-1 font-semibold text-[#0f172a]">{turnstileStatus?.connected ? 'Disponible' : 'No disponible'}</dd>
+            </div>
+          </dl>
+
+          <div className="border border-slate-200 bg-white p-3">
+            <p className="text-xs text-[#475569]">Ultima respuesta del Arduino</p>
+            <p className="mt-1 break-all font-mono text-sm font-semibold text-[#0f172a]">
+              {turnstileStatus?.response || 'Sin respuesta recibida'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => handleTurnstileCommand('open')} disabled={turnstileLoading} className="inline-flex items-center gap-2 rounded-lg bg-[#00594e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-slate-400">
+              <FiUnlock className="h-4 w-4" /> Abrir
+            </button>
+            <button type="button" onClick={() => handleTurnstileCommand('close')} disabled={turnstileLoading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+              <FiLock className="h-4 w-4" /> Cerrar
+            </button>
+            <button type="button" onClick={refreshTurnstileStatus} disabled={turnstileLoading} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-[#475569] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Actualizar estado" title="Actualizar estado">
+              <FiRefreshCw className={clsx('h-4 w-4', turnstileLoading && 'animate-spin')} />
+            </button>
+          </div>
+        </div>
       </ModalDialog>
 
       {showConfirmation && scanData?.user && (

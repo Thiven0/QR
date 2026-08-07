@@ -3,6 +3,9 @@ const { FaceRecognitionLog } = require("../models/face-recognition-log.model");
 const { User } = require("../models/user.model");
 const { Vehicle } = require("../models/vehicle.model");
 const { getEntryExitStats } = require('../services/entry-exit-stats.service');
+const createLogger = require('../utils/logger');
+
+const turnstileLogger = createLogger('turnstile');
 
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
 const ALERT_STATUSES = {
@@ -1050,6 +1053,36 @@ const handleScanAndUpdateUser = async (req, res) => {
           await faceRecognitionLog.save();
         }
       }
+    }
+
+    if (result.statusCode >= 200 && result.statusCode < 300 && ['entry', 'exit'].includes(result.payload?.action)) {
+      const turnstile = require('../services/turnstile.service');
+      result.payload.turnstile = { requested: true };
+      turnstileLogger.info('Apertura automatica solicitada', {
+        action: result.payload.action,
+        registroId: result.payload.data?._id?.toString(),
+      });
+      turnstile.open().then((turnstileResult) => {
+        if (!turnstileResult.success || turnstileResult.fallbackReason) {
+          turnstileLogger.warn('Apertura automatica sin confirmacion serial', {
+            action: result.payload.action,
+            mode: turnstileResult.mode,
+            response: turnstileResult.response,
+            fallbackReason: turnstileResult.fallbackReason,
+          });
+          return;
+        }
+        turnstileLogger.info('Apertura automatica confirmada por el Arduino', {
+          action: result.payload.action,
+          mode: turnstileResult.mode,
+          response: turnstileResult.response,
+        });
+      }).catch((turnstileError) => {
+        turnstileLogger.warn('Error al solicitar apertura automatica', {
+          action: result.payload.action,
+          error: turnstileError.message,
+        });
+      });
     }
 
     return res.status(result.statusCode).json(result.payload);
