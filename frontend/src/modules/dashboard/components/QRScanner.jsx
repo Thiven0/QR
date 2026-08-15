@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiLock, FiRefreshCw, FiSettings, FiUnlock, FiUserCheck, FiUserPlus } from 'react-icons/fi';
+import { FiLock, FiRefreshCw, FiSettings, FiUnlock, FiUserCheck, FiUserPlus, FiZap } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
@@ -215,6 +215,7 @@ const renderQrFocusOverlay = () => (
 );
 
 const FACE_CAMERA_RESTART_DELAY_MS = 1200;
+const FACE_AUTO_REGISTRATION_RESTART_DELAY_MS = 1600;
 const FACE_MAX_ATTEMPTS = 2;
 const BLOCKED_USER_MESSAGE = 'El usuario se encuentra bloqueado. No se puede registrar el ingreso ni la salida.';
 
@@ -225,6 +226,8 @@ const QRScannerPage = () => {
   const [scanMode, setScanMode] = useState('face');
   const audioContextRef = useRef(null);
   const faceFallbackTimeoutRef = useRef(null);
+  const autoRegistrationRestartTimeoutRef = useRef(null);
+  const confirmMovementRef = useRef(null);
   const faceAttemptsRef = useRef(0);
   const scannerBeforeVisitorRef = useRef({ resumeQr: false, resumeFace: false });
 
@@ -233,6 +236,8 @@ const QRScannerPage = () => {
   const [lastRawText, setLastRawText] = useState('');
   const [resetting, setResetting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [autoRegistrationEnabled, setAutoRegistrationEnabled] = useState(false);
+  const [autoRegistrationPending, setAutoRegistrationPending] = useState(null);
   const [movementType, setMovementType] = useState('entry');
   const [confirmingMovement, setConfirmingMovement] = useState(false);
   const [confirmationError, setConfirmationError] = useState('');
@@ -297,6 +302,13 @@ const QRScannerPage = () => {
     if (faceFallbackTimeoutRef.current) {
       window.clearTimeout(faceFallbackTimeoutRef.current);
       faceFallbackTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearAutoRegistrationRestart = useCallback(() => {
+    if (autoRegistrationRestartTimeoutRef.current) {
+      window.clearTimeout(autoRegistrationRestartTimeoutRef.current);
+      autoRegistrationRestartTimeoutRef.current = null;
     }
   }, []);
 
@@ -399,8 +411,9 @@ const QRScannerPage = () => {
   useEffect(() => {
     return () => {
       clearFaceFallback();
+      clearAutoRegistrationRestart();
     };
-  }, [clearFaceFallback]);
+  }, [clearAutoRegistrationRestart, clearFaceFallback]);
 
   const playBeep = useCallback((type = 'success') => {
     if (typeof window === 'undefined') return;
@@ -471,10 +484,16 @@ const QRScannerPage = () => {
 
     const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
     setMovementType(defaultMovement);
+    if (extra.scanMethod === 'face' && autoRegistrationEnabled) {
+      setShowConfirmation(false);
+      setAutoRegistrationPending({ userId, direction: defaultMovement });
+      return;
+    }
+
     setShowConfirmation(true);
     setConfirmationError('');
     setMovementNote('');
-  }, [playBeep]);
+  }, [autoRegistrationEnabled, playBeep]);
 
   useEffect(() => {
     return () => {
@@ -606,6 +625,8 @@ const QRScannerPage = () => {
     setCameraActive(true);
     setResetting(true);
     clearFaceFallback();
+    clearAutoRegistrationRestart();
+    setAutoRegistrationPending(null);
     resetFaceAttempts();
     resetState();
     setFaceCaptureKey((prev) => prev + 1);
@@ -631,7 +652,7 @@ const QRScannerPage = () => {
     }
   };
 
-  const handleConfirmMovement = async () => {
+  const handleConfirmMovement = async ({ direction = movementType, automatic = false } = {}) => {
     if (!token) {
       const message = 'Inicia sesion para confirmar el registro.';
       setConfirmationError(message);
@@ -649,7 +670,7 @@ const QRScannerPage = () => {
     try {
       const payload = {
         userId: scanData.userId,
-        direction: movementType,
+        direction,
         scanMethod: scanData.scanMethod || 'qr',
       };
       if (scanData.faceRecognitionLogId) {
@@ -680,15 +701,45 @@ const QRScannerPage = () => {
       });
       setShowConfirmation(false);
       setMovementNote('');
+
+      if (automatic) {
+        setFaceRetrying(true);
+        setFaceRetryMessage('Registro realizado. Preparando camara para el siguiente usuario...');
+        clearAutoRegistrationRestart();
+        autoRegistrationRestartTimeoutRef.current = window.setTimeout(() => {
+          setScanData(null);
+          setFaceIdentified(false);
+          resetFaceAttempts();
+          setFaceRetrying(false);
+          setFaceRetryMessage('');
+          setFaceCaptureKey((prev) => prev + 1);
+          autoRegistrationRestartTimeoutRef.current = null;
+        }, FACE_AUTO_REGISTRATION_RESTART_DELAY_MS);
+      }
     } catch (confirmError) {
       const message =
         confirmError.details?.message || confirmError.message || 'No se pudo confirmar el movimiento del usuario.';
       setConfirmationError(message);
       toast.error(message, { id: 'qr-scanner-access-registration' });
+      if (automatic) {
+        setShowConfirmation(true);
+      }
     } finally {
       setConfirmingMovement(false);
     }
   };
+
+  confirmMovementRef.current = handleConfirmMovement;
+
+  useEffect(() => {
+    if (!autoRegistrationPending || confirmingMovement) return;
+
+    setAutoRegistrationPending(null);
+    confirmMovementRef.current?.({
+      direction: autoRegistrationPending.direction,
+      automatic: true,
+    });
+  }, [autoRegistrationPending, confirmingMovement]);
 
   return (
     <>
@@ -732,6 +783,22 @@ const QRScannerPage = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  {scanMode === 'face' && (
+                    <button
+                      type="button"
+                      onClick={() => setAutoRegistrationEnabled((enabled) => !enabled)}
+                      aria-pressed={autoRegistrationEnabled}
+                      className={clsx(
+                        'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition',
+                        autoRegistrationEnabled
+                          ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                          : 'border-slate-200 bg-white text-[#475569] hover:bg-slate-100'
+                      )}
+                    >
+                      <FiZap className="h-4 w-4" aria-hidden="true" />
+                      {autoRegistrationEnabled ? 'Registro automático activo' : 'Registro automático'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowTurnstile(true)}
@@ -820,7 +887,11 @@ const QRScannerPage = () => {
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">Rostro confirmado</p>
                       <p className="mt-3 text-xl font-bold text-white">Camara facial apagada</p>
-                      <p className="mt-2 text-sm text-white/70">Usuario identificado correctamente. Continua con la confirmacion del registro.</p>
+                      <p className="mt-2 text-sm text-white/70">
+                        {autoRegistrationEnabled
+                          ? 'Registrando el movimiento automaticamente...'
+                          : 'Usuario identificado correctamente. Continua con la confirmacion del registro.'}
+                      </p>
                     </div>
                   </div>
                 ) : (
@@ -840,7 +911,9 @@ const QRScannerPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Lectura actual</p>
               <h3 className="mt-2 text-2xl font-bold text-[#0f172a]">Usuario escaneado</h3>
               <p className="mt-2 text-sm text-[#475569]">
-                Revisa la informacion antes de confirmar el movimiento.
+                {autoRegistrationEnabled && scanMode === 'face'
+                  ? 'Los rostros validados se registran automaticamente.'
+                  : 'Revisa la informacion antes de confirmar el movimiento.'}
               </p>
 
               {processing ? (

@@ -30,8 +30,6 @@ const FACULTADES = [
 const TIPOS_SANGRE = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const TEST_NAMES = ['Valentina', 'Santiago', 'Camila', 'Mateo', 'Isabella', 'Samuel', 'Lucia', 'Nicolas'];
 const TEST_LAST_NAMES = ['Martinez', 'Gonzalez', 'Rodriguez', 'Lopez', 'Hernandez', 'Garcia', 'Diaz', 'Torres'];
-const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024;
-
 const INITIAL_FORM = {
   cedula: '',
   nombre: '',
@@ -79,16 +77,6 @@ const RegisterGuard = () => {
   const [faceDescriptor, setFaceDescriptor] = useState([]);
   const [faceCaptureStatus, setFaceCaptureStatus] = useState(FACE_STATUS.IDLE);
   const [faceFeedback, setFaceFeedback] = useState('');
-  const [documentImage, setDocumentImage] = useState('');
-  const [documentMetadata, setDocumentMetadata] = useState(null);
-  const [documentOcrError, setDocumentOcrError] = useState('');
-  const [documentLoading, setDocumentLoading] = useState(false);
-  const [documentCameraOpen, setDocumentCameraOpen] = useState(false);
-  const [documentCameraError, setDocumentCameraError] = useState('');
-  const [documentCameraChecking, setDocumentCameraChecking] = useState(false);
-  const [documentCameraCapturing, setDocumentCameraCapturing] = useState(false);
-  const documentVideoRef = useRef(null);
-  const documentCameraStreamRef = useRef(null);
 
   const isSubmitting = status === 'loading';
 
@@ -99,16 +87,6 @@ const RegisterGuard = () => {
         ctx.close().catch(() => {});
       }
       audioContextRef.current = null;
-      const stream = documentCameraStreamRef.current;
-      if (stream) {
-        stream.getTracks().forEach((track) => {
-          try {
-            track.stop();
-          } catch {
-            return;
-          }
-        });
-      }
     };
   }, []);
 
@@ -153,19 +131,6 @@ const RegisterGuard = () => {
     };
   }, [form.nombre, form.apellido, form.cedula, form.facultad, form.RH, form.telefono, form.permisoSistema, setForm]);
 
-  useEffect(() => {
-    if (documentCameraOpen && documentCameraStreamRef.current && documentVideoRef.current) {
-      documentVideoRef.current.srcObject = documentCameraStreamRef.current;
-      documentVideoRef.current.onloadedmetadata = () => {
-        try {
-          documentVideoRef.current?.play();
-        } catch {
-          return;
-        }
-      };
-    }
-  }, [documentCameraOpen]);
-
   const setFieldValue = (name, value) => {
     if (name === 'imagenQR') {
       setQrError('');
@@ -174,162 +139,6 @@ const RegisterGuard = () => {
       ...prev,
       [name]: value,
     }));
-  };
-
-  const resetDocumentFeedback = () => {
-    setDocumentOcrError('');
-    setDocumentMetadata(null);
-  };
-
-  const stopDocumentCameraStream = () => {
-    const stream = documentCameraStreamRef.current;
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch {
-          return;
-        }
-      });
-    }
-    documentCameraStreamRef.current = null;
-  };
-
-  const closeDocumentCamera = () => {
-    stopDocumentCameraStream();
-    if (documentVideoRef.current) {
-      documentVideoRef.current.srcObject = null;
-    }
-    setDocumentCameraOpen(false);
-    setDocumentCameraCapturing(false);
-  };
-
-  const openDocumentCamera = async () => {
-    if (documentCameraChecking || documentCameraCapturing) return;
-
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setDocumentCameraError('Tu navegador no permite abrir la camara desde esta pagina.');
-      return;
-    }
-
-    try {
-      setDocumentCameraChecking(true);
-      setDocumentCameraError('');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      documentCameraStreamRef.current = stream;
-      setDocumentCameraOpen(true);
-      if (documentVideoRef.current) {
-        documentVideoRef.current.srcObject = stream;
-        documentVideoRef.current.onloadedmetadata = () => {
-          try {
-            documentVideoRef.current?.play();
-          } catch {
-            return;
-          }
-        };
-      }
-    } catch (error) {
-      setDocumentCameraError(error?.message || 'No fue posible acceder a la camara. Verifica los permisos.');
-      closeDocumentCamera();
-    } finally {
-      setDocumentCameraChecking(false);
-    }
-  };
-
-  const captureDocumentFromCamera = () => {
-    if (!documentVideoRef.current) {
-      setDocumentCameraError('No encontramos video disponible para capturar.');
-      return;
-    }
-
-    try {
-      setDocumentCameraCapturing(true);
-      const video = documentVideoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
-      const context = canvas.getContext('2d');
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      setDocumentImage(dataUrl);
-      resetDocumentFeedback();
-      closeDocumentCamera();
-    } catch {
-      setDocumentCameraError('No fue posible capturar la imagen del documento. Intenta nuevamente.');
-    } finally {
-      setDocumentCameraCapturing(false);
-    }
-  };
-
-  const applyDocumentMetadata = (metadata = {}) => {
-    const overrides = {};
-    if (metadata.cedula) overrides.cedula = metadata.cedula;
-    if (metadata.nombres) overrides.nombre = metadata.nombres;
-    if (metadata.apellidos) overrides.apellido = metadata.apellidos;
-
-    if (!Object.keys(overrides).length) return;
-
-    setForm((prev) => ({ ...prev, ...overrides }));
-  };
-
-  const handleDocumentFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (event.target.value) {
-      event.target.value = '';
-    }
-    if (!file) return;
-
-    if (!file.type?.startsWith('image/')) {
-      setDocumentOcrError('Solo se permiten imagenes en formato PNG o JPG.');
-      return;
-    }
-
-    if (file.size > MAX_DOCUMENT_SIZE) {
-      setDocumentOcrError('La imagen supera el limite de 5MB.');
-      return;
-    }
-
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDocumentImage(dataUrl);
-      resetDocumentFeedback();
-    } catch {
-      setDocumentOcrError('No fue posible leer el archivo seleccionado.');
-    }
-  };
-
-  const handleRemoveDocumentImage = () => {
-    setDocumentImage('');
-    resetDocumentFeedback();
-  };
-
-  const handleExtractDocumentData = async () => {
-    if (!documentImage) {
-      setDocumentOcrError('Debes adjuntar la foto de la cedula antes de continuar.');
-      return;
-    }
-
-    try {
-      setDocumentLoading(true);
-      setDocumentOcrError('');
-      const response = await apiRequest('/visitors/ocr', {
-        method: 'POST',
-        data: { image: documentImage },
-      });
-
-      const metadata = response?.data || response;
-      setDocumentMetadata(metadata || null);
-      applyDocumentMetadata(metadata || {});
-      toast.info('Datos del documento cargados. Verifica y completa los campos restantes antes de guardar.');
-      setStatus('success');
-    } catch (error) {
-      setDocumentMetadata(null);
-      setDocumentOcrError(error.message || 'No fue posible extraer los datos del documento.');
-    } finally {
-      setDocumentLoading(false);
-    }
   };
 
   const handleFileChange = async (event) => {
@@ -484,9 +293,6 @@ const RegisterGuard = () => {
       setFaceDescriptor([]);
       toast.success(successMessage, { duration: 8000 });
       reset(INITIAL_FORM);
-      setDocumentImage('');
-      setDocumentMetadata(null);
-      setDocumentOcrError('');
       if (!response?.faceRegistration?.registered && response?.faceRegistration?.message) {
         setFaceFeedback(response.faceRegistration.message);
       }
@@ -892,102 +698,6 @@ const RegisterGuard = () => {
                   </div>
                 </div>
 
-                <section className="space-y-4 rounded-2xl border border-dashed border-[#00594e]/40 bg-[#ecfdf5] p-5">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0f766e]">Documento de identidad</p>
-                      <p className="mt-2 text-sm text-[#0f172a]">
-                        Captura o adjunta la foto de la cedula para extraer automaticamente cedula, nombres y apellidos.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={openDocumentCamera}
-                        disabled={documentCameraChecking}
-                        className="inline-flex items-center justify-center rounded-lg border border-[#0f766e] bg-white px-4 py-2 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/5 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {documentCameraChecking ? 'Abriendo camara...' : 'Abrir camara'}
-                      </button>
-                      <label
-                        htmlFor="document-upload-input"
-                        className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-[#0f172a] transition hover:bg-slate-50"
-                      >
-                        Subir foto
-                      </label>
-                    </div>
-                  </div>
-
-                  <input
-                    id="document-upload-input"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleDocumentFileChange}
-                  />
-
-                  {documentImage ? (
-                    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 lg:flex-row">
-                      <img
-                        src={documentImage}
-                        alt="Documento de identidad"
-                        className="h-28 w-44 rounded-lg border border-[#0f766e]/30 object-cover shadow-sm lg:h-32 lg:w-52"
-                      />
-                      <div className="flex-1 space-y-3 text-sm text-[#475569]">
-                        <p>Extrae los datos detectados y revisalos antes de guardar el usuario.</p>
-                        <div className="flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={handleExtractDocumentData}
-                            disabled={documentLoading}
-                            className="inline-flex items-center justify-center rounded-lg bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5f58] disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {documentLoading ? 'Extrayendo datos...' : 'Extraer datos automaticamente'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleRemoveDocumentImage}
-                            className="inline-flex items-center justify-center rounded-lg border border-transparent bg-[#fee2e2] px-4 py-2 text-sm font-semibold text-[#b91c1c] shadow-sm transition hover:bg-[#fecaca]"
-                          >
-                            Remover imagen
-                          </button>
-                        </div>
-                        {documentOcrError && (
-                          <p className="text-xs font-medium text-[#b45309]">{documentOcrError}</p>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-[#64748b]">
-                      Aun no hay foto del documento. Puedes tomarla con camara o subir un archivo para precargar los datos.
-                    </div>
-                  )}
-
-                  {documentMetadata && (
-                    <div className="rounded-2xl border border-[#0f766e]/30 bg-white p-4 shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0f766e]">Datos detectados</p>
-                      <dl className="mt-3 grid gap-3 text-sm text-[#0f172a] sm:grid-cols-2">
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-[#475569]">Numero de cedula</dt>
-                          <dd className="mt-1 font-medium">{documentMetadata.cedula || 'No detectado'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-[#475569]">Nombres</dt>
-                          <dd className="mt-1 font-medium">{documentMetadata.nombres || 'No detectado'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-[#475569]">Apellidos</dt>
-                          <dd className="mt-1 font-medium">{documentMetadata.apellidos || 'No detectado'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-[#475569]">Fecha de nacimiento</dt>
-                          <dd className="mt-1 font-medium">{documentMetadata.fechaNacimiento || 'No detectada'}</dd>
-                        </div>
-                      </dl>
-                    </div>
-                  )}
-                </section>
-
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -1180,58 +890,6 @@ const RegisterGuard = () => {
           </aside>
         </div>
       </div>
-
-      {documentCameraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-slate-900/70" onClick={closeDocumentCamera} />
-          <div className="relative z-10 w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#0f766e]">Camara</p>
-                <h3 className="text-xl font-semibold text-[#0f172a]">Captura la cedula</h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeDocumentCamera}
-                className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-[#0f172a]"
-                aria-label="Cerrar camara"
-              >
-                X
-              </button>
-            </div>
-
-            <div className="mt-4 aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-black">
-              <video ref={documentVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-            </div>
-
-            <p className="mt-3 text-sm text-[#475569]">
-              Alinea el documento dentro del recuadro y asegurate de que este bien iluminado antes de capturar.
-            </p>
-
-            {documentCameraError && (
-              <p className="mt-2 text-xs font-medium text-[#b45309]">{documentCameraError}</p>
-            )}
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={closeDocumentCamera}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-[#0f172a] shadow-sm transition hover:bg-slate-50 sm:w-auto"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={captureDocumentFromCamera}
-                disabled={documentCameraCapturing}
-                className="w-full rounded-lg bg-[#0f766e] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0c5f58] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
-              >
-                {documentCameraCapturing ? 'Capturando...' : 'Capturar foto'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showScanner && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
