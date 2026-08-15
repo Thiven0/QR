@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiLock, FiRefreshCw, FiSettings, FiUnlock, FiUserCheck, FiUserPlus, FiZap } from 'react-icons/fi';
+import {
+  FiAlertTriangle,
+  FiCheckCircle,
+  FiChevronDown,
+  FiChevronUp,
+  FiLock,
+  FiLogIn,
+  FiLogOut,
+  FiRefreshCw,
+  FiSettings,
+  FiUnlock,
+  FiUserCheck,
+  FiUserPlus,
+  FiZap,
+} from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
@@ -11,18 +25,12 @@ import ModalDialog from '../../../shared/components/ModalDialog';
 import VisitorRegistrationWorkflow from '../../public/components/VisitorRegistrationWorkflow';
 import FaceCapture from './FaceCapture';
 
-const MOVEMENT_OPTIONS = [
-  {
-    id: 'entry',
-    title: 'Ingresando',
-    description: 'Marcara el ingreso y dejara al usuario en estado activo.',
-  },
-  {
-    id: 'exit',
-    title: 'Saliendo',
-    description: 'Cerrara la sesion actual y dejara al usuario inactivo.',
-  },
-];
+const REGISTRATION_DIALOG = {
+  MANUAL: 'manual',
+  AUTO_SUCCESS: 'auto-success',
+  FACE_WARNING: 'face-warning',
+  AUTO_ERROR: 'auto-error',
+};
 
 const formatDocumentDate = (value) => {
   if (!value) return null;
@@ -187,6 +195,115 @@ const FacialSimilarityMeter = ({ score, threshold = FACE_MATCH_THRESHOLD }) => {
   );
 };
 
+const CompactUserIdentity = ({ user, expanded, onToggle }) => {
+  if (!user) return null;
+
+  const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ') || 'Usuario sin nombre';
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-4 p-4 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#0f766e]/40"
+      >
+        {user.imagen ? (
+          <img
+            src={resolveAssetUrl(user.imagen)}
+            alt={`Foto de ${fullName}`}
+            className="h-16 w-16 flex-none rounded-full border border-slate-200 object-cover shadow-sm"
+          />
+        ) : (
+          <span className="flex h-16 w-16 flex-none items-center justify-center rounded-full bg-slate-100 text-slate-400">
+            <FaUserCircle className="h-10 w-10" aria-hidden="true" />
+          </span>
+        )}
+
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base font-bold text-[#0f172a]">{fullName}</span>
+          <span className="mt-1 block text-sm text-[#475569]">CC {user.cedula || 'Sin cédula'}</span>
+          <span className="mt-0.5 block truncate text-sm text-[#475569]">{user.facultad || 'Sin facultad registrada'}</span>
+          <span className="mt-2 block text-xs font-semibold text-[#0f766e]">
+            {expanded ? 'Ocultar información completa' : 'Ver información completa'}
+          </span>
+        </span>
+
+        {expanded ? (
+          <FiChevronUp className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
+        ) : (
+          <FiChevronDown className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
+        )}
+      </button>
+
+      {expanded && <div className="border-t border-slate-200 p-3">{renderUserDetails(user)}</div>}
+    </div>
+  );
+};
+
+const CompactSimilarity = ({ score, threshold = FACE_MATCH_THRESHOLD, expanded, onToggle }) => {
+  if (typeof score !== 'number') return null;
+
+  const normalizedScore = Math.min(1, Math.max(0, score));
+  const tone = getSimilarityTone(normalizedScore, threshold);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#0f766e]/40"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#64748b]">Coincidencia facial</span>
+          <span className="mt-1 block text-xs text-[#475569]">
+            {expanded ? 'Ocultar semáforo facial' : 'Ver semáforo facial'}
+          </span>
+        </span>
+        <span className={clsx('text-xl font-bold', tone.accent)}>{normalizedScore.toFixed(4)}</span>
+        <span className={clsx('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold', tone.badge)}>{tone.label}</span>
+        {expanded ? (
+          <FiChevronUp className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
+        ) : (
+          <FiChevronDown className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-200 p-3">
+          <FacialSimilarityMeter score={normalizedScore} threshold={threshold} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MovementSummary = ({ direction, completed = false }) => {
+  const isEntry = direction === 'entry';
+  const Icon = completed ? FiCheckCircle : isEntry ? FiLogIn : FiLogOut;
+
+  return (
+    <div className={clsx('flex items-start gap-3 rounded-xl border px-4 py-3', completed ? 'border-emerald-200 bg-emerald-50' : 'border-[#0f766e]/25 bg-[#0f766e]/5')}>
+      <span className={clsx('mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-full', completed ? 'bg-emerald-100 text-emerald-700' : 'bg-[#0f766e]/10 text-[#0f766e]')}>
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <div>
+        <p className={clsx('text-xs font-bold uppercase tracking-[0.18em]', completed ? 'text-emerald-700' : 'text-[#0f766e]')}>
+          {isEntry ? `Ingreso ${completed ? 'registrado' : 'detectado'}` : `Salida ${completed ? 'registrada' : 'detectada'}`}
+        </p>
+        <p className="mt-1 text-sm text-[#475569]">
+          {completed
+            ? `El movimiento se guardó correctamente como ${isEntry ? 'ingreso' : 'salida'}.`
+            : isEntry
+              ? 'El usuario está inactivo; el sistema registrará su ingreso.'
+              : 'El usuario está activo; el sistema registrará su salida.'}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const renderQrFocusOverlay = () => (
   <div className="pointer-events-none absolute inset-0">
     <div className="absolute inset-6 rounded-[1.75rem] border border-white/10 bg-black/5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]" />
@@ -235,7 +352,9 @@ const QRScannerPage = () => {
   const [processing, setProcessing] = useState(false);
   const [lastRawText, setLastRawText] = useState('');
   const [resetting, setResetting] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [registrationDialog, setRegistrationDialog] = useState(null);
+  const [userDetailsExpanded, setUserDetailsExpanded] = useState(false);
+  const [similarityExpanded, setSimilarityExpanded] = useState(false);
   const [autoRegistrationEnabled, setAutoRegistrationEnabled] = useState(false);
   const [autoRegistrationPending, setAutoRegistrationPending] = useState(null);
   const [movementType, setMovementType] = useState('entry');
@@ -252,6 +371,19 @@ const QRScannerPage = () => {
   const [showTurnstile, setShowTurnstile] = useState(false);
   const [turnstileStatus, setTurnstileStatus] = useState(null);
   const [turnstileLoading, setTurnstileLoading] = useState(false);
+
+  const openRegistrationDialog = useCallback((dialog) => {
+    setUserDetailsExpanded(false);
+    setSimilarityExpanded(false);
+    setRegistrationDialog(dialog);
+  }, []);
+
+  const closeRegistrationDialog = useCallback(() => {
+    setRegistrationDialog(null);
+    setConfirmationError('');
+    setUserDetailsExpanded(false);
+    setSimilarityExpanded(false);
+  }, []);
 
   const refreshTurnstileStatus = useCallback(async () => {
     if (!token) return;
@@ -291,7 +423,9 @@ const QRScannerPage = () => {
     setProcessing(false);
     setLastRawText('');
     setResetting(false);
-    setShowConfirmation(false);
+    setRegistrationDialog(null);
+    setUserDetailsExpanded(false);
+    setSimilarityExpanded(false);
     setMovementType('entry');
     setConfirmingMovement(false);
     setConfirmationError('');
@@ -360,33 +494,49 @@ const QRScannerPage = () => {
     closeVisitorRegistration();
   }, [closeVisitorRegistration, visitorRegistrationBusy, visitorRegistrationDirty]);
 
-  const restartFaceCapture = useCallback((message) => {
+  const restartFaceCapture = useCallback((message, details = {}) => {
     clearFaceFallback();
     toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
-    setShowConfirmation(false);
     setConfirmationError('');
     setFaceRetrying(true);
     setFaceRetryMessage('Reiniciando camara facial para un nuevo intento...');
+    openRegistrationDialog({
+      kind: REGISTRATION_DIALOG.FACE_WARNING,
+      message,
+      score: details.score,
+      threshold: details.threshold ?? FACE_MATCH_THRESHOLD,
+      attempt: details.attempt,
+      nextAction: 'face',
+    });
 
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      setRegistrationDialog(null);
       setFaceRetrying(false);
       setFaceRetryMessage('');
       setFaceCaptureKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
-  }, [clearFaceFallback]);
+  }, [clearFaceFallback, openRegistrationDialog]);
 
-  const fallbackToQrAfterFaceFailure = useCallback((message) => {
+  const fallbackToQrAfterFaceFailure = useCallback((message, details = {}) => {
     clearFaceFallback();
     toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
-    setShowConfirmation(false);
     setConfirmationError('');
     setFaceRetrying(true);
     setFaceRetryMessage('Apagando camara facial y preparando el escaneo QR...');
+    openRegistrationDialog({
+      kind: REGISTRATION_DIALOG.FACE_WARNING,
+      message,
+      score: details.score,
+      threshold: details.threshold ?? FACE_MATCH_THRESHOLD,
+      attempt: details.attempt,
+      nextAction: 'qr',
+    });
 
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      setRegistrationDialog(null);
       setFaceRetrying(false);
       setFaceRetryMessage('');
       setScanMode('qr');
@@ -394,18 +544,19 @@ const QRScannerPage = () => {
       setScannerKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
-  }, [clearFaceFallback]);
+  }, [clearFaceFallback, openRegistrationDialog]);
 
-  const handleFaceAttemptFailure = useCallback((message) => {
+  const handleFaceAttemptFailure = useCallback((message, details = {}) => {
     const nextAttempt = faceAttemptsRef.current + 1;
     faceAttemptsRef.current = nextAttempt;
+    const failureDetails = { ...details, attempt: nextAttempt };
 
     if (nextAttempt < FACE_MAX_ATTEMPTS) {
-      restartFaceCapture(`${message} Reiniciando camara facial...`);
+      restartFaceCapture(message, failureDetails);
       return;
     }
 
-    fallbackToQrAfterFaceFailure(`${message} Cambiando a escaneo QR...`);
+    fallbackToQrAfterFaceFailure(message, failureDetails);
   }, [fallbackToQrAfterFaceFailure, restartFaceCapture]);
 
   useEffect(() => {
@@ -476,7 +627,7 @@ const QRScannerPage = () => {
     toast.success(feedbackMessage, { id: 'qr-scanner-result' });
 
     if (!userId) {
-      setShowConfirmation(false);
+      setRegistrationDialog(null);
       return;
     }
 
@@ -485,15 +636,18 @@ const QRScannerPage = () => {
     const defaultMovement = (user?.estado || '').toLowerCase() === 'activo' ? 'exit' : 'entry';
     setMovementType(defaultMovement);
     if (extra.scanMethod === 'face' && autoRegistrationEnabled) {
-      setShowConfirmation(false);
+      setRegistrationDialog(null);
       setAutoRegistrationPending({ userId, direction: defaultMovement });
       return;
     }
 
-    setShowConfirmation(true);
+    openRegistrationDialog({
+      kind: REGISTRATION_DIALOG.MANUAL,
+      direction: defaultMovement,
+    });
     setConfirmationError('');
     setMovementNote('');
-  }, [autoRegistrationEnabled, playBeep]);
+  }, [autoRegistrationEnabled, openRegistrationDialog, playBeep]);
 
   useEffect(() => {
     return () => {
@@ -506,10 +660,10 @@ const QRScannerPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!showConfirmation) {
+    if (registrationDialog?.kind !== REGISTRATION_DIALOG.MANUAL) {
       setMovementNote('');
     }
-  }, [showConfirmation]);
+  }, [registrationDialog]);
 
   const parseScanData = async (rawText) => {
     const parsedResponse = await apiRequest('/users/parse-scan', {
@@ -584,7 +738,10 @@ const QRScannerPage = () => {
   const handleFaceResult = (result) => {
     if (!result?.match || !result?.userId || !result?.user) {
       playBeep('error');
-      handleFaceAttemptFailure('No se encontro una coincidencia facial valida para este rostro.');
+      handleFaceAttemptFailure('La similitud facial no alcanza el mínimo requerido para confirmar la identidad.', {
+        score: result?.score,
+        threshold: result?.threshold,
+      });
       return;
     }
 
@@ -593,7 +750,7 @@ const QRScannerPage = () => {
       resetFaceAttempts();
       playBeep('error');
       setScanData(null);
-      setShowConfirmation(false);
+      setRegistrationDialog(null);
       setConfirmationError('');
       toast.error(BLOCKED_USER_MESSAGE, { id: 'qr-scanner-result' });
       return;
@@ -613,7 +770,10 @@ const QRScannerPage = () => {
   const handleFaceError = (faceError) => {
     playBeep('error');
     const message = faceError?.details?.message || faceError?.message || 'No fue posible procesar el reconocimiento facial.';
-    handleFaceAttemptFailure(message);
+    handleFaceAttemptFailure(message, {
+      score: faceError?.details?.score,
+      threshold: faceError?.details?.threshold,
+    });
   };
 
   const handleReset = async () => {
@@ -657,10 +817,17 @@ const QRScannerPage = () => {
       const message = 'Inicia sesion para confirmar el registro.';
       setConfirmationError(message);
       toast.error(message, { id: 'qr-scanner-access-registration' });
+      if (automatic) {
+        openRegistrationDialog({ kind: REGISTRATION_DIALOG.AUTO_ERROR, direction, message });
+      }
       return;
     }
     if (!scanData?.userId) {
-      setConfirmationError('No hay un usuario validado para registrar.');
+      const message = 'No hay un usuario validado para registrar.';
+      setConfirmationError(message);
+      if (automatic) {
+        openRegistrationDialog({ kind: REGISTRATION_DIALOG.AUTO_ERROR, direction, message });
+      }
       return;
     }
 
@@ -699,14 +866,19 @@ const QRScannerPage = () => {
       toast.success(response.message || 'Registro confirmado correctamente.', {
         id: 'qr-scanner-access-registration',
       });
-      setShowConfirmation(false);
       setMovementNote('');
 
       if (automatic) {
+        openRegistrationDialog({
+          kind: REGISTRATION_DIALOG.AUTO_SUCCESS,
+          direction,
+          message: response.message || `${direction === 'entry' ? 'Ingreso' : 'Salida'} registrado correctamente.`,
+        });
         setFaceRetrying(true);
         setFaceRetryMessage('Registro realizado. Preparando camara para el siguiente usuario...');
         clearAutoRegistrationRestart();
         autoRegistrationRestartTimeoutRef.current = window.setTimeout(() => {
+          setRegistrationDialog(null);
           setScanData(null);
           setFaceIdentified(false);
           resetFaceAttempts();
@@ -715,6 +887,8 @@ const QRScannerPage = () => {
           setFaceCaptureKey((prev) => prev + 1);
           autoRegistrationRestartTimeoutRef.current = null;
         }, FACE_AUTO_REGISTRATION_RESTART_DELAY_MS);
+      } else {
+        closeRegistrationDialog();
       }
     } catch (confirmError) {
       const message =
@@ -722,7 +896,11 @@ const QRScannerPage = () => {
       setConfirmationError(message);
       toast.error(message, { id: 'qr-scanner-access-registration' });
       if (automatic) {
-        setShowConfirmation(true);
+        openRegistrationDialog({
+          kind: REGISTRATION_DIALOG.AUTO_ERROR,
+          direction,
+          message,
+        });
       }
     } finally {
       setConfirmingMovement(false);
@@ -740,6 +918,19 @@ const QRScannerPage = () => {
       automatic: true,
     });
   }, [autoRegistrationPending, confirmingMovement]);
+
+  const dialogKind = registrationDialog?.kind;
+  const dialogDirection = registrationDialog?.direction || movementType;
+  const isManualDialog = dialogKind === REGISTRATION_DIALOG.MANUAL;
+  const isAutoSuccessDialog = dialogKind === REGISTRATION_DIALOG.AUTO_SUCCESS;
+  const isFaceWarningDialog = dialogKind === REGISTRATION_DIALOG.FACE_WARNING;
+  const isAutoErrorDialog = dialogKind === REGISTRATION_DIALOG.AUTO_ERROR;
+  const dialogScore = isFaceWarningDialog ? registrationDialog?.score : scanData?.score;
+  const dialogThreshold = isFaceWarningDialog
+    ? registrationDialog?.threshold ?? FACE_MATCH_THRESHOLD
+    : FACE_MATCH_THRESHOLD;
+  const scannerControlsDisabled =
+    processing || confirmingMovement || resetting || faceRetrying || Boolean(registrationDialog) || showVisitorRegistration;
 
   return (
     <>
@@ -770,7 +961,7 @@ const QRScannerPage = () => {
 
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">
                     {scanMode === 'qr' ? 'Escaner QR' : 'Reconocimiento facial'}
@@ -782,75 +973,112 @@ const QRScannerPage = () => {
                       : 'Captura el rostro del usuario para identificarlo y registrar su movimiento.'}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  {scanMode === 'face' && (
+
+                <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto] lg:items-end">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748b]">Método de identificación</p>
+                    <div className="inline-grid grid-cols-2 rounded-xl border border-slate-200 bg-white p-1" role="group" aria-label="Método de identificación">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearFaceFallback();
+                          resetFaceAttempts();
+                          setScanMode('face');
+                          setCameraActive(false);
+                          setFaceCaptureKey((prev) => prev + 1);
+                        }}
+                        disabled={scannerControlsDisabled}
+                        aria-pressed={scanMode === 'face'}
+                        aria-label="Usar reconocimiento facial"
+                        title="Reconocimiento facial"
+                        className={clsx(
+                          'inline-flex h-10 w-11 items-center justify-center rounded-lg transition focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50',
+                          scanMode === 'face'
+                            ? 'bg-[#00594e] text-white shadow-sm'
+                            : 'text-[#475569] hover:bg-slate-100'
+                        )}
+                      >
+                        <FaUserCircle className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearFaceFallback();
+                          resetFaceAttempts();
+                          setScanMode('qr');
+                          setCameraActive(true);
+                        }}
+                        disabled={scannerControlsDisabled}
+                        aria-pressed={scanMode === 'qr'}
+                        aria-label="Usar escáner QR"
+                        title="Escáner QR"
+                        className={clsx(
+                          'inline-flex h-10 w-11 items-center justify-center rounded-lg transition focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50',
+                          scanMode === 'qr'
+                            ? 'bg-[#00594e] text-white shadow-sm'
+                            : 'text-[#475569] hover:bg-slate-100'
+                        )}
+                      >
+                        <FaQrcode className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748b]">Automatización</p>
                     <button
                       type="button"
-                      onClick={() => setAutoRegistrationEnabled((enabled) => !enabled)}
+                      onClick={() => {
+                        if (scanMode === 'face') {
+                          setAutoRegistrationEnabled((enabled) => !enabled);
+                        }
+                      }}
+                      disabled={scannerControlsDisabled || scanMode !== 'face'}
                       aria-pressed={autoRegistrationEnabled}
+                      aria-label={autoRegistrationEnabled ? 'Desactivar registro automático' : 'Activar registro automático'}
+                      title={
+                        scanMode !== 'face'
+                          ? 'Disponible únicamente con reconocimiento facial'
+                          : autoRegistrationEnabled
+                            ? 'Registro automático activado'
+                            : 'Registro automático desactivado'
+                      }
                       className={clsx(
-                        'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                        autoRegistrationEnabled
-                          ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
-                          : 'border-slate-200 bg-white text-[#475569] hover:bg-slate-100'
+                        'inline-flex h-12 w-12 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50',
+                        autoRegistrationEnabled && scanMode === 'face'
+                          ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
+                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
                       )}
                     >
-                      <FiZap className="h-4 w-4" aria-hidden="true" />
-                      {autoRegistrationEnabled ? 'Registro automático activo' : 'Registro automático'}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowTurnstile(true)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-[#0f766e] transition hover:bg-[#0f766e]/10"
-                    aria-label="Controlar talanquera"
-                    title="Controlar talanquera"
-                  >
-                    <FiSettings className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                  <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearFaceFallback();
-                        resetFaceAttempts();
-                        setScanMode('face');
-                        setCameraActive(false);
-                        setFaceCaptureKey((prev) => prev + 1);
-                      }}
-                      className={clsx(
-                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
-                        scanMode === 'face' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
-                      )}
-                    >
-                      <FaUserCircle className="h-4 w-4" />
-                      Rostro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearFaceFallback();
-                        resetFaceAttempts();
-                        setScanMode('qr');
-                        setCameraActive(true);
-                      }}
-                      className={clsx(
-                        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
-                        scanMode === 'qr' ? 'bg-white text-[#0f172a] shadow-sm' : 'text-[#475569] hover:bg-white/80'
-                      )}
-                    >
-                      <FaQrcode className="h-4 w-4" />
-                      QR
+                      <FiZap className="h-5 w-5" aria-hidden="true" />
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    disabled={resetting}
-                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#0f172a] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {resetting ? 'Reiniciando...' : 'Reiniciar'}
-                  </button>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748b]">Herramientas</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowTurnstile(true)}
+                        disabled={scannerControlsDisabled}
+                        aria-label="Controlar talanquera"
+                        title="Controlar talanquera"
+                        className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#0f766e] transition hover:bg-[#0f766e]/5 focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <FiSettings className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        disabled={scannerControlsDisabled}
+                        aria-label={resetting ? 'Reiniciando escáner' : 'Reiniciar escáner'}
+                        title={resetting ? 'Reiniciando escáner' : 'Reiniciar escáner'}
+                        className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#475569] transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <FiRefreshCw className={clsx('h-5 w-5', resetting && 'animate-spin')} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -928,18 +1156,23 @@ const QRScannerPage = () => {
                       Similitud facial: {scanData.score.toFixed(4)}
                     </div>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowConfirmation(true);
-                        setConfirmationError('');
-                      }}
-                      className="inline-flex items-center justify-center rounded-lg border border-[#0f766e]/40 px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
-                    >
-                      Abrir confirmacion
-                    </button>
-                  </div>
+                  {!autoRegistrationEnabled && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          openRegistrationDialog({
+                            kind: REGISTRATION_DIALOG.MANUAL,
+                            direction: movementType,
+                          });
+                          setConfirmationError('');
+                        }}
+                        className="inline-flex items-center justify-center rounded-lg border border-[#0f766e]/40 px-4 py-2 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                      >
+                        Abrir confirmación
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="mt-6 text-sm text-[#475569]">
@@ -1025,131 +1258,175 @@ const QRScannerPage = () => {
         </div>
       </ModalDialog>
 
-      {showConfirmation && scanData?.user && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      {registrationDialog && (isFaceWarningDialog || scanData?.user) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4 sm:px-4 sm:py-6">
           <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => {
-              setShowConfirmation(false);
-              setConfirmationError('');
-            }}
+            className="absolute inset-0 bg-black/45"
+            onClick={isManualDialog ? closeRegistrationDialog : undefined}
           />
-          <div className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white p-6 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => {
-                setShowConfirmation(false);
-                setConfirmationError('');
-              }}
-              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-[#475569] transition hover:bg-slate-200"
-              aria-label="Cerrar confirmacion"
-            >
-              &times;
-            </button>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#0f766e]">Confirmar registro</p>
-                <h3 className="text-2xl font-bold text-[#0f172a]">Selecciona el movimiento</h3>
-                <p className="text-sm text-[#475569]">
-                  Indica si el usuario esta ingresando o saliendo antes de guardar el registro.
+          <div
+            className="relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="registration-dialog-title"
+          >
+            {isManualDialog && (
+              <button
+                type="button"
+                onClick={closeRegistrationDialog}
+                className="absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-lg font-semibold text-[#475569] transition hover:bg-slate-200"
+                aria-label="Cerrar confirmación"
+              >
+                &times;
+              </button>
+            )}
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
+              <header className="pr-10">
+                <p className={clsx('text-xs font-semibold uppercase tracking-[0.28em]', isFaceWarningDialog || isAutoErrorDialog ? 'text-rose-700' : 'text-[#0f766e]')}>
+                  {isManualDialog
+                    ? 'Confirmar registro'
+                    : isAutoSuccessDialog
+                      ? `${dialogDirection === 'entry' ? 'Ingreso' : 'Salida'} registrado correctamente`
+                      : isFaceWarningDialog
+                        ? 'Reconocimiento no válido'
+                        : 'Registro detenido'}
                 </p>
-              </div>
+                <h3 id="registration-dialog-title" className="mt-2 text-2xl font-bold text-[#0f172a]">
+                  {isManualDialog
+                    ? `Confirmar ${dialogDirection === 'entry' ? 'ingreso' : 'salida'}`
+                    : isAutoSuccessDialog
+                      ? 'Registro automático'
+                      : isFaceWarningDialog
+                        ? 'No se pudo confirmar la identidad'
+                        : 'Error en el registro automático'}
+                </h3>
+                <p className="mt-2 text-sm text-[#475569]">
+                  {isManualDialog
+                    ? 'El movimiento se detectó automáticamente según el estado actual del usuario.'
+                    : isAutoSuccessDialog
+                      ? 'El registro se completó sin necesidad de confirmación manual.'
+                      : isFaceWarningDialog
+                        ? 'Revisa el resultado de la validación facial antes del siguiente paso.'
+                        : 'El flujo quedó detenido para evitar registrar un movimiento duplicado o contrario.'}
+                </p>
+              </header>
 
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
-                  Estado actual:
-                  <span className="ml-1 font-semibold capitalize">{scanData.user.estado || 'desconocido'}</span>
-                </span>
-                {scanData?.registro?.horaEntrada && (
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[#0f172a]">
-                    Ultimo movimiento:
-                    <span className="ml-1 font-semibold">{scanData.registro.horaEntrada}</span>
-                  </span>
-                )}
-              </div>
+              {isFaceWarningDialog ? (
+                <>
+                  {typeof dialogScore === 'number' && (
+                    <CompactSimilarity
+                      score={dialogScore}
+                      threshold={dialogThreshold}
+                      expanded={similarityExpanded}
+                      onToggle={() => setSimilarityExpanded((expanded) => !expanded)}
+                    />
+                  )}
 
-              {scanData.scanMethod === 'face' && typeof scanData.score === 'number' && (
-                <FacialSimilarityMeter score={scanData.score} threshold={FACE_MATCH_THRESHOLD} />
-              )}
+                  <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
+                    <FiAlertTriangle className="mt-0.5 h-5 w-5 flex-none" aria-hidden="true" />
+                    <div>
+                      <p className="text-sm font-semibold">{registrationDialog.message}</p>
+                      {typeof dialogScore === 'number' && (
+                        <p className="mt-1 text-xs">Umbral requerido: {dialogThreshold.toFixed(2)}</p>
+                      )}
+                    </div>
+                  </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {MOVEMENT_OPTIONS.map((option) => {
-                  const isSelected = movementType === option.id;
-                  return (
-                    <label
-                      key={option.id}
-                      className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3 transition ${
-                        isSelected ? 'border-[#00594e] bg-[#00594e]/5' : 'border-slate-200 hover:border-[#0f766e]/50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="movement-type"
-                        value={option.id}
-                        checked={isSelected}
-                        onChange={() => setMovementType(option.id)}
-                        className="mt-1"
-                      />
+                  <div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-[#475569]">
+                    <p className="font-semibold text-[#0f172a]">Intento {registrationDialog.attempt || 1} de {FACE_MAX_ATTEMPTS}</p>
+                    <p className="mt-1 text-xs">
+                      {registrationDialog.nextAction === 'qr'
+                        ? 'Se cambiará automáticamente al lector QR.'
+                        : 'La cámara facial se reiniciará para realizar el segundo intento.'}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CompactUserIdentity
+                    user={scanData.user}
+                    expanded={userDetailsExpanded}
+                    onToggle={() => setUserDetailsExpanded((expanded) => !expanded)}
+                  />
+
+                  {scanData.scanMethod === 'face' && typeof dialogScore === 'number' && (
+                    <CompactSimilarity
+                      score={dialogScore}
+                      threshold={dialogThreshold}
+                      expanded={similarityExpanded}
+                      onToggle={() => setSimilarityExpanded((expanded) => !expanded)}
+                    />
+                  )}
+
+                  <MovementSummary direction={dialogDirection} completed={isAutoSuccessDialog} />
+
+                  {isManualDialog && (
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-[#475569]">
                       <div>
-                        <p className="text-sm font-semibold text-[#0f172a]">{option.title}</p>
-                        <p className="text-xs text-[#475569]">{option.description}</p>
+                        <p className="text-sm font-semibold text-[#0f172a]">Observaciones del registro</p>
+                        <p className="mt-1 text-xs">Agrega un comentario opcional para dejar constancia en el historial.</p>
                       </div>
-                    </label>
-                  );
-                })}
-              </div>
+                      <textarea
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
+                        rows={3}
+                        placeholder="Anotación (opcional)"
+                        value={movementNote}
+                        onChange={(event) => setMovementNote(event.target.value)}
+                      />
+                    </div>
+                  )}
 
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-[#f8fafc] p-4 sm:max-h-72">
-                {renderUserDetails(scanData.user)}
-              </div>
+                  {isAutoSuccessDialog && (
+                    <p className="rounded-xl bg-slate-100 px-4 py-3 text-center text-sm font-semibold text-[#475569]">
+                      Preparando la cámara para el siguiente usuario…
+                    </p>
+                  )}
 
-              <div className={clsx('space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-[#475569]')}>
-                <div>
-                  <p className="text-sm font-semibold text-[#0f172a]">Observaciones del registro</p>
-                  <p className="mt-1 text-xs">
-                    Agrega un comentario opcional para dejar constancia en el historial del movimiento.
-                  </p>
-                </div>
-                <textarea
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-[#0f172a] focus:border-[#0f766e] focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40"
-                  rows={3}
-                  placeholder="Anotacion (opcional)"
-                  value={movementNote}
-                  onChange={(event) => setMovementNote(event.target.value)}
-                />
-                <p className="text-[11px] text-[#94a3b8]">
-                  La observacion se almacena junto al registro para futuras referencias.
-                </p>
-              </div>
-
-              {confirmationError && (
-                <div className="rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-4 py-2 text-sm font-semibold text-[#7f1d1d]">
-                  {confirmationError}
-                </div>
+                  {(confirmationError || isAutoErrorDialog) && (
+                    <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
+                      <FiAlertTriangle className="mt-0.5 h-5 w-5 flex-none" aria-hidden="true" />
+                      <p className="text-sm font-semibold">{registrationDialog.message || confirmationError}</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowConfirmation(false);
-                  setConfirmationError('');
-                }}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmMovement}
-                disabled={confirmingMovement}
-                className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
-              >
-                {confirmingMovement ? 'Registrando...' : 'Confirmar registro'}
-              </button>
-            </div>
+            {isManualDialog && (
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+                <button
+                  type="button"
+                  onClick={closeRegistrationDialog}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmMovement()}
+                  disabled={confirmingMovement}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-[#94a3b8]"
+                >
+                  {confirmingMovement
+                    ? 'Registrando...'
+                    : `Confirmar ${dialogDirection === 'entry' ? 'ingreso' : 'salida'}`}
+                </button>
+              </div>
+            )}
+
+            {isAutoErrorDialog && (
+              <div className="flex justify-end border-t border-slate-200 px-5 py-4 sm:px-6">
+                <button
+                  type="button"
+                  onClick={closeRegistrationDialog}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#00594e] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f]"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

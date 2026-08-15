@@ -89,7 +89,7 @@ const DashboardSidebar = ({
     },
     {
       to: '/dashboard/qr',
-      label: 'Escanear QR',
+      label: 'Escanear',
       permissions: ['Administrador', 'Celador'],
       icon: RiQrCodeFill,
     },
