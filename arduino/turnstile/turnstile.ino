@@ -11,6 +11,7 @@ bool barrierOpen = false;
 unsigned long openedAt = 0;
 
 void closeBarrier(const char* reason) {
+
   barrierServo.write(CLOSED_ANGLE);
   barrierOpen = false;
   Serial.print("CLOSED:");
