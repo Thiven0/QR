@@ -27,6 +27,7 @@
     "react-qr-scanner": "^1.0.0-alpha.11",
     "react-router-dom": "^7.1.5",
     "save-dev": "^0.0.1-security",
+    "sonner": "^2.0.7",
     "tailwindcss": "^4.0.4",
     "xlsx": "^0.18.5"
   },

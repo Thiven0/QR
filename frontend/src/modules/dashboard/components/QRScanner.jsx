@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiUserCheck, FiUserPlus } from 'react-icons/fi';
+import { FiLock, FiRefreshCw, FiSettings, FiUnlock, FiUserCheck, FiUserPlus } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
 import QrScanner from 'react-qr-scanner';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import useAuth from '../../auth/hooks/useAuth';
 import { apiRequest, resolveAssetUrl } from '../../../services/apiClient';
+import { closeTurnstile, getTurnstileStatus, openTurnstile } from '../../../services/turnstileApi';
 import ModalDialog from '../../../shared/components/ModalDialog';
 import VisitorRegistrationWorkflow from '../../public/components/VisitorRegistrationWorkflow';
 import FaceCapture from './FaceCapture';
@@ -95,16 +97,6 @@ const renderUserDetails = (user) => {
       </div>
     </div>
   );
-};
-
-const buildFeedbackBox = (feedback) => {
-  if (!feedback) return null;
-  const isSuccess = feedback.type === 'success';
-  const base = 'mt-6 rounded-lg border px-4 py-3 text-sm font-semibold transition';
-  const tone = isSuccess
-    ? 'border-[#0f766e] bg-[#0f766e]/10 text-[#0b5f58]'
-    : 'border-[#b91c1c] bg-[#fee2e2] text-[#7f1d1d]';
-  return <div className={`${base} ${tone}`}>{feedback.message}</div>;
 };
 
 const FACE_MATCH_THRESHOLD = 0.5;
@@ -237,8 +229,6 @@ const QRScannerPage = () => {
   const scannerBeforeVisitorRef = useRef({ resumeQr: false, resumeFace: false });
 
   const [scanData, setScanData] = useState(null);
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [lastRawText, setLastRawText] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -254,11 +244,45 @@ const QRScannerPage = () => {
   const [showVisitorRegistration, setShowVisitorRegistration] = useState(false);
   const [visitorRegistrationBusy, setVisitorRegistrationBusy] = useState(false);
   const [visitorRegistrationDirty, setVisitorRegistrationDirty] = useState(false);
+  const [showTurnstile, setShowTurnstile] = useState(false);
+  const [turnstileStatus, setTurnstileStatus] = useState(null);
+  const [turnstileLoading, setTurnstileLoading] = useState(false);
+
+  const refreshTurnstileStatus = useCallback(async () => {
+    if (!token) return;
+    setTurnstileLoading(true);
+    try {
+      const response = await getTurnstileStatus(token);
+      setTurnstileStatus(response.turnstile || null);
+    } catch (error) {
+      const message = error.details?.message || error.message || 'No se pudo consultar la talanquera.';
+      toast.error(message, { id: 'turnstile-status' });
+    } finally {
+      setTurnstileLoading(false);
+    }
+  }, [token]);
+
+  const handleTurnstileCommand = useCallback(async (command) => {
+    if (!token) return;
+    setTurnstileLoading(true);
+    try {
+      const response = command === 'open' ? await openTurnstile(token) : await closeTurnstile(token);
+      setTurnstileStatus(response.turnstile || null);
+      toast[response.turnstile?.success ? 'success' : 'error'](response.message, { id: 'turnstile-command' });
+    } catch (error) {
+      const message = error.details?.message || error.message || 'No se pudo controlar la talanquera.';
+      toast.error(message, { id: 'turnstile-command' });
+    } finally {
+      setTurnstileLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (showTurnstile) refreshTurnstileStatus();
+  }, [showTurnstile, refreshTurnstileStatus]);
 
   const resetState = () => {
     setScanData(null);
-    setError('');
-    setFeedback(null);
     setProcessing(false);
     setLastRawText('');
     setResetting(false);
@@ -324,19 +348,9 @@ const QRScannerPage = () => {
     closeVisitorRegistration();
   }, [closeVisitorRegistration, visitorRegistrationBusy, visitorRegistrationDirty]);
 
-  const handleVisitorRegistered = useCallback((response) => {
-    setFeedback({
-      type: 'success',
-      message: response?.message || 'Visitante registrado correctamente. Revisa el ticket antes de cerrar.',
-    });
-  }, []);
-
   const restartFaceCapture = useCallback((message) => {
     clearFaceFallback();
-    setFeedback({
-      type: 'error',
-      message,
-    });
+    toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
     setShowConfirmation(false);
     setConfirmationError('');
@@ -346,7 +360,6 @@ const QRScannerPage = () => {
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
       setFaceRetrying(false);
       setFaceRetryMessage('');
-      setError('');
       setFaceCaptureKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
@@ -354,10 +367,7 @@ const QRScannerPage = () => {
 
   const fallbackToQrAfterFaceFailure = useCallback((message) => {
     clearFaceFallback();
-    setFeedback({
-      type: 'error',
-      message,
-    });
+    toast.error(message, { id: 'qr-scanner-result' });
     setScanData(null);
     setShowConfirmation(false);
     setConfirmationError('');
@@ -369,7 +379,6 @@ const QRScannerPage = () => {
       setFaceRetryMessage('');
       setScanMode('qr');
       setCameraActive(true);
-      setError('');
       setScannerKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
     }, FACE_CAMERA_RESTART_DELAY_MS);
@@ -437,6 +446,7 @@ const QRScannerPage = () => {
   }, []);
 
   const setValidatedUser = useCallback((userId, user, message, extra = {}) => {
+    const feedbackMessage = message || 'Usuario validado. Selecciona el movimiento y confirma el registro.';
     setScanData({
       rawText: extra.rawText || '',
       scannedAt: extra.scannedAt || new Date().toISOString(),
@@ -450,10 +460,7 @@ const QRScannerPage = () => {
       faceRecognitionLogId: extra.faceRecognitionLogId || null,
     });
 
-    setFeedback({
-      type: 'success',
-      message: message || 'Usuario validado. Selecciona el movimiento y confirma el registro.',
-    });
+    toast.success(feedbackMessage, { id: 'qr-scanner-result' });
 
     if (!userId) {
       setShowConfirmation(false);
@@ -510,17 +517,12 @@ const QRScannerPage = () => {
     }
 
     if (!token) {
-      setFeedback({
-        type: 'error',
-        message: 'Inicia sesion para procesar el escaneo.',
-      });
+      toast.error('Inicia sesion para procesar el escaneo.', { id: 'qr-scanner-result' });
       return;
     }
 
     setCameraActive(false);
     setProcessing(true);
-    setFeedback(null);
-    setError('');
 
     try {
       const parsedData = await parseScanData(rawText);
@@ -547,10 +549,7 @@ const QRScannerPage = () => {
       const message = scanError.details?.code === 'SCANNED_USER_BLOCKED'
         ? BLOCKED_USER_MESSAGE
         : scanError.details?.message || scanError.message || 'No se pudo procesar el codigo escaneado.';
-      setFeedback({
-        type: 'error',
-        message,
-      });
+      toast.error(message, { id: 'qr-scanner-result' });
       setLastRawText('');
     } finally {
       setProcessing(false);
@@ -559,7 +558,8 @@ const QRScannerPage = () => {
   };
 
   const handleError = () => {
-    setError('No fue posible acceder a la camara.');
+    const message = 'No fue posible acceder a la camara.';
+    toast.error(message, { id: 'qr-scanner-camera' });
   };
 
   const handleFaceResult = (result) => {
@@ -576,17 +576,13 @@ const QRScannerPage = () => {
       setScanData(null);
       setShowConfirmation(false);
       setConfirmationError('');
-      setFeedback({
-        type: 'error',
-        message: BLOCKED_USER_MESSAGE,
-      });
+      toast.error(BLOCKED_USER_MESSAGE, { id: 'qr-scanner-result' });
       return;
     }
 
     clearFaceFallback();
     resetFaceAttempts();
     setFaceIdentified(true);
-    setError('');
     setValidatedUser(result.userId, result.user, 'Usuario identificado por reconocimiento facial.', {
       score: result.score,
       scannedAt: new Date().toISOString(),
@@ -603,10 +599,7 @@ const QRScannerPage = () => {
 
   const handleReset = async () => {
     if (!token) {
-      setFeedback({
-        type: 'error',
-        message: 'Inicia sesion para reiniciar el escaneo.',
-      });
+      toast.error('Inicia sesion para reiniciar el escaneo.', { id: 'qr-scanner-reset' });
       return;
     }
 
@@ -626,17 +619,11 @@ const QRScannerPage = () => {
 
       const message = response?.message || response?.data?.message || 'Datos del escaneo limpiados. Puedes escanear nuevamente.';
 
-      setFeedback({
-        type: 'success',
-        message,
-      });
+      toast.success(message, { id: 'qr-scanner-reset' });
     } catch (resetError) {
       const message =
         resetError.details?.message || resetError.message || 'No se pudo limpiar la informacion del escaneo.';
-      setFeedback({
-        type: 'error',
-        message,
-      });
+      toast.error(message, { id: 'qr-scanner-reset' });
     } finally {
       setResetting(false);
       setProcessing(false);
@@ -646,7 +633,9 @@ const QRScannerPage = () => {
 
   const handleConfirmMovement = async () => {
     if (!token) {
-      setConfirmationError('Inicia sesion para confirmar el registro.');
+      const message = 'Inicia sesion para confirmar el registro.';
+      setConfirmationError(message);
+      toast.error(message, { id: 'qr-scanner-access-registration' });
       return;
     }
     if (!scanData?.userId) {
@@ -686,9 +675,8 @@ const QRScannerPage = () => {
         activeRegistro: null,
       }));
 
-      setFeedback({
-        type: 'success',
-        message: response.message || 'Registro confirmado correctamente.',
+      toast.success(response.message || 'Registro confirmado correctamente.', {
+        id: 'qr-scanner-access-registration',
       });
       setShowConfirmation(false);
       setMovementNote('');
@@ -696,6 +684,7 @@ const QRScannerPage = () => {
       const message =
         confirmError.details?.message || confirmError.message || 'No se pudo confirmar el movimiento del usuario.';
       setConfirmationError(message);
+      toast.error(message, { id: 'qr-scanner-access-registration' });
     } finally {
       setConfirmingMovement(false);
     }
@@ -743,6 +732,15 @@ const QRScannerPage = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowTurnstile(true)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-[#0f766e] transition hover:bg-[#0f766e]/10"
+                    aria-label="Controlar talanquera"
+                    title="Controlar talanquera"
+                  >
+                    <FiSettings className="h-5 w-5" aria-hidden="true" />
+                  </button>
                   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                     <button
                       type="button"
@@ -751,7 +749,6 @@ const QRScannerPage = () => {
                         resetFaceAttempts();
                         setScanMode('face');
                         setCameraActive(false);
-                        setError('');
                         setFaceCaptureKey((prev) => prev + 1);
                       }}
                       className={clsx(
@@ -769,7 +766,6 @@ const QRScannerPage = () => {
                         resetFaceAttempts();
                         setScanMode('qr');
                         setCameraActive(true);
-                        setError('');
                       }}
                       className={clsx(
                         'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition',
@@ -805,7 +801,7 @@ const QRScannerPage = () => {
                           delay={400}
                           onError={handleError}
                           onScan={handleScan}
-                          style={{ width: '100%', height: '100%' }}
+                          style={{ width: '100%', height: '100%', transform: 'scaleX(-1)' }}
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center bg-[#0f172a] text-white/80">
@@ -838,12 +834,6 @@ const QRScannerPage = () => {
                 )}
               </div>
 
-              {error && (
-                <div className="mt-4 rounded-lg border border-[#b91c1c]/40 bg-[#fee2e2] px-4 py-3 text-sm font-semibold text-[#7f1d1d]">
-                  {error}
-                </div>
-              )}
-              {buildFeedbackBox(feedback)}
             </section>
 
             <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -900,10 +890,66 @@ const QRScannerPage = () => {
             presentation="modal"
             onBusyChange={setVisitorRegistrationBusy}
             onDirtyChange={setVisitorRegistrationDirty}
-            onRegistered={handleVisitorRegistered}
             onCloseAfterSuccess={closeVisitorRegistration}
           />
         )}
+      </ModalDialog>
+
+      <ModalDialog
+        isOpen={showTurnstile}
+        title="Talanquera"
+        description="El control manual no altera los registros de ingreso o salida."
+        eyebrow="Control de acceso"
+        onClose={() => setShowTurnstile(false)}
+        closeDisabled={turnstileLoading}
+      >
+        <div className="mx-auto max-w-xl space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">
+                {turnstileStatus?.mode === 'serial' ? 'Arduino conectado' : turnstileStatus?.mode === 'simulated' ? 'Modo simulacion' : 'Talanquera desactivada'}
+              </p>
+              <p className="mt-1 text-xs text-[#475569]">
+                {turnstileStatus?.mode === 'serial'
+                  ? `${turnstileStatus.configuredPort} a ${turnstileStatus.baudRate} baudios`
+                  : turnstileStatus?.fallbackReason || 'No se requiere un Arduino para continuar registrando accesos.'}
+              </p>
+            </div>
+            <span className={clsx('inline-flex h-10 w-10 items-center justify-center rounded-full', turnstileStatus?.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+              {turnstileStatus?.isOpen ? <FiUnlock className="h-5 w-5" /> : <FiLock className="h-5 w-5" />}
+            </span>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div className="border border-slate-200 p-3">
+              <dt className="text-xs text-[#475569]">Estado</dt>
+              <dd className="mt-1 font-semibold text-[#0f172a]">{turnstileStatus?.isOpen ? 'Abierta' : 'Cerrada'}</dd>
+            </div>
+            <div className="border border-slate-200 p-3">
+              <dt className="text-xs text-[#475569]">Conexion</dt>
+              <dd className="mt-1 font-semibold text-[#0f172a]">{turnstileStatus?.connected ? 'Disponible' : 'No disponible'}</dd>
+            </div>
+          </dl>
+
+          <div className="border border-slate-200 bg-white p-3">
+            <p className="text-xs text-[#475569]">Ultima respuesta del Arduino</p>
+            <p className="mt-1 break-all font-mono text-sm font-semibold text-[#0f172a]">
+              {turnstileStatus?.response || 'Sin respuesta recibida'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => handleTurnstileCommand('open')} disabled={turnstileLoading} className="inline-flex items-center gap-2 rounded-lg bg-[#00594e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#00463f] disabled:cursor-not-allowed disabled:bg-slate-400">
+              <FiUnlock className="h-4 w-4" /> Abrir
+            </button>
+            <button type="button" onClick={() => handleTurnstileCommand('close')} disabled={turnstileLoading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+              <FiLock className="h-4 w-4" /> Cerrar
+            </button>
+            <button type="button" onClick={refreshTurnstileStatus} disabled={turnstileLoading} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-[#475569] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Actualizar estado" title="Actualizar estado">
+              <FiRefreshCw className={clsx('h-4 w-4', turnstileLoading && 'animate-spin')} />
+            </button>
+          </div>
+        </div>
       </ModalDialog>
 
       {showConfirmation && scanData?.user && (

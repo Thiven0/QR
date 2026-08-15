@@ -299,17 +299,17 @@ const summarizePointSet = (items, dimension, rejected) => ({
 const buildHtml = ({ source, sourceType, sourceMeta, points, dimension, rejected }) => {
   const summary = summarizePointSet(points, dimension, rejected);
   const legend = buildLegend(points);
-  const scaled = scalePoints(points, 960, 560, {
-    left: 64,
-    right: 28,
-    top: 28,
-    bottom: 52,
+  const scaled = scalePoints(points, 1200, 700, {
+    left: 80,
+    right: 40,
+    top: 40,
+    bottom: 64,
   });
 
   const circles = scaled.items
     .map((point) => {
       const color = colorForCategory(point.category);
-      return `<circle cx="${round(point.sx, 2)}" cy="${round(point.sy, 2)}" r="7" fill="${color}" fill-opacity="0.88" stroke="#ffffff" stroke-width="2">
+      return `<circle cx="${round(point.sx, 2)}" cy="${round(point.sy, 2)}" r="10" fill="${color}" fill-opacity="0.88" stroke="#ffffff" stroke-width="3">
   <title>${escapeHtml(point.label)}\n${escapeHtml(point.category)}\n${escapeHtml(point.subtitle || 'Sin detalle')}\nPCA1=${round(point.x, 4)} | PCA2=${round(point.y, 4)}</title>
 </circle>`;
     })
@@ -363,7 +363,7 @@ const buildHtml = ({ source, sourceType, sourceMeta, points, dimension, rejected
       background: linear-gradient(180deg, #f8fafc 0%, #edf6f4 100%);
       color: var(--text);
     }
-    .page { width: min(1240px, calc(100vw - 32px)); margin: 32px auto; display: grid; gap: 20px; }
+    .page { width: min(1280px, calc(100vw - 32px)); margin: 32px auto; display: grid; gap: 20px; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -380,19 +380,24 @@ const buildHtml = ({ source, sourceType, sourceMeta, points, dimension, rejected
     .stat-value { font-size: 1.35rem; font-weight: 700; }
     .warning { margin-top: 16px; border: 1px solid #e6d5a5; border-radius: 14px; padding: 14px 16px; background: var(--warn-bg); color: var(--warn); }
     .scatter-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(180deg, #ffffff 0%, #f7fbfb 100%); padding: 10px; }
-    svg { display: block; width: 100%; min-width: 900px; height: auto; }
-    .grid-line { stroke: #e5eeee; stroke-width: 1; }
-    .axis { stroke: #94a3b8; stroke-width: 1.4; }
-    .axis-label { fill: #64748b; font-size: 12px; }
-    .layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.7fr); }
-    .legend { display: grid; gap: 10px; }
-    .legend-item { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
-    .swatch { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.55); }
+    svg { display: block; width: 100%; min-width: 1100px; height: auto; }
+    .grid-line { stroke: #e5eeee; stroke-width: 1.5; }
+    .axis { stroke: #94a3b8; stroke-width: 2; }
+    .axis-label { fill: #64748b; font-size: 14px; }
+    .chart-footer { display: flex; gap: 24px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .chart-footer > div { flex: 1; min-width: 200px; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+    .swatch { width: 12px; height: 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.55); flex-shrink: 0; }
+    .source-table { width: 100%; border-collapse: collapse; }
+    .source-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+    .source-table td:first-child { color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .source-table tr:last-child td { border-bottom: none; }
     table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.92rem; vertical-align: top; }
     th { background: #f8fafc; }
     tbody tr:last-child td { border-bottom: none; }
-    @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .chart-footer { flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -410,40 +415,40 @@ const buildHtml = ({ source, sourceType, sourceMeta, points, dimension, rejected
       ${rejectedHtml}
     </section>
 
-    <section class="layout">
-      <section class="card">
-        <h2 style="margin:0 0 6px">Scatter PCA 2D</h2>
-        <p class="muted" style="margin:0 0 18px">Puntos cercanos implican embeddings mas parecidos en el espacio proyectado. Los colores se asignan por categoria.</p>
-        <div class="scatter-wrap">
-          <svg viewBox="0 0 960 560" role="img" aria-label="Mapa 2D de embeddings">
-            <line class="grid-line" x1="64" y1="28" x2="64" y2="508"></line>
-            <line class="grid-line" x1="64" y1="508" x2="932" y2="508"></line>
-            <line class="grid-line" x1="64" y1="268" x2="932" y2="268"></line>
-            <line class="grid-line" x1="498" y1="28" x2="498" y2="508"></line>
-            <line class="axis" x1="64" y1="268" x2="932" y2="268"></line>
-            <line class="axis" x1="498" y1="28" x2="498" y2="508"></line>
-            ${circles}
-            <text class="axis-label" x="64" y="532">PCA1 min ${scaled.minX}</text>
-            <text class="axis-label" x="814" y="532">PCA1 max ${scaled.maxX}</text>
-            <text class="axis-label" x="12" y="34">PCA2 max ${scaled.maxY}</text>
-            <text class="axis-label" x="12" y="506">PCA2 min ${scaled.minY}</text>
-          </svg>
+    <section class="card">
+      <h2 style="margin:0 0 6px">Scatter PCA 2D</h2>
+      <p class="muted" style="margin:0 0 18px">Puntos cercanos implican embeddings mas parecidos en el espacio proyectado. Los colores se asignan por categoria.</p>
+      <div class="scatter-wrap">
+        <svg viewBox="0 0 1200 700" role="img" aria-label="Mapa 2D de embeddings">
+          <line class="grid-line" x1="80" y1="40" x2="80" y2="636"></line>
+          <line class="grid-line" x1="80" y1="636" x2="1160" y2="636"></line>
+          <line class="grid-line" x1="80" y1="338" x2="1160" y2="338"></line>
+          <line class="grid-line" x1="620" y1="40" x2="620" y2="636"></line>
+          <line class="axis" x1="80" y1="338" x2="1160" y2="338"></line>
+          <line class="axis" x1="620" y1="40" x2="620" y2="636"></line>
+          ${circles}
+          <text class="axis-label" x="80" y="660">PCA1 min ${scaled.minX}</text>
+          <text class="axis-label" x="1040" y="660">PCA1 max ${scaled.maxX}</text>
+          <text class="axis-label" x="12" y="44">PCA2 max ${scaled.maxY}</text>
+          <text class="axis-label" x="12" y="636">PCA2 min ${scaled.minY}</text>
+        </svg>
+      </div>
+      <div class="chart-footer">
+        <div>
+          <h3 style="margin:0 0 8px; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.14em; color:var(--muted);">Fuente</h3>
+          <table class="source-table">
+            <tbody>
+              <tr><td>source</td><td>${escapeHtml(source)}</td></tr>
+              <tr><td>sourceType</td><td>${escapeHtml(sourceType || 'unknown')}</td></tr>
+              ${sourceMetaRows}
+            </tbody>
+          </table>
         </div>
-      </section>
-
-      <section class="card">
-        <h2 style="margin:0 0 6px">Fuente y leyenda</h2>
-        <p class="muted" style="margin:0 0 18px">Referencia del origen del mapa y distribucion de puntos por categoria.</p>
-        <table style="margin-bottom:20px">
-          <thead><tr><th>Campo</th><th>Valor</th></tr></thead>
-          <tbody>
-            <tr><td>source</td><td>${escapeHtml(source)}</td></tr>
-            <tr><td>sourceType</td><td>${escapeHtml(sourceType || 'unknown')}</td></tr>
-            ${sourceMetaRows}
-          </tbody>
-        </table>
-        <div class="legend">${legendHtml}</div>
-      </section>
+        <div>
+          <h3 style="margin:0 0 8px; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.14em; color:var(--muted);">Leyenda</h3>
+          <div class="legend">${legendHtml}</div>
+        </div>
+      </div>
     </section>
 
     <section class="card">

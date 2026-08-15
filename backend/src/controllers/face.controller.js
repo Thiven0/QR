@@ -154,6 +154,7 @@ const enrollFace = async (req, res) => {
         userId: String(user._id),
         embeddingDimensions: extraction.embedding_dimensions,
         detectionScore: extraction.detection_score,
+        timings: extraction.timings || {},
         actorId: req.user?.id,
     });
 
@@ -164,6 +165,7 @@ const enrollFace = async (req, res) => {
         user: sanitizeUser(updatedUser),
         embeddingDimensions: extraction.embedding_dimensions,
         detectionScore: extraction.detection_score,
+        timings: extraction.timings || {},
       },
     });
   } catch (error) {
@@ -461,6 +463,7 @@ const extractFaceEmbedding = async (req, res) => {
         embedding: extraction.embedding,
         embeddingDimensions: extraction.embedding_dimensions,
         detectionScore: extraction.detection_score,
+        timings: extraction.timings || {},
       },
     });
   } catch (error) {

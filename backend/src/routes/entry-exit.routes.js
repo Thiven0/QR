@@ -6,6 +6,7 @@ const router = express.Router();
 const PROTECTED_ROLES = ["Administrador", "Celador"];
 
 router.get("/alerts", authMiddleware(PROTECTED_ROLES), RegistroController.listAlertas);
+router.get("/stats", authMiddleware(["Administrador"]), RegistroController.getRegistroStats);
 router.patch(
   "/:id/alert",
   authMiddleware(PROTECTED_ROLES),

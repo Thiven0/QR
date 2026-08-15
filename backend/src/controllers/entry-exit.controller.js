@@ -2,6 +2,10 @@ const Registro = require("../models/entry-exit.model.js");
 const { FaceRecognitionLog } = require("../models/face-recognition-log.model");
 const { User } = require("../models/user.model");
 const { Vehicle } = require("../models/vehicle.model");
+const { getEntryExitStats } = require('../services/entry-exit-stats.service');
+const createLogger = require('../utils/logger');
+
+const turnstileLogger = createLogger('turnstile');
 
 const USER_BLOCKED_CODE = 'USER_BLOCKED';
 const ALERT_STATUSES = {
@@ -167,6 +171,16 @@ const normalizeAlertMetadata = (registroDoc) => {
 const sanitizeString = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const sanitizeCedula = (value) => (typeof value === 'string' ? value.replace(/\D/g, '') : '');
+
+const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const OPEN_REGISTRO_FILTER = {
+  $or: [{ fechaSalida: null }, { fechaSalida: { $exists: false } }],
+};
+
+const CLOSED_REGISTRO_FILTER = {
+  fechaSalida: { $exists: true, $ne: null },
+};
 
 const ensureRegistroPermission = (requester) => {
   if (!requester) {
@@ -594,14 +608,52 @@ exports.getRegistros = async (req, res) => {
     const page = parsePositiveInt(req.query.page, 1);
     const limit = parseQueryLimit(req.query.limit, DEFAULT_REGISTROS_LIMIT, MAX_REGISTROS_LIMIT);
     const skip = (page - 1) * limit;
+    const search = sanitizeString(req.query.search).slice(0, 100);
+    const requestedStatus = sanitizeString(req.query.status).toLowerCase();
+    const status = activeOnly || requestedStatus === 'abiertos'
+      ? 'abiertos'
+      : requestedStatus === 'cerrados'
+        ? 'cerrados'
+        : 'todos';
 
     const filters = {};
+    const filterClauses = [];
     const fechaEntradaFilter = buildFechaEntradaFilter({ from: fromDate, to: toDate, rangeDays });
     if (fechaEntradaFilter) {
       filters.fechaEntrada = fechaEntradaFilter;
     }
-    if (activeOnly) {
-      filters.$or = [{ fechaSalida: null }, { fechaSalida: { $exists: false } }];
+    if (status === 'abiertos') {
+      filterClauses.push(OPEN_REGISTRO_FILTER);
+    } else if (status === 'cerrados') {
+      filterClauses.push(CLOSED_REGISTRO_FILTER);
+    }
+
+    if (search) {
+      const searchTokens = search.split(/\s+/).filter(Boolean).slice(0, 5);
+      const matchingUsers = await User.find({
+        $and: searchTokens.map((token) => {
+          const regex = new RegExp(escapeRegExp(token), 'i');
+          return {
+            $or: [
+              { nombre: regex },
+              { apellido: regex },
+              { email: regex },
+              { cedula: regex },
+            ],
+          };
+        }),
+      }).select('_id').lean();
+      const matchingUserIds = matchingUsers.map((user) => user._id);
+      filterClauses.push({
+        $or: [
+          { usuario: { $in: matchingUserIds } },
+          { administrador: { $in: matchingUserIds } },
+        ],
+      });
+    }
+
+    if (filterClauses.length) {
+      filters.$and = filterClauses;
     }
 
     const query = Registro.find(filters)
@@ -613,7 +665,11 @@ exports.getRegistros = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const [registros, total] = await Promise.all([query.lean(), Registro.countDocuments(filters)]);
+    const [registros, total, openTotal] = await Promise.all([
+      query.lean(),
+      Registro.countDocuments(filters),
+      Registro.countDocuments({ $and: [filters, OPEN_REGISTRO_FILTER] }),
+    ]);
     const data = registros.map((registro) => normalizeAlertMetadata(registro));
     const pagination = {
       page,
@@ -627,11 +683,18 @@ exports.getRegistros = async (req, res) => {
       status: 'success',
       data,
       pagination,
+      summary: {
+        total,
+        open: openTotal,
+        closed: Math.max(0, total - openTotal),
+      },
       filters: {
         rangeDays: rangeDays || null,
         from: fromDate ? fromDate.toISOString() : null,
         to: toDate ? toDate.toISOString() : null,
         activeOnly,
+        search: search || null,
+        status,
       },
     });
   } catch (error) {
@@ -639,6 +702,26 @@ exports.getRegistros = async (req, res) => {
       status: 'error',
       message: "Error al obtener registros",
       error: error.message,
+    });
+  }
+};
+
+exports.getRegistroStats = async (req, res) => {
+  try {
+    const data = await getEntryExitStats({
+      start: req.query.start || req.query.from,
+      end: req.query.end || req.query.to,
+      faculty: req.query.faculty,
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      data,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      status: 'error',
+      message: error.message || 'No fue posible generar las estadisticas de registros.',
     });
   }
 };
@@ -970,6 +1053,36 @@ const handleScanAndUpdateUser = async (req, res) => {
           await faceRecognitionLog.save();
         }
       }
+    }
+
+    if (result.statusCode >= 200 && result.statusCode < 300 && ['entry', 'exit'].includes(result.payload?.action)) {
+      const turnstile = require('../services/turnstile.service');
+      result.payload.turnstile = { requested: true };
+      turnstileLogger.info('Apertura automatica solicitada', {
+        action: result.payload.action,
+        registroId: result.payload.data?._id?.toString(),
+      });
+      turnstile.open().then((turnstileResult) => {
+        if (!turnstileResult.success || turnstileResult.fallbackReason) {
+          turnstileLogger.warn('Apertura automatica sin confirmacion serial', {
+            action: result.payload.action,
+            mode: turnstileResult.mode,
+            response: turnstileResult.response,
+            fallbackReason: turnstileResult.fallbackReason,
+          });
+          return;
+        }
+        turnstileLogger.info('Apertura automatica confirmada por el Arduino', {
+          action: result.payload.action,
+          mode: turnstileResult.mode,
+          response: turnstileResult.response,
+        });
+      }).catch((turnstileError) => {
+        turnstileLogger.warn('Error al solicitar apertura automatica', {
+          action: result.payload.action,
+          error: turnstileError.message,
+        });
+      });
     }
 
     return res.status(result.statusCode).json(result.payload);

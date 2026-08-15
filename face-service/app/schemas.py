@@ -57,9 +57,17 @@ class ProfileRecord(BaseModel):
     created_at: datetime
 
 
+class ExtractionTimings(BaseModel):
+    base64_decode_ms: float
+    image_decode_validation_ms: float
+    face_analysis_ms: float
+    total_ms: float
+
+
 class ExtractEmbeddingResponse(BaseModel):
     success: bool
     embedding: list[float]
     detection_score: float
     embedding_dimensions: int
+    timings: ExtractionTimings
     message: str

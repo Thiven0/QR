@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import QrScanner from 'react-qr-scanner';
+import { toast } from 'sonner';
 import Input from '../../../shared/components/Input';
 import FaceCapture from '../components/FaceCapture';
 import { useForm } from '../../../shared/hooks/useForm';
@@ -68,7 +69,6 @@ const RegisterGuard = () => {
   const { token } = useAuth();
   const audioContextRef = useRef(null);
   const [status, setStatus] = useState('idle');
-  const [message, setMessage] = useState('');
   const [errors, setErrors] = useState({});
   const [qrError, setQrError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
@@ -322,7 +322,7 @@ const RegisterGuard = () => {
       const metadata = response?.data || response;
       setDocumentMetadata(metadata || null);
       applyDocumentMetadata(metadata || {});
-      setMessage('Datos del documento cargados. Verifica y completa los campos restantes antes de guardar.');
+      toast.info('Datos del documento cargados. Verifica y completa los campos restantes antes de guardar.');
       setStatus('success');
     } catch (error) {
       setDocumentMetadata(null);
@@ -432,7 +432,6 @@ const RegisterGuard = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setStatus('loading');
-    setMessage('');
     setErrors({});
     setFaceFeedback('');
 
@@ -444,13 +443,13 @@ const RegisterGuard = () => {
 
     if (faceCaptureStatus === FACE_STATUS.VALIDATION_ERROR) {
       setStatus('error');
-      setMessage('La foto de perfil debe contener un solo rostro visible para generar el embedding facial.');
+      toast.error('La foto de perfil debe contener un solo rostro visible para generar el embedding facial.');
       return;
     }
 
     if (faceCaptureStatus === FACE_STATUS.CHECKING) {
       setStatus('error');
-      setMessage('Espera a que termine la validacion facial antes de registrar el usuario.');
+      toast.warning('Espera a que termine la validacion facial antes de registrar el usuario.');
       return;
     }
 
@@ -479,10 +478,11 @@ const RegisterGuard = () => {
         : response?.warnings?.[0]
           ? ` ${response.warnings[0]}`
           : '';
+      const successMessage = `Usuario registrado correctamente.${generatedPasswordMessage}${faceRegistrationMessage}`;
 
       setFaceCaptureStatus(FACE_STATUS.IDLE);
       setFaceDescriptor([]);
-      setMessage(`Usuario registrado correctamente.${generatedPasswordMessage}${faceRegistrationMessage}`);
+      toast.success(successMessage, { duration: 8000 });
       reset(INITIAL_FORM);
       setDocumentImage('');
       setDocumentMetadata(null);
@@ -497,14 +497,17 @@ const RegisterGuard = () => {
       const apiErrors = error.details?.errors;
       if (apiErrors && typeof apiErrors === 'object') {
         setErrors(apiErrors);
+        if (apiErrors.general) {
+          toast.error(apiErrors.general);
+        }
       } else {
-        setMessage(error.message || 'No fue posible completar el registro');
+        const failureMessage = error.message || 'No fue posible completar el registro';
+        toast.error(failureMessage);
       }
     }
   };
 
   const handleOpenFaceCapture = () => {
-    setMessage('');
     setShowFaceCaptureModal(true);
   };
 
@@ -620,7 +623,7 @@ const RegisterGuard = () => {
       }));
 
       playBeep();
-      setMessage('Datos precargados desde el QR. Verifica y completa antes de guardar.');
+      toast.info('Datos precargados desde el QR. Verifica y completa antes de guardar.');
       setStatus('success');
       setShowScanner(false);
       setScannerKey((prev) => prev + 1);
@@ -698,7 +701,7 @@ const RegisterGuard = () => {
       estado: 'activo',
     }));
 
-    setMessage('Datos de prueba cargados. Solo falta la foto del usuario.');
+    toast.info('Datos de prueba cargados. Solo falta la foto del usuario.');
     setStatus('success');
     setErrors({});
     setScannerError('');
@@ -719,18 +722,6 @@ const RegisterGuard = () => {
         <div className="grid gap-8 lg:grid-cols-[1.45fr_0.9fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="space-y-6">
-              {status === 'success' && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                  {message}
-                </div>
-              )}
-
-              {status === 'error' && message && (
-                <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-                  {message}
-                </div>
-              )}
-
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[
@@ -834,14 +825,14 @@ const RegisterGuard = () => {
 
                   <div>
                     <label className="block space-y-2">
-                      <span className="text-sm font-medium text-[#00594e]">Facultad</span>
+                      <span className="text-sm font-medium text-[#00594e]">Programa</span>
                       <select
                         name="facultad"
                         value={form.facultad}
                         onChange={handleChange}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-[#0f172a] shadow-sm focus:border-[#00594e] focus:outline-none focus:ring-2 focus:ring-[#00594e]/70"
                       >
-                        <option value="">Seleccione una facultad</option>
+                        <option value="">Seleccione un programa</option>
                         {FACULTADES.map((facultad) => (
                           <option key={facultad} value={facultad}>
                             {facultad}
@@ -1120,7 +1111,6 @@ const RegisterGuard = () => {
                   onClick={() => {
                     setShowScanner(true);
                     setScannerError('');
-                    setMessage('');
                     setScannerKey((prev) => prev + 1);
                   }}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00594e]/40 bg-white px-4 py-2 text-xs font-semibold text-[#00594e] transition hover:bg-[#00594e]/10"
@@ -1287,7 +1277,7 @@ const RegisterGuard = () => {
               <QrScanner
                 key={scannerKey}
                 delay={500}
-                style={{ width: '100%' }}
+                style={{ width: '100%', transform: 'scaleX(-1)' }}
                 onError={() => setScannerError('No fue posible acceder a la camara. Revisa los permisos.')}
                 onScan={handleScan}
               />

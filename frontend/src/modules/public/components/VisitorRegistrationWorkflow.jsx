@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
+import { toast } from 'sonner';
 import RegisterForm from '../../dashboard/components/RegisterUserForm';
 import FaceCapture from '../../dashboard/components/FaceCapture';
 import { apiRequest, uploadImageSource } from '../../../services/apiClient';
@@ -466,9 +467,11 @@ const VisitorRegistrationWorkflow = ({
     try {
       qrImage = await generateQrImage(formData);
     } catch {
+      const message = 'No fue posible generar el codigo QR. Verifica los datos e intenta nuevamente.';
       setErrors({
-        general: 'No fue posible generar el codigo QR. Verifica los datos e intenta nuevamente.',
+        general: message,
       });
+      toast.error(message);
       setSubmitting(false);
       return;
     }
@@ -517,6 +520,7 @@ const VisitorRegistrationWorkflow = ({
         data: payload,
       });
 
+      toast.success(response?.message || 'Visita registrada correctamente.');
       setSuccessPayload(response);
       setErrors({});
       setDocumentImage('');
@@ -534,10 +538,15 @@ const VisitorRegistrationWorkflow = ({
       const apiErrors = error.details?.errors;
       if (apiErrors) {
         setErrors(apiErrors);
+        if (apiErrors.general) {
+          toast.error(apiErrors.general);
+        }
       } else {
+        const message = error.message || 'No fue posible completar el registro.';
         setErrors({
-          general: error.message || 'No fue posible completar el registro.',
+          general: message,
         });
+        toast.error(message);
       }
     } finally {
       setSubmitting(false);
@@ -591,19 +600,6 @@ const VisitorRegistrationWorkflow = ({
         <div className="grid gap-8 lg:grid-cols-[1.3fr_0.9fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="space-y-4">
-              {errors.general && (
-                <div className="rounded-lg border border-[#B5A160] bg-[#B5A160]/10 px-4 py-3 text-sm font-semibold text-[#8c7030]">
-                  {errors.general}
-                </div>
-              )}
-
-              {successPayload?.message && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                  {successPayload.message}
-                  {successPayload?.warnings?.[0] ? ` ${successPayload.warnings[0]}` : ''}
-                </div>
-              )}
-
               <RegisterForm
                 key={formKey}
                 onSubmit={handleSubmit}
