@@ -10,6 +10,7 @@ flowchart LR
     API --> Mongo[(MongoDB privado)]
     API --> Face[FastAPI privado]
     API --> Volume[(Volumen uploads)]
+    API --> FaceVolume[(Volumen privado de capturas)]
 ```
 
 Exponga solo frontend y backend. Mantenga MongoDB y face-service en red privada.
@@ -25,7 +26,7 @@ Exponga solo frontend y backend. Mantenga MongoDB y face-service en red privada.
 
 1. Instale dependencias con `npm ci --omit=dev`.
 2. Defina variables y secretos.
-3. Monte volumen persistente en `UPLOAD_DIR`.
+3. Monte volumen persistente en `UPLOAD_DIR` y un volumen privado separado en `FACE_CAPTURE_DIR`.
 4. Ejecute `npm start`.
 5. Configure proxy con body limit superior a 5 MB y timeout compatible con OCR/facial.
 
@@ -63,6 +64,8 @@ No use `*` con datos reales. El frontend debe apuntar al dominio API correcto.
 ## Almacenamiento
 
 Los paths de usuario apuntan a `/uploads/...`. Si el backend es efimero y no monta volumen, las referencias quedaran rotas al redesplegar. Para multiples replicas use almacenamiento compartido o migre a objeto/S3 y adapte `resolveAssetUrl`.
+
+Las capturas de auditoria facial se guardan fuera de `/uploads`, no se sirven estaticamente y se conservan indefinidamente. El volumen de `FACE_CAPTURE_DIR` debe ser compartido entre replicas, cifrado, monitoreado por capacidad e incluido en los respaldos y pruebas de restauracion.
 
 ## Verificacion posterior
 

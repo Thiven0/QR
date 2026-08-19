@@ -4,6 +4,7 @@ import useAuth from '../../auth/hooks/useAuth';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import FacialAuditPanel from '../components/FacialAuditPanel';
 
 const CHART_COLORS = ['#00594e', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#94a3b8', '#b5a160'];
 
@@ -1175,6 +1176,8 @@ const DashboardStats = () => {
             </article>
           </div>
         </section>
+
+        <FacialAuditPanel />
 
         <section className="grid gap-6 xl:grid-cols-2">
           <article className="flex flex-col items-center gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

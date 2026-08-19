@@ -14,8 +14,9 @@ import { Line } from 'react-chartjs-2';
 import { apiRequest } from '../../../services/apiClient';
 import useAuth from '../../auth/hooks/useAuth';
 import { utils as XLSXUtils, writeFile as writeXLSXFile } from 'xlsx';
-import { FiEdit2, FiTrash2, FiPlusCircle, FiAlertTriangle } from 'react-icons/fi';
+import { FiEdit2, FiTrash2, FiPlusCircle, FiAlertTriangle, FiImage } from 'react-icons/fi';
 import { toast } from 'sonner';
+import FaceCaptureViewer from '../components/FaceCaptureViewer';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -75,6 +76,20 @@ const formatScanMethod = (value) => {
   if (normalized === 'face') return 'Reconocimiento facial';
   if (normalized === 'qr') return 'Escaneo QR';
   return 'Registro manual';
+};
+
+const getRegistroFaceCaptures = (registro) => {
+  if (!registro) return [];
+  const entryLog = registro.entryFaceRecognitionLog || registro.faceRecognitionLog;
+  const captures = [];
+  if (entryLog?.hasCapture) {
+    captures.push({ label: 'Entrada', logId: entryLog._id || entryLog.id, createdAt: entryLog.createdAt });
+  }
+  if (registro.exitFaceRecognitionLog?.hasCapture) {
+    const exitLog = registro.exitFaceRecognitionLog;
+    captures.push({ label: 'Salida', logId: exitLog._id || exitLog.id, createdAt: exitLog.createdAt });
+  }
+  return captures;
 };
 
 const formatVehicle = (vehicle) => {
@@ -150,6 +165,7 @@ const RegistroDirectory = () => {
   });
   const [summary, setSummary] = useState({ total: 0, open: 0, closed: 0 });
   const [selected, setSelected] = useState(null);
+  const [captureViewer, setCaptureViewer] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1430,6 +1446,19 @@ const RegistroDirectory = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {renderStatusBadge(selected)}
+            {getRegistroFaceCaptures(selected).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCaptureViewer({
+                  title: `Capturas de ${`${selected.usuario?.nombre || ''} ${selected.usuario?.apellido || ''}`.trim() || 'usuario'}`,
+                  captures: getRegistroFaceCaptures(selected),
+                })}
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#0f766e]/40 bg-white px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#ecfdf5]"
+              >
+                <FiImage className="h-3.5 w-3.5" />
+                Ver capturas ({getRegistroFaceCaptures(selected).length})
+              </button>
+            )}
             {selected && (
               <button
                 type="button"
@@ -1524,6 +1553,12 @@ const RegistroDirectory = () => {
                   <span className="font-semibold">Metodo de ingreso:</span>{' '}
                   {formatScanMethod(selected.scanMethod)}
                 </p>
+                {selected.fechaSalida && (
+                  <p className="mt-1">
+                    <span className="font-semibold">Metodo de salida:</span>{' '}
+                    {formatScanMethod(selected.exitScanMethod)}
+                  </p>
+                )}
                 {selected.faceRecognitionLog && (
                   <div className="mt-3 rounded-lg border border-[#0f766e]/15 bg-white/80 p-3 text-xs text-[#0f172a]">
                     <p>
@@ -1574,6 +1609,12 @@ const RegistroDirectory = () => {
           </div>
         </div>
       )}
+      <FaceCaptureViewer
+        isOpen={Boolean(captureViewer)}
+        captures={captureViewer?.captures || []}
+        title={captureViewer?.title || 'Capturas del registro'}
+        onClose={() => setCaptureViewer(null)}
+      />
     </div>
   );
 };

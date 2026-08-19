@@ -277,6 +277,9 @@ const buildManualRegistroPayload = async (payload = {}, requester) => {
     duracionSesion: exitDate ? formatDuration(entryDate, exitDate) : undefined,
     scanMethod: 'manual',
     faceRecognitionLog: null,
+    entryFaceRecognitionLog: null,
+    exitFaceRecognitionLog: null,
+    exitScanMethod: exitDate ? 'manual' : null,
     cierreForzado: Boolean(payload.cierreForzado),
     cierreMotivo: sanitizeString(payload.cierreMotivo) || undefined,
     observaciones: sanitizeString(payload.observaciones) || undefined,
@@ -374,7 +377,9 @@ const populateRegistroForResponse = async (registro) => {
     { path: 'usuario', select: 'nombre apellido email cedula permisoSistema estado rolAcademico telefono' },
     { path: 'administrador', select: 'nombre apellido email permisoSistema' },
     { path: 'vehiculo', select: 'type brand model color plate estado notes' },
-    { path: 'faceRecognitionLog', select: 'status match score threshold detectionScore comparedProfiles errorMessage createdAt updatedAt' },
+    { path: 'faceRecognitionLog', select: 'status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt' },
+    { path: 'entryFaceRecognitionLog', select: 'status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt' },
+    { path: 'exitFaceRecognitionLog', select: 'status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt' },
   ]);
 
   return registro;
@@ -534,6 +539,9 @@ const procesarTransicionDeUsuario = async ({ user, adminId, direction, vehicleId
     vehiculo: vehicle ? vehicle._id : undefined,
     scanMethod: 'manual',
     faceRecognitionLog: null,
+    entryFaceRecognitionLog: null,
+    exitFaceRecognitionLog: null,
+    exitScanMethod: null,
     cierreForzado: false,
     cierreMotivo: undefined,
     alertStatus: ALERT_STATUSES.NONE,
@@ -660,7 +668,9 @@ exports.getRegistros = async (req, res) => {
       .populate("usuario", "nombre apellido email cedula permisoSistema estado rolAcademico telefono")
       .populate("administrador", "nombre apellido email permisoSistema")
       .populate("vehiculo", "type brand model color plate estado")
-      .populate("faceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage createdAt updatedAt")
+      .populate("faceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt")
+      .populate("entryFaceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt")
+      .populate("exitFaceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt")
       .sort({ fechaEntrada: -1 })
       .skip(skip)
       .limit(limit);
@@ -741,7 +751,9 @@ exports.getRegistroById = async (req, res) => {
       .populate("usuario", "nombre apellido email cedula permisoSistema estado rolAcademico telefono")
       .populate("administrador", "nombre apellido email permisoSistema")
       .populate("vehiculo", "type brand model color plate estado")
-      .populate("faceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage createdAt updatedAt");
+      .populate("faceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt")
+      .populate("entryFaceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt")
+      .populate("exitFaceRecognitionLog", "status match score threshold detectionScore comparedProfiles errorMessage hasCapture createdAt updatedAt");
 
     if (!registro) {
       return res.status(404).json({
@@ -1030,6 +1042,24 @@ const handleScanAndUpdateUser = async (req, res) => {
           message: 'No se encontro el log de reconocimiento facial asociado al escaneo.',
         });
       }
+      if (faceRecognitionLog.status !== 'matched' || String(faceRecognitionLog.matchedUser || '') !== String(user._id)) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'El intento facial no corresponde al usuario identificado.',
+        });
+      }
+      if (String(faceRecognitionLog.actor || '') !== String(adminId)) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'El intento facial pertenece a otra sesion de porteria.',
+        });
+      }
+      if (faceRecognitionLog.registro) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'Este intento facial ya fue utilizado en otro registro.',
+        });
+      }
     }
 
     const result = await procesarTransicionDeUsuario({
@@ -1039,19 +1069,26 @@ const handleScanAndUpdateUser = async (req, res) => {
       exitObservation: exitObservationRaw || undefined,
     });
 
-    if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.data && result.payload.action === 'entry') {
+    if (result.statusCode >= 200 && result.statusCode < 300 && result.payload?.data && ['entry', 'exit'].includes(result.payload.action)) {
       const registro = await Registro.findById(result.payload.data._id);
       if (registro) {
-        registro.scanMethod = scanMethod;
-        registro.faceRecognitionLog = scanMethod === 'face' ? faceRecognitionLog?._id || null : null;
+        if (result.payload.action === 'entry') {
+          registro.scanMethod = scanMethod;
+          registro.faceRecognitionLog = scanMethod === 'face' ? faceRecognitionLog?._id || null : null;
+          registro.entryFaceRecognitionLog = scanMethod === 'face' ? faceRecognitionLog?._id || null : null;
+        } else {
+          registro.exitScanMethod = scanMethod;
+          registro.exitFaceRecognitionLog = scanMethod === 'face' ? faceRecognitionLog?._id || null : null;
+        }
         await registro.save();
-        await populateRegistroForResponse(registro);
-        result.payload.data = normalizeAlertMetadata(registro);
 
-        if (scanMethod === 'face' && faceRecognitionLog && !faceRecognitionLog.registro) {
+        if (scanMethod === 'face' && faceRecognitionLog) {
           faceRecognitionLog.registro = registro._id;
           await faceRecognitionLog.save();
         }
+
+        await populateRegistroForResponse(registro);
+        result.payload.data = normalizeAlertMetadata(registro);
       }
     }
 

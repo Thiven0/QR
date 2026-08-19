@@ -99,6 +99,26 @@ export const apiRequest = async (path, { method = 'GET', data, token, headers = 
   return payload;
 };
 
+export const apiBlobRequest = async (path, { token, signal } = {}) => {
+  const headers = {};
+  if (token) headers.Authorization = 'Bearer ' + token;
+
+  const response = await fetch(buildApiUrl(path), { headers, signal });
+  if (!response.ok) {
+    const payload = await parseResponse(response);
+    const error = payload && typeof payload === 'object' ? payload : { message: String(payload || 'Error en la solicitud') };
+    if (error.code === 'USER_BLOCKED') {
+      emitForceLogout({ reason: 'USER_BLOCKED', message: error.message });
+    }
+    throw Object.assign(new Error(error.message || 'No fue posible cargar el archivo'), {
+      status: response.status,
+      details: error,
+    });
+  }
+
+  return response.blob();
+};
+
 export const getApiUrl = (path = '') => buildApiUrl(path);
 
 export const resolveAssetUrl = (value) => {

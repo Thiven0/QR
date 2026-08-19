@@ -5,6 +5,7 @@ import GuardLogin from '../modules/auth/pages/GuardLogin';
 import DashboardLayout from '../modules/dashboard/layouts/DashboardLayout';
 import DashboardOverview from '../modules/dashboard/pages/DashboardOverview';
 import DashboardStats from '../modules/dashboard/pages/DashboardStats';
+import FaceAuditPage from '../modules/dashboard/pages/FaceAuditPage';
 import QRScannerPage from '../modules/dashboard/components/QRScanner';
 import RegisterUser from '../modules/dashboard/pages/RegisterUser';
 import RegisterGuard from '../modules/dashboard/pages/RegisterGuard';
@@ -24,6 +25,11 @@ const DashboardHome = () => {
     return <DashboardOverview />;
   }
   return <Navigate to="/dashboard/profile" replace />;
+};
+
+const StatisticsHome = () => {
+  const { hasPermission } = useAuth();
+  return hasPermission(['Administrador']) ? <DashboardStats /> : <FaceAuditPage />;
 };
 
 export const Routing = () => {
@@ -56,8 +62,8 @@ export const Routing = () => {
             <Route
               path="statistics"
               element={
-                <ProtectedRoute allowed={['Administrador']}>
-                  <DashboardStats />
+                <ProtectedRoute allowed={['Administrador', 'Celador']}>
+                  <StatisticsHome />
                 </ProtectedRoute>
               }
             />

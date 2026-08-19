@@ -1,6 +1,9 @@
 const { User } = require("../models/user.model");
 const { FaceRecognitionLog } = require("../models/face-recognition-log.model");
 const { extractEmbedding } = require("../services/face.service");
+const fs = require("fs");
+const mongoose = require("mongoose");
+const { saveFaceCapture, resolveFaceCapturePath } = require("../utils/face-captures");
 const createLogger = require("../utils/logger");
 
 const logger = createLogger("face-controller");
@@ -88,6 +91,74 @@ const createFaceRecognitionLog = async (payload) => {
     return null;
   }
 };
+
+const storeAuditCapture = async (captureImage, image) => {
+  try {
+    return await saveFaceCapture(captureImage || image);
+  } catch (error) {
+    if (captureImage && captureImage !== image) {
+      try {
+        const fallbackCapture = await saveFaceCapture(image);
+        return {
+          ...fallbackCapture,
+          captureStorageError: `No se pudo usar la copia comprimida: ${error.message}`,
+        };
+      } catch (fallbackError) {
+        logger.warn("No fue posible guardar la captura facial privada", {
+          error: error.message,
+          fallbackError: fallbackError.message,
+        });
+        return {
+          captureFileName: null,
+          hasCapture: false,
+          captureMimeType: null,
+          captureSize: null,
+          captureStoredAt: null,
+          captureStorageError: fallbackError.message || error.message || "No fue posible guardar la captura facial",
+        };
+      }
+    }
+    logger.warn("No fue posible guardar la captura facial privada", { error: error.message });
+    return {
+      captureFileName: null,
+      hasCapture: false,
+      captureMimeType: null,
+      captureSize: null,
+      captureStoredAt: null,
+      captureStorageError: error.message || "No fue posible guardar la captura facial",
+    };
+  }
+};
+
+const serializeFaceAttempt = (attempt) => ({
+  id: String(attempt._id),
+  createdAt: attempt.createdAt,
+  status: attempt.status,
+  match: attempt.match,
+  score: Number.isFinite(attempt.score) ? Number(attempt.score.toFixed(4)) : null,
+  threshold: attempt.threshold,
+  detectionScore: Number.isFinite(attempt.detectionScore) ? Number(attempt.detectionScore.toFixed(4)) : null,
+  comparedProfiles: attempt.comparedProfiles,
+  errorMessage: attempt.errorMessage,
+  captureStorageError: attempt.captureStorageError ? "No fue posible guardar la copia comprimida esperada" : null,
+  hasCapture: Boolean(attempt.hasCapture || attempt.captureFileName),
+  matchedUser: attempt.matchedUser
+    ? {
+        id: String(attempt.matchedUser._id),
+        nombre: [attempt.matchedUser.nombre, attempt.matchedUser.apellido].filter(Boolean).join(" ").trim(),
+        cedula: attempt.matchedUser.cedula || "",
+        facultad: attempt.matchedUser.facultad || "Sin facultad",
+        rolAcademico: attempt.matchedUser.rolAcademico || "Sin rol",
+      }
+    : null,
+  actor: attempt.actor
+    ? {
+        id: String(attempt.actor._id),
+        nombre: [attempt.actor.nombre, attempt.actor.apellido].filter(Boolean).join(" ").trim(),
+        permisoSistema: attempt.actor.permisoSistema || "Sin permiso",
+      }
+    : null,
+});
 
 const buildScoreBands = (attempts = []) => {
   const bands = [
@@ -178,14 +249,17 @@ const enrollFace = async (req, res) => {
 };
 
 const identifyFace = async (req, res) => {
+  let captureMetadata = null;
   try {
-    const { image } = req.body || {};
+    const { image, captureImage } = req.body || {};
     if (!image || !String(image).trim()) {
       return res.status(400).json({
         status: "error",
         message: "image es obligatoria",
       });
     }
+
+    captureMetadata = await storeAuditCapture(captureImage, image);
 
     const extraction = await extractEmbedding(String(image).trim());
     const users = await User.find({ faceRegistered: true, faceDescriptor: { $exists: true, $ne: [] } })
@@ -202,6 +276,7 @@ const identifyFace = async (req, res) => {
         detectionScore: extraction.detection_score ?? null,
         comparedProfiles: 0,
         errorMessage: null,
+        ...captureMetadata,
       });
 
       logger.warn("Intento de identificacion sin perfiles enrolados", {
@@ -245,6 +320,7 @@ const identifyFace = async (req, res) => {
       detectionScore: extraction.detection_score ?? null,
       comparedProfiles: users.length,
       errorMessage: null,
+      ...captureMetadata,
     });
 
     logger.info("Resultado de identificacion facial", {
@@ -282,6 +358,7 @@ const identifyFace = async (req, res) => {
         detectionScore: null,
         comparedProfiles: 0,
         errorMessage: error.message || "No fue posible identificar el rostro",
+        ...(captureMetadata || (await storeAuditCapture(req.body?.captureImage, req.body?.image))),
       });
     }
 
@@ -290,6 +367,85 @@ const identifyFace = async (req, res) => {
       message: error.message || "No fue posible identificar el rostro",
       details: error.payload,
     });
+  }
+};
+
+const getFaceLogs = async (req, res) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query?.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query?.limit, 10) || 20));
+    const startDate = getStartOfDay(req.query?.start);
+    const endDate = getEndOfDay(req.query?.end);
+    const status = String(req.query?.status || "").trim().toLowerCase();
+    const query = {};
+
+    if (status && !["matched", "unmatched", "error"].includes(status)) {
+      return res.status(400).json({ status: "error", message: "El estado facial no es valido" });
+    }
+    if (status) query.status = status;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = startDate;
+      if (endDate) query.createdAt.$lte = endDate;
+    }
+
+    const [attempts, total] = await Promise.all([
+      FaceRecognitionLog.find(query)
+        .select("+captureFileName")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("matchedUser", "nombre apellido cedula facultad rolAcademico")
+        .populate("actor", "nombre apellido permisoSistema"),
+      FaceRecognitionLog.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        items: attempts.map(serializeFaceAttempt),
+        pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message || "No fue posible obtener la auditoria facial" });
+  }
+};
+
+const getFaceLogCapture = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ status: "error", message: "El identificador del intento facial no es valido" });
+    }
+
+    const attempt = await FaceRecognitionLog.findById(req.params.id).select("+captureFileName captureMimeType captureSize");
+    if (!attempt) {
+      return res.status(404).json({ status: "error", message: "Intento facial no encontrado" });
+    }
+    if (!attempt.captureFileName) {
+      return res.status(404).json({ status: "error", message: "Este intento no tiene una captura disponible" });
+    }
+
+    const capturePath = resolveFaceCapturePath(attempt.captureFileName);
+    const stat = await fs.promises.stat(capturePath);
+    if (!stat.isFile()) {
+      return res.status(404).json({ status: "error", message: "La captura facial no esta disponible" });
+    }
+
+    res.set({
+      "Content-Type": attempt.captureMimeType || "image/jpeg",
+      "Content-Length": stat.size,
+      "Cache-Control": "private, no-store, max-age=0",
+      Pragma: "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Disposition": `inline; filename="captura-facial-${attempt._id}.jpg"`,
+    });
+    return fs.createReadStream(capturePath).pipe(res);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return res.status(404).json({ status: "error", message: "La captura facial no esta disponible" });
+    }
+    return res.status(500).json({ status: "error", message: error.message || "No fue posible recuperar la captura facial" });
   }
 };
 
@@ -479,5 +635,7 @@ module.exports = {
   enrollFace,
   identifyFace,
   getFaceStats,
+  getFaceLogs,
+  getFaceLogCapture,
   extractFaceEmbedding,
 };

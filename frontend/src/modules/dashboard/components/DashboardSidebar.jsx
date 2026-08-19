@@ -108,7 +108,7 @@ const DashboardSidebar = ({
     {
       to: '/dashboard/statistics',
       label: 'Estadisticas',
-      permissions: ['Administrador'],
+      permissions: ['Administrador', 'Celador'],
       icon: IoMdAnalytics,
     },
     {

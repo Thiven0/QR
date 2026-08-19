@@ -25,6 +25,21 @@ const RegistroSchema = new Schema(
       ref: "FaceRecognitionLog",
       default: null,
     },
+    entryFaceRecognitionLog: {
+      type: Schema.Types.ObjectId,
+      ref: "FaceRecognitionLog",
+      default: null,
+    },
+    exitFaceRecognitionLog: {
+      type: Schema.Types.ObjectId,
+      ref: "FaceRecognitionLog",
+      default: null,
+    },
+    exitScanMethod: {
+      type: String,
+      enum: ["manual", "qr", "face"],
+      default: null,
+    },
     cierreForzado: { type: Boolean, default: false },
     cierreMotivo: { type: String, trim: true },
     observaciones: { type: String, trim: true },

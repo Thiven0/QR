@@ -20,6 +20,12 @@ const faceRecognitionLogSchema = new Schema(
     detectionScore: { type: Number, default: null },
     comparedProfiles: { type: Number, default: 0 },
     errorMessage: { type: String, trim: true, default: null },
+    captureFileName: { type: String, trim: true, default: null, select: false },
+    hasCapture: { type: Boolean, default: false },
+    captureMimeType: { type: String, trim: true, default: null },
+    captureSize: { type: Number, default: null },
+    captureStoredAt: { type: Date, default: null },
+    captureStorageError: { type: String, trim: true, default: null },
     registro: { type: Schema.Types.ObjectId, ref: "Registro", default: null },
   },
   { timestamps: true }

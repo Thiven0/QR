@@ -21,6 +21,7 @@
 - CORS configurable.
 - Paths de uploads aleatorios.
 - Indices y referencias para auditoria facial.
+- Capturas faciales fuera del directorio publico, con lectura autenticada para Administrador y Celador y cabeceras `no-store`.
 
 ## Riesgos conocidos
 
@@ -28,7 +29,7 @@
 - Uploads y OCR/registro visitante son publicos y no tienen rate limiting.
 - JWT se almacena en `localStorage`, expuesto ante XSS.
 - Uploads locales no cifran ni autentican lectura.
-- No hay politica automatica de retencion para biometria/documentos.
+- Las capturas de auditoria facial se conservan indefinidamente por decision operativa; esto exige capacidad, respaldos y una revision legal periodica de la retencion.
 - `face/stats` puede cargar muchos logs en memoria.
 - No hay auditoria inmutable de acciones administrativas.
 - No hay historial de tickets expirados por TTL.

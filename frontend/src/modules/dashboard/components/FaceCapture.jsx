@@ -24,6 +24,9 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, e
       setCameraError('');
 
       const image = captureImage();
+      const captureImageAudit = mode === 'identify'
+        ? captureImage({ maxWidth: 640, quality: 0.75, mimeType: 'image/jpeg' })
+        : null;
 
       if (mode === 'capture') {
         onResult?.({ image });
@@ -37,7 +40,7 @@ const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, e
       const response = await apiRequest(mode === 'identify' ? '/face/identify' : '/face/enroll', {
         method: 'POST',
         token,
-        data: mode === 'identify' ? { image } : { userId, image, ...(enrollOptions || {}) },
+        data: mode === 'identify' ? { image, captureImage: captureImageAudit } : { userId, image, ...(enrollOptions || {}) },
       });
 
       const data = response?.data || response;

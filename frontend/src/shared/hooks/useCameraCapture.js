@@ -69,15 +69,18 @@ export const useCameraCapture = ({ autoOpen = true } = {}) => {
     return openCamera();
   }, [openCamera]);
 
-  const captureImage = useCallback(() => {
+  const captureImage = useCallback(({ maxWidth, quality = 0.95, mimeType = 'image/jpeg' } = {}) => {
     if (!videoRef.current) {
       throw new Error('No encontramos video disponible para capturar.');
     }
 
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 960;
-    canvas.height = video.videoHeight || 720;
+    const sourceWidth = video.videoWidth || 960;
+    const sourceHeight = video.videoHeight || 720;
+    const scale = maxWidth && sourceWidth > maxWidth ? maxWidth / sourceWidth : 1;
+    canvas.width = Math.round(sourceWidth * scale);
+    canvas.height = Math.round(sourceHeight * scale);
     const context = canvas.getContext('2d');
 
     if (!context) {
@@ -85,7 +88,7 @@ export const useCameraCapture = ({ autoOpen = true } = {}) => {
     }
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.95);
+    return canvas.toDataURL(mimeType, quality);
   }, []);
 
   useEffect(() => {

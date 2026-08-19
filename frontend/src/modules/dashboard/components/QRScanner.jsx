@@ -206,34 +206,34 @@ const CompactUserIdentity = ({ user, expanded, onToggle }) => {
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-4 p-4 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#0f766e]/40"
+        className="block w-full text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#0f766e]/40"
       >
-        {user.imagen ? (
-          <img
-            src={resolveAssetUrl(user.imagen)}
-            alt={`Foto de ${fullName}`}
-            className="h-16 w-16 flex-none rounded-full border border-slate-200 object-cover shadow-sm"
-          />
-        ) : (
-          <span className="flex h-16 w-16 flex-none items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <FaUserCircle className="h-10 w-10" aria-hidden="true" />
+        <span className="grid md:grid-cols-2">
+          <span className="block min-h-52 overflow-hidden bg-slate-100 md:min-h-56">
+            {user.imagen ? (
+              <img
+                src={resolveAssetUrl(user.imagen)}
+                alt={`Foto de ${fullName}`}
+                className="h-52 w-full object-cover md:h-56"
+              />
+            ) : (
+              <span className="flex h-52 w-full items-center justify-center text-slate-400 md:h-56">
+                <FaUserCircle className="h-24 w-24" aria-hidden="true" />
+              </span>
+            )}
           </span>
-        )}
-
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-base font-bold text-[#0f172a]">{fullName}</span>
-          <span className="mt-1 block text-sm text-[#475569]">CC {user.cedula || 'Sin cédula'}</span>
-          <span className="mt-0.5 block truncate text-sm text-[#475569]">{user.facultad || 'Sin facultad registrada'}</span>
-          <span className="mt-2 block text-xs font-semibold text-[#0f766e]">
-            {expanded ? 'Ocultar información completa' : 'Ver información completa'}
+          <span className="flex min-w-0 items-center p-5 sm:p-6">
+            <span className="min-w-0 flex-1">
+              <span className="block text-lg font-bold leading-tight text-[#0f172a]">{fullName}</span>
+              <span className="mt-3 block text-sm font-medium text-[#475569]">CC {user.cedula || 'Sin cédula'}</span>
+              <span className="mt-1 block text-sm text-[#475569]">{user.facultad || 'Sin facultad registrada'}</span>
+              <span className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#0f766e]">
+                {expanded ? 'Ocultar información completa' : 'Ver información completa'}
+                {expanded ? <FiChevronUp className="h-5 w-5" aria-hidden="true" /> : <FiChevronDown className="h-5 w-5" aria-hidden="true" />}
+              </span>
+            </span>
           </span>
         </span>
-
-        {expanded ? (
-          <FiChevronUp className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
-        ) : (
-          <FiChevronDown className="h-5 w-5 flex-none text-[#0f766e]" aria-hidden="true" />
-        )}
       </button>
 
       {expanded && <div className="border-t border-slate-200 p-3">{renderUserDetails(user)}</div>}

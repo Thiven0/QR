@@ -27,6 +27,8 @@ Archivo canonico: `backend/.env.example`.
 | `FACE_SERVICE_URL` | `http://127.0.0.1:8000` | URL base de FastAPI. |
 | `FACE_SERVICE_TIMEOUT_MS` | `30000` | Timeout de Node hacia FastAPI. |
 | `FACE_MATCH_THRESHOLD` | `0.5` | Umbral de similitud coseno: acepta si `score >= threshold`. |
+| `FACE_CAPTURE_DIR` | `backend/private/face-captures` | Volumen privado y persistente para las capturas de auditoria facial. Las rutas relativas se resuelven desde `backend`. |
+| `FACE_CAPTURE_MAX_BYTES` | `5242880` | Tamano maximo decodificado de cada captura privada. |
 
 El umbral de matching pertenece al backend. `FACE_THRESHOLD` del face-service no interviene en `/extract-embedding`.
 
@@ -97,5 +99,6 @@ Archivo canonico: `face-service/.env.example`.
 - Genere secretos aleatorios y diferentes por entorno.
 - Restrinja CORS al dominio del frontend.
 - Monte `UPLOAD_DIR` en almacenamiento persistente.
+- Monte `FACE_CAPTURE_DIR` como volumen privado persistente e incluyalo en los respaldos; las capturas no tienen expiracion automatica.
 - No exponga directamente MongoDB ni el face-service a Internet si solo los consume el backend.
 - Defina limites y timeouts en el proxy inverso compatibles con imagenes de hasta 5 MB.
