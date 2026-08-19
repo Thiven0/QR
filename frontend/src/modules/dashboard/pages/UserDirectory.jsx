@@ -420,6 +420,8 @@ const UserDirectory = () => {
     Boolean(viewDocumentData.apellidos) ||
     Boolean(viewDocumentBirthDate) ||
     Boolean(viewDocumentConsentAt);
+  const isViewVisitor = (viewUser?.rolAcademico || '').toLowerCase() === 'visitante';
+  const hasViewSecondaryContent = isViewVisitor || hasViewDocumentInfo;
 
   const updateUserCollections = useCallback((updatedUser) => {
     if (!updatedUser?._id) return;
@@ -1370,8 +1372,13 @@ const UserDirectory = () => {
                   {faceFeedback.message}
                 </div>
               )}
-              <div className="mt-4 grid gap-6 lg:grid-cols-[1.25fr_0.85fr]">
-                <div className="space-y-4">
+              <div
+                className={clsx(
+                  'mt-4 gap-6',
+                  hasViewSecondaryContent ? 'grid lg:grid-cols-[1.25fr_0.85fr]' : 'flex justify-center'
+                )}
+              >
+                <div className={clsx('space-y-4', !hasViewSecondaryContent && 'w-full max-w-lg')}>
                   <div ref={profileCardRef}>
                     <ProfileCard
                       user={viewUser}
@@ -1379,7 +1386,7 @@ const UserDirectory = () => {
                       onImageClick={(src, alt) => openImagePreview(src || viewUser?.imagen, alt)}
                       onQrClick={(src, alt) => openImagePreview(src, alt)}
                     />
-                </div>
+                  </div>
                   <button
                     type="button"
                     onClick={handleDownloadCard}
@@ -1389,32 +1396,33 @@ const UserDirectory = () => {
                     {downloadingCard ? 'Generando carnet...' : 'Descargar carnet'}
                   </button>
                 </div>
-                <div className="space-y-4">
-                  {(viewUser.rolAcademico || '').toLowerCase() === 'visitante' && (() => {
-                    const visitorInfo = formatVisitorTicketInfo(viewUser.visitorTicket);
-                    const canReactivateVisitor = visitorInfo.status !== 'active';
-                    return (
-                      <div className="rounded-2xl border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 p-4 text-sm text-[#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
-                        <p className="mt-1 text-xs">{visitorInfo.description || 'Sin ticket activo'}</p>
-                        {visitorInfo.token && (
-                          <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">Token: {visitorInfo.token}</p>
-                        )}
-                        {canReactivateVisitor && (
-                          <button
-                            type="button"
-                            onClick={() => handleReactivateTicket(viewUser._id)}
-                            disabled={reactivatingId === viewUser._id}
-                            className="mt-3 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {reactivatingId === viewUser._id ? 'Reactivando...' : 'Reactivar ticket'}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
-                  {hasViewDocumentInfo && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-[#0f172a]">
+                {hasViewSecondaryContent && (
+                  <div className="space-y-4">
+                    {isViewVisitor && (() => {
+                      const visitorInfo = formatVisitorTicketInfo(viewUser.visitorTicket);
+                      const canReactivateVisitor = visitorInfo.status !== 'active';
+                      return (
+                        <div className="rounded-2xl border border-dashed border-[#0f766e]/40 bg-[#0f766e]/5 p-4 text-sm text-[#0f172a]">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Ticket temporal</p>
+                          <p className="mt-1 text-xs">{visitorInfo.description || 'Sin ticket activo'}</p>
+                          {visitorInfo.token && (
+                            <p className="mt-1 break-all text-[11px] text-[#0f172a]/70">Token: {visitorInfo.token}</p>
+                          )}
+                          {canReactivateVisitor && (
+                            <button
+                              type="button"
+                              onClick={() => handleReactivateTicket(viewUser._id)}
+                              disabled={reactivatingId === viewUser._id}
+                              className="mt-3 inline-flex items-center rounded-md border border-[#0f766e]/40 px-3 py-1 text-xs font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/10 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {reactivatingId === viewUser._id ? 'Reactivando...' : 'Reactivar ticket'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {hasViewDocumentInfo && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-[#0f172a]">
                       <p className="text-xs font-semibold uppercase tracking-wide text-[#0f766e]">Documento capturado</p>
                       {viewDocumentPhoto ? (
                         <img
@@ -1459,9 +1467,10 @@ const UserDirectory = () => {
                           </dd>
                         </div>
                       </dl>
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
       </div>

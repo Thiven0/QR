@@ -12,6 +12,8 @@ import {
   FiUnlock,
   FiUserCheck,
   FiUserPlus,
+  FiVideo,
+  FiVideoOff,
   FiZap,
 } from 'react-icons/fi';
 import { FaQrcode, FaUserCircle } from 'react-icons/fa';
@@ -331,8 +333,7 @@ const renderQrFocusOverlay = () => (
   </div>
 );
 
-const FACE_CAMERA_RESTART_DELAY_MS = 1200;
-const FACE_AUTO_REGISTRATION_RESTART_DELAY_MS = 1600;
+const FACE_RESULT_DELAY_MS = 5000;
 const FACE_MAX_ATTEMPTS = 2;
 const BLOCKED_USER_MESSAGE = 'El usuario se encuentra bloqueado. No se puede registrar el ingreso ni la salida.';
 
@@ -340,10 +341,13 @@ const QRScannerPage = () => {
   const { token } = useAuth();
   const [scannerKey, setScannerKey] = useState(0);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
   const [scanMode, setScanMode] = useState('face');
   const audioContextRef = useRef(null);
   const faceFallbackTimeoutRef = useRef(null);
   const autoRegistrationRestartTimeoutRef = useRef(null);
+  const faceCountdownIntervalRef = useRef(null);
+  const cameraEnabledRef = useRef(true);
   const confirmMovementRef = useRef(null);
   const faceAttemptsRef = useRef(0);
   const scannerBeforeVisitorRef = useRef({ resumeQr: false, resumeFace: false });
@@ -365,6 +369,8 @@ const QRScannerPage = () => {
   const [faceRetrying, setFaceRetrying] = useState(false);
   const [faceRetryMessage, setFaceRetryMessage] = useState('');
   const [faceIdentified, setFaceIdentified] = useState(false);
+  const [faceCaptureBusy, setFaceCaptureBusy] = useState(false);
+  const [faceResultCountdown, setFaceResultCountdown] = useState(null);
   const [showVisitorRegistration, setShowVisitorRegistration] = useState(false);
   const [visitorRegistrationBusy, setVisitorRegistrationBusy] = useState(false);
   const [visitorRegistrationDirty, setVisitorRegistrationDirty] = useState(false);
@@ -432,19 +438,44 @@ const QRScannerPage = () => {
     setMovementNote('');
   };
 
+  useEffect(() => {
+    cameraEnabledRef.current = cameraEnabled;
+  }, [cameraEnabled]);
+
+  const clearFaceCountdown = useCallback(() => {
+    if (faceCountdownIntervalRef.current) {
+      window.clearInterval(faceCountdownIntervalRef.current);
+      faceCountdownIntervalRef.current = null;
+    }
+    setFaceResultCountdown(null);
+  }, []);
+
+  const startFaceCountdown = useCallback(() => {
+    clearFaceCountdown();
+    setFaceResultCountdown(Math.ceil(FACE_RESULT_DELAY_MS / 1000));
+    faceCountdownIntervalRef.current = window.setInterval(() => {
+      setFaceResultCountdown((current) => {
+        if (typeof current !== 'number') return current;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+  }, [clearFaceCountdown]);
+
   const clearFaceFallback = useCallback(() => {
     if (faceFallbackTimeoutRef.current) {
       window.clearTimeout(faceFallbackTimeoutRef.current);
       faceFallbackTimeoutRef.current = null;
     }
-  }, []);
+    clearFaceCountdown();
+  }, [clearFaceCountdown]);
 
   const clearAutoRegistrationRestart = useCallback(() => {
     if (autoRegistrationRestartTimeoutRef.current) {
       window.clearTimeout(autoRegistrationRestartTimeoutRef.current);
       autoRegistrationRestartTimeoutRef.current = null;
     }
-  }, []);
+    clearFaceCountdown();
+  }, [clearFaceCountdown]);
 
   const resetFaceAttempts = useCallback(() => {
     faceAttemptsRef.current = 0;
@@ -457,8 +488,8 @@ const QRScannerPage = () => {
     if (processing || confirmingMovement) return;
 
     scannerBeforeVisitorRef.current = {
-      resumeQr: scanMode === 'qr' && cameraActive,
-      resumeFace: scanMode === 'face' && !faceIdentified,
+      resumeQr: cameraEnabled && scanMode === 'qr' && cameraActive,
+      resumeFace: cameraEnabled && scanMode === 'face' && !faceIdentified,
     };
 
     clearFaceFallback();
@@ -466,7 +497,7 @@ const QRScannerPage = () => {
     setFaceRetrying(false);
     setFaceRetryMessage('');
     setShowVisitorRegistration(true);
-  }, [cameraActive, clearFaceFallback, confirmingMovement, faceIdentified, processing, scanMode]);
+  }, [cameraActive, cameraEnabled, clearFaceFallback, confirmingMovement, faceIdentified, processing, scanMode]);
 
   const closeVisitorRegistration = useCallback(() => {
     const { resumeQr, resumeFace } = scannerBeforeVisitorRef.current;
@@ -479,6 +510,7 @@ const QRScannerPage = () => {
       setScannerKey((prev) => prev + 1);
     }
     if (resumeFace) {
+      setCameraEnabled(true);
       setFaceCaptureKey((prev) => prev + 1);
     }
 
@@ -509,15 +541,21 @@ const QRScannerPage = () => {
       attempt: details.attempt,
       nextAction: 'face',
     });
+    startFaceCountdown();
 
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      clearFaceCountdown();
+      if (!cameraEnabledRef.current) {
+        faceFallbackTimeoutRef.current = null;
+        return;
+      }
       setRegistrationDialog(null);
       setFaceRetrying(false);
       setFaceRetryMessage('');
       setFaceCaptureKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
-    }, FACE_CAMERA_RESTART_DELAY_MS);
-  }, [clearFaceFallback, openRegistrationDialog]);
+    }, FACE_RESULT_DELAY_MS);
+  }, [clearFaceCountdown, clearFaceFallback, openRegistrationDialog, startFaceCountdown]);
 
   const fallbackToQrAfterFaceFailure = useCallback((message, details = {}) => {
     clearFaceFallback();
@@ -534,8 +572,14 @@ const QRScannerPage = () => {
       attempt: details.attempt,
       nextAction: 'qr',
     });
+    startFaceCountdown();
 
     faceFallbackTimeoutRef.current = window.setTimeout(() => {
+      clearFaceCountdown();
+      if (!cameraEnabledRef.current) {
+        faceFallbackTimeoutRef.current = null;
+        return;
+      }
       setRegistrationDialog(null);
       setFaceRetrying(false);
       setFaceRetryMessage('');
@@ -543,8 +587,8 @@ const QRScannerPage = () => {
       setCameraActive(true);
       setScannerKey((prev) => prev + 1);
       faceFallbackTimeoutRef.current = null;
-    }, FACE_CAMERA_RESTART_DELAY_MS);
-  }, [clearFaceFallback, openRegistrationDialog]);
+    }, FACE_RESULT_DELAY_MS);
+  }, [clearFaceCountdown, clearFaceFallback, openRegistrationDialog, startFaceCountdown]);
 
   const handleFaceAttemptFailure = useCallback((message, details = {}) => {
     const nextAttempt = faceAttemptsRef.current + 1;
@@ -558,6 +602,65 @@ const QRScannerPage = () => {
 
     fallbackToQrAfterFaceFailure(message, failureDetails);
   }, [fallbackToQrAfterFaceFailure, restartFaceCapture]);
+
+  const handleFaceBusyChange = useCallback((busy) => {
+    setFaceCaptureBusy(busy);
+  }, []);
+
+  const handleToggleCamera = useCallback(() => {
+    if (cameraEnabledRef.current) {
+      cameraEnabledRef.current = false;
+      setCameraEnabled(false);
+      setCameraActive(false);
+      clearFaceFallback();
+      clearAutoRegistrationRestart();
+      setAutoRegistrationPending(null);
+      setFaceCaptureBusy(false);
+
+      if (registrationDialog?.kind === REGISTRATION_DIALOG.FACE_WARNING) {
+        if (registrationDialog.nextAction === 'qr') {
+          setScanMode('qr');
+        }
+        setRegistrationDialog(null);
+        setFaceRetrying(false);
+        setFaceRetryMessage('');
+        setFaceIdentified(false);
+      } else if (registrationDialog?.kind === REGISTRATION_DIALOG.AUTO_SUCCESS) {
+        setRegistrationDialog(null);
+        setScanData(null);
+        resetFaceAttempts();
+      }
+
+      toast.success('Cámara apagada. Permanecerá inactiva hasta que la enciendas.', {
+        id: 'qr-scanner-camera-power',
+      });
+      return;
+    }
+
+    cameraEnabledRef.current = true;
+    setCameraEnabled(true);
+    setFaceRetrying(false);
+    setFaceRetryMessage('');
+
+    if (scanMode === 'qr') {
+      setCameraActive(true);
+      setScannerKey((prev) => prev + 1);
+    } else if (!faceIdentified) {
+      setCameraActive(false);
+      setFaceCaptureKey((prev) => prev + 1);
+    }
+
+    toast.success('Cámara encendida y lista para escanear.', {
+      id: 'qr-scanner-camera-power',
+    });
+  }, [
+    clearAutoRegistrationRestart,
+    clearFaceFallback,
+    faceIdentified,
+    registrationDialog,
+    resetFaceAttempts,
+    scanMode,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -782,7 +885,7 @@ const QRScannerPage = () => {
       return;
     }
 
-    setCameraActive(true);
+    setCameraActive(scanMode === 'qr' && cameraEnabledRef.current);
     setResetting(true);
     clearFaceFallback();
     clearAutoRegistrationRestart();
@@ -877,7 +980,13 @@ const QRScannerPage = () => {
         setFaceRetrying(true);
         setFaceRetryMessage('Registro realizado. Preparando camara para el siguiente usuario...');
         clearAutoRegistrationRestart();
+        startFaceCountdown();
         autoRegistrationRestartTimeoutRef.current = window.setTimeout(() => {
+          clearFaceCountdown();
+          if (!cameraEnabledRef.current) {
+            autoRegistrationRestartTimeoutRef.current = null;
+            return;
+          }
           setRegistrationDialog(null);
           setScanData(null);
           setFaceIdentified(false);
@@ -886,9 +995,19 @@ const QRScannerPage = () => {
           setFaceRetryMessage('');
           setFaceCaptureKey((prev) => prev + 1);
           autoRegistrationRestartTimeoutRef.current = null;
-        }, FACE_AUTO_REGISTRATION_RESTART_DELAY_MS);
+        }, FACE_RESULT_DELAY_MS);
       } else {
         closeRegistrationDialog();
+        setScanData(null);
+        resetFaceAttempts();
+        if (cameraEnabledRef.current) {
+          if (scanMode === 'qr') {
+            setCameraActive(true);
+            setScannerKey((prev) => prev + 1);
+          } else {
+            setFaceCaptureKey((prev) => prev + 1);
+          }
+        }
       }
     } catch (confirmError) {
       const message =
@@ -931,6 +1050,13 @@ const QRScannerPage = () => {
     : FACE_MATCH_THRESHOLD;
   const scannerControlsDisabled =
     processing || confirmingMovement || resetting || faceRetrying || Boolean(registrationDialog) || showVisitorRegistration;
+  const cameraPowerDisabled =
+    processing || confirmingMovement || resetting || faceCaptureBusy || visitorRegistrationBusy;
+  const faceCountdownSeconds = faceResultCountdown ?? Math.ceil(FACE_RESULT_DELAY_MS / 1000);
+  const faceCountdownProgress = Math.max(
+    0,
+    Math.min(100, (faceCountdownSeconds / Math.ceil(FACE_RESULT_DELAY_MS / 1000)) * 100)
+  );
 
   return (
     <>
@@ -985,7 +1111,9 @@ const QRScannerPage = () => {
                           resetFaceAttempts();
                           setScanMode('face');
                           setCameraActive(false);
-                          setFaceCaptureKey((prev) => prev + 1);
+                          if (cameraEnabledRef.current) {
+                            setFaceCaptureKey((prev) => prev + 1);
+                          }
                         }}
                         disabled={scannerControlsDisabled}
                         aria-pressed={scanMode === 'face'}
@@ -1006,7 +1134,10 @@ const QRScannerPage = () => {
                           clearFaceFallback();
                           resetFaceAttempts();
                           setScanMode('qr');
-                          setCameraActive(true);
+                          setCameraActive(cameraEnabledRef.current);
+                          if (cameraEnabledRef.current) {
+                            setScannerKey((prev) => prev + 1);
+                          }
                         }}
                         disabled={scannerControlsDisabled}
                         aria-pressed={scanMode === 'qr'}
@@ -1059,6 +1190,26 @@ const QRScannerPage = () => {
                     <div className="flex gap-2">
                       <button
                         type="button"
+                        onClick={handleToggleCamera}
+                        disabled={cameraPowerDisabled}
+                        aria-pressed={cameraEnabled}
+                        aria-label={cameraEnabled ? 'Apagar cámara' : 'Encender cámara'}
+                        title={cameraEnabled ? 'Apagar cámara' : 'Encender cámara'}
+                        className={clsx(
+                          'inline-flex h-12 w-12 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50',
+                          cameraEnabled
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                        )}
+                      >
+                        {cameraEnabled ? (
+                          <FiVideoOff className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <FiVideo className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setShowTurnstile(true)}
                         disabled={scannerControlsDisabled}
                         aria-label="Controlar talanquera"
@@ -1086,6 +1237,14 @@ const QRScannerPage = () => {
                 {showVisitorRegistration ? (
                   <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-slate-200 bg-[#0f172a] px-6 text-center text-white/80">
                     <p className="text-sm font-medium">Camara pausada durante el registro del visitante.</p>
+                  </div>
+                ) : !cameraEnabled ? (
+                  <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-slate-200 bg-[#0f172a] px-6 text-center">
+                    <div>
+                      <FiVideoOff className="mx-auto h-9 w-9 text-white/60" aria-hidden="true" />
+                      <p className="mt-3 text-xl font-bold text-white">Cámara apagada</p>
+                      <p className="mt-2 text-sm text-white/70">Enciéndela desde Herramientas cuando quieras continuar.</p>
+                    </div>
                   </div>
                 ) : scanMode === 'qr' ? (
                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[#0f172a]">
@@ -1129,6 +1288,7 @@ const QRScannerPage = () => {
                     enableAutoBlink={true}
                     onResult={handleFaceResult}
                     onError={handleFaceError}
+                    onBusyChange={handleFaceBusyChange}
                   />
                 )}
               </div>
@@ -1282,6 +1442,24 @@ const QRScannerPage = () => {
               </button>
             )}
 
+            {(isFaceWarningDialog || isAutoSuccessDialog) && (
+              <button
+                type="button"
+                onClick={handleToggleCamera}
+                disabled={cameraPowerDisabled}
+                className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-[#475569] shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-pressed={cameraEnabled}
+                aria-label={cameraEnabled ? 'Apagar cámara' : 'Encender cámara'}
+                title={cameraEnabled ? 'Apagar cámara' : 'Encender cámara'}
+              >
+                {cameraEnabled ? (
+                  <FiVideoOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <FiVideo className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            )}
+
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
               <header className="pr-10">
                 <p className={clsx('text-xs font-semibold uppercase tracking-[0.28em]', isFaceWarningDialog || isAutoErrorDialog ? 'text-rose-700' : 'text-[#0f766e]')}>
@@ -1341,6 +1519,18 @@ const QRScannerPage = () => {
                         ? 'Se cambiará automáticamente al lector QR.'
                         : 'La cámara facial se reiniciará para realizar el segundo intento.'}
                     </p>
+                    <div className="mt-3" aria-live="polite">
+                      <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#0f766e]">
+                        <span>{registrationDialog.nextAction === 'qr' ? 'Lector QR listo' : 'Cámara facial lista'}</span>
+                        <span>{faceCountdownSeconds} s</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+                        <div
+                          className="h-full rounded-full bg-[#0f766e] transition-[width] duration-1000 ease-linear"
+                          style={{ width: `${faceCountdownProgress}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -1379,9 +1569,18 @@ const QRScannerPage = () => {
                   )}
 
                   {isAutoSuccessDialog && (
-                    <p className="rounded-xl bg-slate-100 px-4 py-3 text-center text-sm font-semibold text-[#475569]">
-                      Preparando la cámara para el siguiente usuario…
-                    </p>
+                    <div className="rounded-xl bg-slate-100 px-4 py-3 text-[#475569]" aria-live="polite">
+                      <div className="flex items-center justify-between gap-3 text-sm font-semibold">
+                        <span>Preparando la cámara para el siguiente usuario</span>
+                        <span className="whitespace-nowrap text-[#0f766e]">{faceCountdownSeconds} s</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+                        <div
+                          className="h-full rounded-full bg-[#0f766e] transition-[width] duration-1000 ease-linear"
+                          style={{ width: `${faceCountdownProgress}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
 
                   {(confirmationError || isAutoErrorDialog) && (

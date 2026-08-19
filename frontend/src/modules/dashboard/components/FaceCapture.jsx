@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FiCamera, FiRefreshCcw, FiX } from 'react-icons/fi';
 import clsx from 'clsx';
 import { apiRequest } from '../../../services/apiClient';
@@ -8,12 +8,18 @@ import useAuth from '../../auth/hooks/useAuth';
 
 const getErrorMessage = (error, fallback) => error?.details?.message || error?.message || fallback;
 
-const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, enableAutoBlink, enrollOptions }) => {
+const FaceCapture = ({ mode = 'identify', userId, onResult, onError, onCancel, onBusyChange, enableAutoBlink, enrollOptions }) => {
   const { token } = useAuth();
   const [capturing, setCapturing] = useState(false);
   const [processing, setProcessing] = useState(false);
   const { cameraOpen, cameraChecking, cameraError, setCameraError, videoRef, retryCamera, captureImage } =
     useCameraCapture();
+
+  useEffect(() => {
+    onBusyChange?.(cameraChecking || capturing || processing);
+  }, [cameraChecking, capturing, onBusyChange, processing]);
+
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   const handleCapture = useCallback(async () => {
     if (!cameraOpen || cameraChecking || capturing || processing) return;
